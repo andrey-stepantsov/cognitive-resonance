@@ -1,5 +1,6 @@
 import { useCognitiveResonance, type Message } from './useCognitiveResonance';
 import { CommandAction, parseCommand } from '../services/CommandParser';
+import Fuse from 'fuse.js';
 
 export function useREPL() {
   const cr = useCognitiveResonance();
@@ -70,41 +71,51 @@ export function useREPL() {
           }
           break;
         case CommandAction.GRAPH_LS:
-          if (cr.activeState?.semanticNodes) {
-             let typeFilter = intent.args.length > 0 ? intent.args.join(' ') : undefined;
-             if (typeFilter && ((typeFilter.startsWith('"') && typeFilter.endsWith('"')) || (typeFilter.startsWith("'") && typeFilter.endsWith("'")))) {
-               typeFilter = typeFilter.slice(1, -1);
-             }
-             typeFilter = typeFilter?.toLowerCase();
-             
-             let nodes = cr.activeState.semanticNodes;
-             if (typeFilter) {
-               // Assuming a heuristic where label casing or an explicit 'type' field might exist.
-               // For now just substring search on label
-               nodes = nodes.filter(n => (n.label || '').toLowerCase().includes(typeFilter));
-             }
-             const outNodes = nodes.map(n => `- ${n.id} (${n.label})`).join('\\n');
-             injectSystemMessage(`Semantic Nodes${typeFilter ? ` (filtered by '${typeFilter}')` : ''}:\\n${outNodes || 'None found.'}`);
-          } else {
-             injectSystemMessage('No semantic graph generated for this session yet.');
-          }
-          break;
-        case CommandAction.GRAPH_SEARCH:
-          if (cr.activeState?.semanticNodes && intent.args.length > 0) {
-             let query = intent.args.join(' ');
-             // Strip surrounding quotes if the user wrapped their multi-word query
-             if ((query.startsWith('"') && query.endsWith('"')) || (query.startsWith("'") && query.endsWith("'"))) {
+        case CommandAction.GRAPH_SEARCH: {
+          const isSearch = intent.action === CommandAction.GRAPH_SEARCH;
+          if (cr.activeState?.semanticNodes && (isSearch ? intent.args.length > 0 : true)) {
+             let query = intent.args.length > 0 ? intent.args.join(' ') : undefined;
+             if (query && ((query.startsWith('"') && query.endsWith('"')) || (query.startsWith("'") && query.endsWith("'")))) {
                query = query.slice(1, -1);
              }
-             query = query.toLowerCase();
              
-             const nodes = cr.activeState.semanticNodes.filter(n => (n.label || '').toLowerCase().includes(query) || n.id.toLowerCase().includes(query));
+             let nodes = cr.activeState.semanticNodes;
+             if (query) {
+               let isRegex = false;
+               let regex: RegExp | null = null;
+               if (query.startsWith('/') && query.lastIndexOf('/') > 0) {
+                 const lastSlashIndex = query.lastIndexOf('/');
+                 const pattern = query.slice(1, lastSlashIndex);
+                 const flags = query.slice(lastSlashIndex + 1);
+                 try {
+                   regex = new RegExp(pattern, flags);
+                   isRegex = true;
+                 } catch (e) { }
+               }
+
+               if (isRegex && regex) {
+                 nodes = nodes.filter(n => regex!.test(n.label || '') || regex!.test(n.id));
+               } else {
+                 const fuse = new Fuse(nodes, { keys: ['label', 'id'], threshold: 0.4 });
+                 nodes = fuse.search(query).map(res => res.item);
+               }
+             }
+             
              const outNodes = nodes.map(n => `- ${n.id} (${n.label})`).join('\\n');
-             injectSystemMessage(`Search Results for '${query}':\\n${outNodes || 'None found.'}`);
+             if (isSearch) {
+                 injectSystemMessage(`Search Results for '${query}':\\n${outNodes || 'None found.'}`);
+             } else {
+                 injectSystemMessage(`Semantic Nodes${query ? ` (filtered by '${query}')` : ''}:\\n${outNodes || 'None found.'}`);
+             }
           } else {
-             injectSystemMessage('Please provide a search query.');
+             if (!cr.activeState?.semanticNodes && !isSearch) {
+               injectSystemMessage('No semantic graph generated for this session yet.');
+             } else {
+               injectSystemMessage('Please provide a search query.');
+             }
           }
           break;
+        }
         case CommandAction.GRAPH_DESCRIBE:
           if (cr.activeState?.semanticNodes && intent.args[0]) {
             const nodeId = intent.args[0];
