@@ -1,0 +1,40 @@
+{
+  "name": "cognitive-resonance",
+  "displayName": "Cognitive Resonance",
+  "description": "Multi-modal AI coding assistant",
+  "version": "1.0.0",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "cognitive-resonance.start",
+        "title": "Start Cognitive Resonance"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "@cr/backend": "*",
+    "@cr/core": "*",
+    "@cr/ui": "*",
+    "@google/genai": "^1.45.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.577.0",
+    "tailwind-merge": "^3.5.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.2.2"
+  }
+}

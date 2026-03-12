@@ -1,0 +1,75 @@
+{
+  "name": "cognitive-resonance",
+  "displayName": "Cognitive Resonance",
+  "description": "Port of the Google AI Studio Cognitive Resonance prototype.",
+  "version": "0.0.18",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "publisher": "astepantsov",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/andrey-stepantsov/cognitive-resonance-vscode.git"
+  },
+  "icon": "icon.png",
+  "keywords": [
+    "AI",
+    "Gemini",
+    "Chat",
+    "Cognitive Resonance"
+  ],
+  "license": "MIT",
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "cognitive-resonance.start",
+        "title": "Cognitive Resonance: Start Session"
+      },
+      {
+        "command": "cognitive-resonance.setApiKey",
+        "title": "Cognitive Resonance: Set Gemini API Key"
+      },
+      {
+        "command": "cognitive-resonance.loadSession",
+        "title": "Cognitive Resonance: Resume Session"
+      },
+      {
+        "command": "cognitive-resonance.viewHistory",
+        "title": "Cognitive Resonance: View History"
+      },
+      {
+        "command": "cognitive-resonance.exportDiagnostics",
+        "title": "Cognitive Resonance: Export Diagnostics"
+      },
+      {
+        "command": "cognitive-resonance.browseGallery",
+        "title": "Cognitive Resonance: Browse Public Gallery"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --watch",
+    "build:webview": "cd webview-ui && npm install && export NODE_OPTIONS='--max-old-space-size=8192' && npm run build",
+    "build:all": "npm run compile && npm run build:webview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "18.x",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.27.3",
+    "typescript": "^5.3.3",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@google/genai": "^1.29.0",
+    "fuse.js": "^7.1.0"
+  }
+}
