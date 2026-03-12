@@ -35,11 +35,16 @@ describe('searchHistory', () => {
   ];
 
   const mockStorage: IStorageProvider = {
+    type: 'local',
+    isReady: () => true,
     saveSession: vi.fn(),
     loadSession: vi.fn(),
     deleteSession: vi.fn(),
+    renameSession: vi.fn(),
     loadAllSessions: vi.fn().mockResolvedValue(mockSessions),
-    clearAll: vi.fn()
+    clearAll: vi.fn(),
+    saveGemsConfig: vi.fn(),
+    loadGemsConfig: vi.fn()
   };
 
   it('filters sessions by nodes (fuzzy match on label/id)', async () => {

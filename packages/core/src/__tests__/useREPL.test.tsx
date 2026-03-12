@@ -34,6 +34,8 @@ describe('useREPL', () => {
       setSelectedModel: vi.fn(),
       handleSelectGem: vi.fn(),
       setIsGemSidebarOpen: vi.fn(),
+      handleSetApiKey: vi.fn(),
+      handleClearApiKey: vi.fn(),
       activeState: null,
     };
     vi.mocked(useCognitiveResonanceModule.useCognitiveResonance).mockReturnValue(mockCrOptions);
@@ -171,6 +173,29 @@ describe('useREPL', () => {
     const { result } = setup();
     await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
     expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Dropped context for: file.json' }));
+  });
+
+  it('handles /key set', async () => {
+    mockCrOptions.input = '/key set test-key';
+    const { result } = setup();
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+    expect(mockCrOptions.handleSetApiKey).toHaveBeenCalledWith('test-key');
+    expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: API key set successfully.' }));
+  });
+
+  it('handles /key set missing arg', async () => {
+    mockCrOptions.input = '/key set';
+    const { result } = setup();
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+    expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Please provide an API key.' }));
+  });
+
+  it('handles /key clear', async () => {
+    mockCrOptions.input = '/key clear';
+    const { result } = setup();
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+    expect(mockCrOptions.handleClearApiKey).toHaveBeenCalled();
+    expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: API key cleared.' }));
   });
 
   describe('graph commands', () => {

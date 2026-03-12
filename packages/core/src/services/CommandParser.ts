@@ -14,6 +14,10 @@ export type CommandAction =
   | 'ATTACH'
   | 'CONTEXT_DROP'
 
+  // Key Control
+  | 'KEY_SET'
+  | 'KEY_CLEAR'
+
   // Graph Interrogation
   | 'GRAPH_LS'
   | 'GRAPH_SEARCH'
@@ -37,6 +41,8 @@ export const CommandAction = {
   GEM_LS: 'GEM_LS' as CommandAction,
   ATTACH: 'ATTACH' as CommandAction,
   CONTEXT_DROP: 'CONTEXT_DROP' as CommandAction,
+  KEY_SET: 'KEY_SET' as CommandAction,
+  KEY_CLEAR: 'KEY_CLEAR' as CommandAction,
   GRAPH_LS: 'GRAPH_LS' as CommandAction,
   GRAPH_SEARCH: 'GRAPH_SEARCH' as CommandAction,
   GRAPH_DESCRIBE: 'GRAPH_DESCRIBE' as CommandAction,
@@ -99,6 +105,11 @@ export function parseCommand(input: string): CommandIntent | null {
 
   if (namespace === 'context') {
     if (verb === 'drop') return { action: CommandAction.CONTEXT_DROP, args, raw: input };
+  }
+
+  if (namespace === 'key') {
+    if (verb === 'set') return { action: CommandAction.KEY_SET, args, raw: input };
+    if (verb === 'clear') return { action: CommandAction.KEY_CLEAR, args, raw: input };
   }
 
   if (namespace === 'graph') {

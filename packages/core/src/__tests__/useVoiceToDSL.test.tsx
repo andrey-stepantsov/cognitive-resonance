@@ -72,7 +72,7 @@ describe('useVoiceToDSL', () => {
           [{ transcript: 'Start a new session' }]
         ]
       };
-      mockEvent.results[0].isFinal = true;
+      (mockEvent.results[0] as any).isFinal = true;
       mockRecognitionInstance.onresult(mockEvent);
     });
 

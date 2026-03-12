@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Type } from '@google/genai';
 import { Capacitor } from '@capacitor/core';
 import type { Node, Edge } from '@cr/ui';
-import { saveApiKey, loadApiKey, downloadJSON, shareJSON, type SessionRecord } from '@cr/backend';
+import { saveApiKey, loadApiKey, clearApiKey, downloadJSON, shareJSON, type SessionRecord } from '@cr/backend';
 import { useCognitivePlatform } from '../providers/CognitivePlatformContext';
 import { initGemini, generateResponse, fetchModels } from '../services/GeminiService';
 import { searchHistory } from '../services/SearchService';
@@ -184,12 +184,19 @@ export function useCognitiveResonance() {
     return () => clearTimeout(timeoutId);
   }, [historySearchQuery]);
 
-  const handleSetApiKey = () => {
-    if (!apiKeyInput.trim()) return;
-    saveApiKey(apiKeyInput.trim());
-    setApiKeyState(apiKeyInput.trim());
+  const handleSetApiKey = (key?: string | React.MouseEvent | React.FormEvent) => {
+    const keyToSave = (typeof key === 'string' ? key : apiKeyInput).trim();
+    if (!keyToSave) return;
+    saveApiKey(keyToSave);
+    setApiKeyState(keyToSave);
     setShowApiKeyModal(false);
     setApiKeyInput('');
+  };
+
+  const handleClearApiKey = () => {
+    clearApiKey();
+    setApiKeyState(null);
+    setShowApiKeyModal(true);
   };
 
   // Computed values
@@ -428,7 +435,7 @@ export function useCognitiveResonance() {
     apiKey, showApiKeyModal, setShowApiKeyModal, apiKeyInput, setApiKeyInput,
     messagesEndRef, fileInputRef, importInputRef,
     modelMessages, activeTurnIndex, activeState, isViewingHistory, historyData, filteredMarkers,
-    handleSetApiKey, handleSelectGem, handleSaveGem, handleDeleteGem, handleSetDefaultGem,
+    handleSetApiKey, handleClearApiKey, handleSelectGem, handleSaveGem, handleDeleteGem, handleSetDefaultGem,
     handleSubmit, handleDownloadHistory, handleLoadSession, handleSearchResultClick,
     handleDeleteSession, startRenameSession, handleRenameSessionSubmit, startNewSession, handleFileSelect, handleImportSession,
   };

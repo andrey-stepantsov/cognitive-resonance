@@ -35,6 +35,11 @@ describe('CommandParser', () => {
     expect(parseCommand('/context drop foo.ts')).toEqual({ action: CommandAction.CONTEXT_DROP, args: ['foo.ts'], raw: '/context drop foo.ts' });
   });
 
+  it('parses key commands', () => {
+    expect(parseCommand('/key set my-key')).toEqual({ action: CommandAction.KEY_SET, args: ['my-key'], raw: '/key set my-key' });
+    expect(parseCommand('/key clear')).toEqual({ action: CommandAction.KEY_CLEAR, args: [], raw: '/key clear' });
+  });
+
   it('parses graph commands', () => {
     expect(parseCommand('/graph ls')).toEqual({ action: CommandAction.GRAPH_LS, args: [], raw: '/graph ls' });
     expect(parseCommand('/graph search auth')).toEqual({ action: CommandAction.GRAPH_SEARCH, args: ['auth'], raw: '/graph search auth' });

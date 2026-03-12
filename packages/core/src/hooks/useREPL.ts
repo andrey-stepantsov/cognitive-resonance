@@ -131,6 +131,18 @@ export function useREPL() {
         case CommandAction.CONTEXT_DROP:
            injectSystemMessage(`Dropped context for: ${intent.args.join(' ')}`);
            break;
+        case CommandAction.KEY_SET:
+          if (intent.args[0]) {
+            cr.handleSetApiKey(intent.args[0]);
+            injectSystemMessage('API key set successfully.');
+          } else {
+            injectSystemMessage('Please provide an API key.');
+          }
+          break;
+        case CommandAction.KEY_CLEAR:
+          cr.handleClearApiKey();
+          injectSystemMessage('API key cleared.');
+          break;
         // Add other cases...
         case CommandAction.UNKNOWN:
         default:
