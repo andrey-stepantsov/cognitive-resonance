@@ -71,7 +71,12 @@ export function useREPL() {
           break;
         case CommandAction.GRAPH_LS:
           if (cr.activeState?.semanticNodes) {
-             const typeFilter = intent.args.length > 0 ? intent.args.join(' ').toLowerCase() : undefined;
+             let typeFilter = intent.args.length > 0 ? intent.args.join(' ') : undefined;
+             if (typeFilter && ((typeFilter.startsWith('"') && typeFilter.endsWith('"')) || (typeFilter.startsWith("'") && typeFilter.endsWith("'")))) {
+               typeFilter = typeFilter.slice(1, -1);
+             }
+             typeFilter = typeFilter?.toLowerCase();
+             
              let nodes = cr.activeState.semanticNodes;
              if (typeFilter) {
                // Assuming a heuristic where label casing or an explicit 'type' field might exist.
@@ -86,7 +91,13 @@ export function useREPL() {
           break;
         case CommandAction.GRAPH_SEARCH:
           if (cr.activeState?.semanticNodes && intent.args.length > 0) {
-             const query = intent.args.join(' ').toLowerCase();
+             let query = intent.args.join(' ');
+             // Strip surrounding quotes if the user wrapped their multi-word query
+             if ((query.startsWith('"') && query.endsWith('"')) || (query.startsWith("'") && query.endsWith("'"))) {
+               query = query.slice(1, -1);
+             }
+             query = query.toLowerCase();
+             
              const nodes = cr.activeState.semanticNodes.filter(n => (n.label || '').toLowerCase().includes(query) || n.id.toLowerCase().includes(query));
              const outNodes = nodes.map(n => `- ${n.id} (${n.label})`).join('\\n');
              injectSystemMessage(`Search Results for '${query}':\\n${outNodes || 'None found.'}`);
