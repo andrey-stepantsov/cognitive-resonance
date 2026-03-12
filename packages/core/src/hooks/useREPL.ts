@@ -36,14 +36,41 @@ export function useREPL() {
         case CommandAction.SESSION_NEW:
           cr.startNewSession();
           break;
-        case CommandAction.SESSION_LOAD:
-          if (intent.args[0]) {
-            await cr.handleLoadSession(intent.args[0]);
+        case CommandAction.SESSION_LOAD: {
+          const query = intent.args.join(' ').trim();
+          if (query) {
+            let targetSessionId = query;
+            if (cr.sessions && cr.sessions.length > 0) {
+               // Try to match the exact ID first
+               const exactMatch = cr.sessions.find(s => s.id === query);
+               if (exactMatch) {
+                 targetSessionId = exactMatch.id;
+               } else {
+                 // Fuzzy search against customName or preview
+                 const fuse = new Fuse(cr.sessions, { keys: ['customName', 'preview', 'id'], threshold: 0.4 });
+                 const results = fuse.search(query);
+                 if (results.length > 0) {
+                   targetSessionId = results[0].item.id;
+                   injectSystemMessage(`Fuzzy matched session: ${results[0].item.customName || results[0].item.preview}`);
+                 } else {
+                   injectSystemMessage(`No session found matching '${query}'.`);
+                   break;
+                 }
+               }
+            }
+            await cr.handleLoadSession(targetSessionId);
+          } else {
+            injectSystemMessage('Please provide a session name or ID to load.');
           }
           break;
+        }
         case CommandAction.SESSION_LS:
-          cr.setIsHistorySidebarOpen(true);
-          injectSystemMessage('Opened sessions list.');
+          if (cr.sessions && cr.sessions.length > 0) {
+            const outSessions = cr.sessions.map((s, idx) => `${idx + 1}. [${s.id}] ${s.customName || s.preview}`).join('\\n');
+            injectSystemMessage(`Available Sessions:\\n${outSessions}`);
+          } else {
+            injectSystemMessage('No saved sessions found.');
+          }
           break;
         case CommandAction.MODEL_USE:
           if (intent.args[0]) {

@@ -97,29 +97,60 @@ describe('useREPL', () => {
     expect(mockCrOptions.startNewSession).toHaveBeenCalled();
   });
 
-  it('handles /session load', async () => {
+  it('handles /session load with exact ID', async () => {
+    mockCrOptions.sessions = [{ id: '123', preview: 'Session 123' }];
     mockCrOptions.input = '/session load 123';
     const { result } = setup();
-    const mockEvent = { preventDefault: vi.fn() } as unknown as React.FormEvent;
-
-    await act(async () => {
-      await result.current.handleSubmit(mockEvent);
-    });
-
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
     expect(mockCrOptions.handleLoadSession).toHaveBeenCalledWith('123');
   });
 
-  it('handles /session ls', async () => {
+  it('handles /session load with fuzzy match', async () => {
+    mockCrOptions.sessions = [{ id: 'abc-123', customName: 'My Auth Setup', preview: 'Initial Auth chat' }];
+    mockCrOptions.input = '/session load auth setup';
+    const { result } = setup();
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+    expect(mockCrOptions.handleLoadSession).toHaveBeenCalledWith('abc-123');
+    expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Fuzzy matched session: My Auth Setup' }));
+  });
+
+  it('handles /session load without query', async () => {
+    mockCrOptions.input = '/session load';
+    const { result } = setup();
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+    expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Please provide a session name or ID to load.' }));
+  });
+
+  it('handles /session load with no matches', async () => {
+    mockCrOptions.sessions = [{ id: '123', preview: 'Apple' }];
+    mockCrOptions.input = '/session load banana';
+    const { result } = setup();
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+    expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: "[System]: No session found matching 'banana'." }));
+    expect(mockCrOptions.handleLoadSession).not.toHaveBeenCalled();
+  });
+
+  it('handles /session ls with saved sessions', async () => {
+    mockCrOptions.sessions = [
+      { id: '1', preview: 'Apple' },
+      { id: '2', customName: 'Banana', preview: 'Peel' }
+    ];
     mockCrOptions.input = '/session ls';
     const { result } = setup();
-    const mockEvent = { preventDefault: vi.fn() } as unknown as React.FormEvent;
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+    
+    expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ 
+        content: '[System]: Available Sessions:\\n1. [1] Apple\\n2. [2] Banana' 
+    }));
+  });
 
-    await act(async () => {
-      await result.current.handleSubmit(mockEvent);
-    });
-
-    expect(mockCrOptions.setIsHistorySidebarOpen).toHaveBeenCalledWith(true);
-    expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Opened sessions list.' }));
+  it('handles /session ls with no sessions', async () => {
+    mockCrOptions.sessions = [];
+    mockCrOptions.input = '/session ls';
+    const { result } = setup();
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+    
+    expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: No saved sessions found.' }));
   });
 
   it('handles /model use', async () => {
