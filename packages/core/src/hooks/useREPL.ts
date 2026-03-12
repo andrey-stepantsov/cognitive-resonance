@@ -71,7 +71,7 @@ export function useREPL() {
           break;
         case CommandAction.GRAPH_LS:
           if (cr.activeState?.semanticNodes) {
-             const typeFilter = intent.args[0]?.toLowerCase();
+             const typeFilter = intent.args.length > 0 ? intent.args.join(' ').toLowerCase() : undefined;
              let nodes = cr.activeState.semanticNodes;
              if (typeFilter) {
                // Assuming a heuristic where label casing or an explicit 'type' field might exist.
@@ -85,8 +85,8 @@ export function useREPL() {
           }
           break;
         case CommandAction.GRAPH_SEARCH:
-          if (cr.activeState?.semanticNodes && intent.args[0]) {
-             const query = intent.args[0].toLowerCase();
+          if (cr.activeState?.semanticNodes && intent.args.length > 0) {
+             const query = intent.args.join(' ').toLowerCase();
              const nodes = cr.activeState.semanticNodes.filter(n => (n.label || '').toLowerCase().includes(query) || n.id.toLowerCase().includes(query));
              const outNodes = nodes.map(n => `- ${n.id} (${n.label})`).join('\\n');
              injectSystemMessage(`Search Results for '${query}':\\n${outNodes || 'None found.'}`);
