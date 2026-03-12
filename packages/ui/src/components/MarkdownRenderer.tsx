@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { MermaidDiagram } from './MermaidDiagram';
@@ -50,6 +51,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
       {/* @ts-ignore - ReactMarkdown types are incompatible with React 19 in this specific version */}
       <ReactMarkdown
       remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeRaw]}
       components={{
         pre({ children }: any) {
           return <>{children}</>;
