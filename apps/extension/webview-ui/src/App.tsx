@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Send, BrainCircuit, Activity, Network, Loader2, X, Download, Copy, Check, AlertTriangle, Paperclip, FileText, Diamond, Plus, Trash2, Star, Edit3, Database, Mic, MicOff, Square, Eye, EyeOff, Globe } from 'lucide-react';
+import { Send, BrainCircuit, Activity, Network, Loader2, X, Download, Copy, Check, AlertTriangle, Paperclip, FileText, Diamond, Plus, Trash2, Star, Edit3, Database, Mic, MicOff, Square, Eye, EyeOff, Globe, Undo2 } from 'lucide-react';
 import { SemanticGraph, DissonanceMeter, MarkdownRenderer } from '@cr/ui';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -27,6 +27,7 @@ export default function App() {
     isViewMode, historyFilename, setHistoryFilename, attachedFiles, setAttachedFiles,
     messagesEndRef, fileInputRef, inputRef,
     modelMessages, activeTurnIndex, activeState, isViewingHistory, historyData, filteredMarkers,
+    deletedSessionId, handleUndoDelete,
     handleSelectGem, handleSaveGem, handleDeleteGem, handleSetDefaultGem,
     handleSubmit, handleDownloadHistory, handleLoadSession, handleSearchResultClick,
     handleDeleteSession, startRenameSession, handleRenameSessionSubmit, startNewSession, handleFileSelect,
@@ -283,6 +284,23 @@ export default function App() {
 
         </div>
       </div>
+
+      {/* Undo Delete Toast */}
+      {deletedSessionId && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className="bg-zinc-800/95 border border-zinc-700/50 shadow-2xl rounded-full px-4 py-3 flex items-center gap-4 backdrop-blur-md">
+            <span className="text-sm text-zinc-300 font-medium">Session deleted</span>
+            <div className="w-px h-4 bg-zinc-700"></div>
+            <button
+              onClick={handleUndoDelete}
+              className="flex items-center gap-1.5 text-sm font-semibold text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 px-3 py-1.5 rounded-full transition-colors"
+            >
+              <Undo2 className="w-4 h-4" />
+              Undo
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <header className="flex-none px-6 py-4 border-b border-zinc-800/50 bg-zinc-900/30 flex items-center justify-between backdrop-blur-md sticky top-0 z-20">

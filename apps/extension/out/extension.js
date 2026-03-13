@@ -244,10 +244,6 @@ function setupChatPanel(panel, context, apiKey) {
         try {
             switch (message.type) {
                 case 'webview_ready':
-                    // Send initial data now that webview is listening
-                    const gemsConfig = loadGemsConfig();
-                    panel.webview.postMessage({ type: 'gems_loaded', gems: gemsConfig.gems, defaultGemId: gemsConfig.defaultGemId });
-                    broadcastSessions();
                     fetchModels();
                     return;
                 case 'prompt':
@@ -325,20 +321,6 @@ function setupChatPanel(panel, context, apiKey) {
                     catch (err) {
                         console.error("Failed to save session history:", err);
                         (0, diagnostics_1.appendDiagnostic)(storagePath, { level: 'error', context: 'saveHistory', message: (0, ai_utils_1.formatApiError)(err) });
-                        vscode.window.showErrorMessage('Failed to save session history: ' + err.message);
-                    }
-                    return;
-                case 'save_gems_config':
-                    try {
-                        const configPayload = {
-                            gems: message.data,
-                            defaultGemId: message.defaultGemId
-                        };
-                        await fs.promises.writeFile(gemsFilePath, JSON.stringify(configPayload, null, 2), 'utf8');
-                    }
-                    catch (err) {
-                        console.error("Failed to save gems config to global state:", err);
-                        (0, diagnostics_1.appendDiagnostic)(storagePath, { level: 'error', context: 'saveGemsConfig', message: (0, ai_utils_1.formatApiError)(err) });
                     }
                     return;
                 case 'save_active_session':
@@ -356,9 +338,11 @@ function setupChatPanel(panel, context, apiKey) {
                 case 'load_specific_session':
                     try {
                         const fp = path.join(sessionsPath, `${message.sessionId}.json`);
-                        const content = await fs.promises.readFile(fp, 'utf8');
-                        const data = JSON.parse(content);
-                        panel.webview.postMessage({ type: 'resume_history', data, filename: message.sessionId, sessionId: message.sessionId });
+                        if (fs.existsSync(fp)) {
+                            const content = await fs.promises.readFile(fp, 'utf8');
+                            const data = JSON.parse(content);
+                            panel.webview.postMessage({ type: 'resume_history', data, filename: message.sessionId, sessionId: message.sessionId });
+                        }
                     }
                     catch (err) {
                         console.error("Failed to load session:", err);
@@ -392,6 +376,26 @@ function setupChatPanel(panel, context, apiKey) {
                     }
                     catch (err) {
                         console.error("Failed to rename session:", err);
+                    }
+                    return;
+                case 'request_sessions':
+                    broadcastSessions();
+                    return;
+                case 'request_gems':
+                    const gemsConf = loadGemsConfig();
+                    panel.webview.postMessage({ type: 'gems_loaded', gems: gemsConf.gems, defaultGemId: gemsConf.defaultGemId });
+                    return;
+                case 'save_gems_config':
+                    try {
+                        const configPayload = {
+                            gems: message.data,
+                            defaultGemId: message.defaultGemId
+                        };
+                        await fs.promises.writeFile(gemsFilePath, JSON.stringify(configPayload, null, 2), 'utf8');
+                    }
+                    catch (err) {
+                        console.error("Failed to save gems config to global state:", err);
+                        (0, diagnostics_1.appendDiagnostic)(storagePath, { level: 'error', context: 'saveGemsConfig', message: (0, ai_utils_1.formatApiError)(err) });
                     }
                     return;
                 case 'search_history':

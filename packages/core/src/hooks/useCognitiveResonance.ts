@@ -110,6 +110,10 @@ export function useCognitiveResonance() {
   const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-flash');
   const [sessionSystemPrompt, setSessionSystemPrompt] = useState<string>(BUILT_IN_GEMS[0].systemPrompt);
 
+  const [deletedSessionId, setDeletedSessionId] = useState<string | null>(null);
+  const deletedSessionRef = useRef<SessionRecord | null>(null);
+  const undoTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const [editingGem, setEditingGem] = useState<GemProfile | null>(null);
   const [creatingGem, setCreatingGem] = useState(false);
   const [draftGem, setDraftGem] = useState<{name: string, model: string, systemPrompt: string}>({name: '', model: 'gemini-2.5-flash', systemPrompt: ''});
@@ -512,9 +516,42 @@ export function useCognitiveResonance() {
 
   const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    await storage.deleteSession(sessionId);
+    
+    // Find the session to keep it in memory
+    const sessionToDelete = sessions.find(s => s.id === sessionId);
+    if (!sessionToDelete) return;
+    
+    // Clear any existing timeout if we delete another one quickly
+    if (undoTimeoutRef.current) {
+       clearTimeout(undoTimeoutRef.current);
+       if (deletedSessionId && deletedSessionId !== sessionId) {
+          storage.deleteSession(deletedSessionId);
+       }
+    }
+    
+    deletedSessionRef.current = sessionToDelete;
+    setDeletedSessionId(sessionId);
+    
+    // Optimistically remove from UI
     setSessions(prev => prev.filter(s => s.id !== sessionId));
     if (activeSessionId === sessionId) { setActiveSessionId(null); setMessages([]); }
+    
+    // Set timeout to permanently delete after 5 seconds
+    undoTimeoutRef.current = setTimeout(() => {
+       storage.deleteSession(sessionId);
+       setDeletedSessionId(null);
+       deletedSessionRef.current = null;
+    }, 5000);
+  };
+
+  const handleUndoDelete = () => {
+    if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+    if (deletedSessionRef.current) {
+       const restored = deletedSessionRef.current;
+       setSessions(prev => [restored, ...prev].sort((a,b) => b.timestamp - a.timestamp));
+       setDeletedSessionId(null);
+       deletedSessionRef.current = null;
+    }
   };
 
   const startRenameSession = (sessionId: string, currentName: string, e: React.MouseEvent) => {
@@ -577,6 +614,7 @@ export function useCognitiveResonance() {
     apiKey, showApiKeyModal, setShowApiKeyModal, apiKeyInput, setApiKeyInput,
     messagesEndRef, fileInputRef, importInputRef, inputRef,
     modelMessages, activeTurnIndex, activeState, isViewingHistory, historyData, filteredMarkers,
+    deletedSessionId, handleUndoDelete,
     handleSetApiKey, handleClearApiKey, handleSelectGem, handleSaveGem, handleDeleteGem, handleSetDefaultGem,
     handleSubmit, handleStopGeneration, handleDownloadHistory, handleLoadSession, handleSearchResultClick,
     handleDeleteSession, startRenameSession, handleRenameSessionSubmit, startNewSession, handleFileSelect, handleImportSession,

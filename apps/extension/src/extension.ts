@@ -234,7 +234,53 @@ function setupChatPanel(panel: vscode.WebviewPanel, context: vscode.ExtensionCon
 
   const ai = new GoogleGenAI({ apiKey });
 
+  // Load saved gems from file
+  const loadGemsConfig = () => {
+    let config: { gems: any[], defaultGemId: string } = { gems: [], defaultGemId: 'gem-general' };
+    try {
+      if (fs.existsSync(gemsFilePath)) {
+        const data = JSON.parse(fs.readFileSync(gemsFilePath, 'utf8'));
+        if (Array.isArray(data)) {
+           config.gems = data;
+        } else if (data && typeof data === 'object') {
+           config.gems = data.gems || [];
+           config.defaultGemId = data.defaultGemId || 'gem-general';
+        }
+      }
+    } catch (err) {
+      console.error("Failed to parse gems file.", err);
+    }
+    return config;
+  };
 
+  // Load all sessions
+  const broadcastSessions = async () => {
+    try {
+      const files = await fs.promises.readdir(sessionsPath);
+      const sessionsList = [];
+      for (const file of files) {
+        if (file.endsWith('.json')) {
+           const p = path.join(sessionsPath, file);
+           const stat = await fs.promises.stat(p);
+           const content = await fs.promises.readFile(p, 'utf8');
+           try {
+             const json = JSON.parse(content);
+             sessionsList.push({
+               id: file.replace('.json', ''),
+               timestamp: stat.mtimeMs,
+               preview: json.messages.length > 0 ? (json.messages[0].content.substring(0, 40) + '...') : 'Empty Session',
+               customName: json.customName,
+               config: json.config
+             });
+           } catch(e) {}
+        }
+      }
+      sessionsList.sort((a,b) => b.timestamp - a.timestamp);
+      panel.webview.postMessage({ type: 'sessions_loaded', sessions: sessionsList });
+    } catch (err) {
+      console.error("Failed to read sessions dir", err);
+    }
+  };
 
   // Fetch available models
   const fetchModels = async () => {
@@ -336,6 +382,8 @@ function setupChatPanel(panel: vscode.WebviewPanel, context: vscode.ExtensionCon
           } catch (err: any) {
              console.error("Failed to save session history:", err);
              appendDiagnostic(storagePath, { level: 'error', context: 'saveHistory', message: formatApiError(err) });
+          }
+          return;
         case 'save_active_session':
           try {
              const sessionId = message.sessionId || `session-${Date.now()}`;
@@ -406,6 +454,7 @@ function setupChatPanel(panel: vscode.WebviewPanel, context: vscode.ExtensionCon
             appendDiagnostic(storagePath, { level: 'error', context: 'saveGemsConfig', message: formatApiError(err) });
           }
           return;
+        case 'search_history':
           try {
             const query = message.query;
             if (!query || query.trim() === '') {
