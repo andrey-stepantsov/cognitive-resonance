@@ -196,6 +196,50 @@ describe('useREPL', () => {
     }));
   });
 
+  it('handles consecutive Ctrl+R reverse search', async () => {
+    const { result, rerender } = setup();
+
+    await act(async () => {
+      mockCrOptions.input = '/graph ls';
+      await result.current.handleSubmit({ preventDefault: vi.fn() } as any);
+    });
+    rerender();
+
+    await act(async () => {
+      mockCrOptions.input = '/session ls';
+      await result.current.handleSubmit({ preventDefault: vi.fn() } as any);
+    });
+    rerender();
+    
+    await act(async () => {
+      mockCrOptions.input = '/graph search [System]';
+      await result.current.handleSubmit({ preventDefault: vi.fn() } as any);
+    });
+    rerender();
+
+    // First Ctrl+R
+    await act(async () => {
+      mockCrOptions.input = 'gr';
+      const event = { ctrlKey: true, key: 'r', preventDefault: vi.fn() } as unknown as React.KeyboardEvent<HTMLInputElement>;
+      result.current.handleKeyDown(event);
+    });
+    rerender();
+
+    expect(mockCrOptions.setInput).toHaveBeenCalledWith('/graph search [System]');
+    
+    // Simulate natural input mutation bounds 
+    mockCrOptions.input = '/graph search [System]';
+
+    // Second Ctrl+R
+    await act(async () => {
+      const event = { ctrlKey: true, key: 'r', preventDefault: vi.fn() } as unknown as React.KeyboardEvent<HTMLInputElement>;
+      result.current.handleKeyDown(event);
+    });
+    rerender();
+    
+    expect(mockCrOptions.setInput).toHaveBeenCalledWith('/graph ls');
+  });
+
   it('handles /model use', async () => {
     mockCrOptions.input = '/model use pro';
     const { result } = setup();

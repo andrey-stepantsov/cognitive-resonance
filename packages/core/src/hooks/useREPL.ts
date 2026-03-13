@@ -7,6 +7,7 @@ export function useREPL() {
   const cr = useCognitiveResonance();
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  const [reverseSearchQuery, setReverseSearchQuery] = useState<string>('');
 
   const injectSystemMessage = (content: string) => {
     cr.messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -238,12 +239,19 @@ export function useREPL() {
       }
     } else if (e.ctrlKey && e.key === 'r') {
       e.preventDefault();
-      const query = cr.input;
+      
+      let query = cr.input;
       if (!query) return;
+
+      if (historyIndex !== -1 && commandHistory[commandHistory.length - 1 - historyIndex] === cr.input && reverseSearchQuery) {
+        query = reverseSearchQuery;
+      } else {
+        setReverseSearchQuery(query);
+      }
       
       const startIdx = historyIndex >= 0 ? historyIndex + 1 : 0;
       const searchableHistory = commandHistory.slice(0, commandHistory.length - startIdx).map((cmd, idx) => ({
-        originalIndex: commandHistory.length - 1 - idx - startIdx,
+        historyIndex: commandHistory.length - 1 - idx,
         command: cmd
       }));
 
@@ -258,14 +266,11 @@ export function useREPL() {
       const results = fuse.search(query);
 
       if (results.length > 0) {
-        // We want the most recent match (highest originalIndex)
-        results.sort((a, b) => b.item.originalIndex - a.item.originalIndex);
+        // We want the most recent match (lowest historyIndex)
+        results.sort((a, b) => a.item.historyIndex - b.item.historyIndex);
         const bestMatch = results[0].item;
         
-        // Convert originalIndex back to our historyIndex format (distance from end)
-        const foundHistoryIndex = commandHistory.length - 1 - bestMatch.originalIndex;
-        
-        setHistoryIndex(foundHistoryIndex);
+        setHistoryIndex(bestMatch.historyIndex);
         cr.setInput(bestMatch.command);
         injectSystemMessage(`Reverse search: fuzzy matched '${query}' -> '${bestMatch.command}'`);
       } else {
