@@ -57,7 +57,8 @@ export function useREPL() {
         case CommandAction.SESSION_LOAD:
         case CommandAction.SESSION_ARCHIVE:
         case CommandAction.SESSION_RECOVER:
-        case CommandAction.SESSION_DELETE: {
+        case CommandAction.SESSION_DELETE:
+        case CommandAction.SESSION_RENAME: {
           const query = intent.args.join(' ').trim();
           if (query) {
             let targetSessionId = query;
@@ -93,12 +94,26 @@ export function useREPL() {
             } else if (intent.action === CommandAction.SESSION_DELETE) {
                cr.handleDeleteSession(targetSessionId, new Event('custom') as any);
                injectSystemMessage(`Permanently deleted session: ${targetCustomName || query}`);
+            } else if (intent.action === CommandAction.SESSION_RENAME) {
+               // Due to UI complexities, we'll cheat a bit and just reuse the existing submit handler 
+               // by directly editing the item's customName property from CR layer if we could...
+               // However, CR exposes `handleRenameSessionSubmit` requiring an Event and setting state.
+               injectSystemMessage(`Renaming via CLI is partially supported. Opening UI editor for ${targetCustomName || query}...`);
+               cr.startRenameSession(targetSessionId, targetCustomName || query, new Event('custom') as any);
             }
           } else {
             injectSystemMessage(`Please provide a session name or ID to ${intent.action.split('_')[1].toLowerCase()}.`);
           }
           break;
         }
+        case CommandAction.SESSION_EXPORT:
+          if (cr.messages.length > 0) {
+            cr.handleDownloadHistory();
+            injectSystemMessage('Exporting current session history...');
+          } else {
+            injectSystemMessage('Cannot export an empty session.');
+          }
+          break;
         case CommandAction.SESSION_LS:
           if (cr.sessions && cr.sessions.length > 0) {
             const outSessions = cr.sessions.map((s, idx) => `${idx + 1}. [${s.id}] ${s.customName || s.preview}`).join('\\n');

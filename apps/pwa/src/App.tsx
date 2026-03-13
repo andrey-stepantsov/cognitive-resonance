@@ -524,6 +524,9 @@ export default function App() {
                     app.executeCommand('/system on');
                     app.executeCommand(`/search off`); // Optional toggle
                   }}
+                  onSync={async (scope) => {
+                     app.executeCommand(scope === 'global' ? '/global sync' : '/git sync');
+                  }}
                 />
               </div>
             ) : (

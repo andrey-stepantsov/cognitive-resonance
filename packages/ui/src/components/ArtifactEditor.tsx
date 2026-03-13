@@ -11,9 +11,10 @@ interface ArtifactEditorProps {
   filename: string;
   initialContent: string;
   onSave: (filename: string, content: string, commitMessage: string, scope: 'session' | 'global') => Promise<void>;
+  onSync?: (scope: 'session' | 'global') => Promise<void>;
 }
 
-export function ArtifactEditor({ filename, initialContent, onSave }: ArtifactEditorProps) {
+export function ArtifactEditor({ filename, initialContent, onSave, onSync }: ArtifactEditorProps) {
   const [content, setContent] = useState(initialContent);
   const [commitMessage, setCommitMessage] = useState(`Update ${filename}`);
   const [isSaving, setIsSaving] = useState(false);
@@ -95,6 +96,18 @@ export function ArtifactEditor({ filename, initialContent, onSave }: ArtifactEdi
                <span className="hidden sm:inline">{isSaving ? 'Committing...' : `Commit to ${scope === 'global' ? 'Global' : 'Session'}`}</span>
                <span className="inline sm:hidden">{isSaving ? '...' : 'Save'}</span>
              </button>
+             {onSync && (
+               <button
+                 onClick={() => onSync(scope)}
+                 className={cn("flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors shrink-0 border",
+                    scope === 'global' ? "bg-emerald-950/30 border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/50" : "bg-indigo-950/30 border-indigo-500/30 text-indigo-400 hover:bg-indigo-900/50"
+                 )}
+                 title="Sync Repository to Remote"
+               >
+                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" /></svg>
+                 <span className="hidden sm:inline">Sync</span>
+               </button>
+             )}
              <button
                onClick={() => setIsFullscreen(!isFullscreen)}
                className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors shrink-0 ml-1"
