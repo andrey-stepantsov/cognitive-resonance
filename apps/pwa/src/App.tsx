@@ -4,10 +4,10 @@ import {
   AlertTriangle, Plus, Copy, FileText, Share2, Diamond,
   Database, Loader2, Paperclip, Star, Edit3, Upload, Mic, MicOff, Square, Globe, Eye, EyeOff
 } from 'lucide-react';
-import { SemanticGraph, DissonanceMeter, MarkdownRenderer } from '@cr/ui';
+import { SemanticGraph, DissonanceMeter, MarkdownRenderer, AuthScreen } from '@cr/ui';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { useREPL, useVoiceToDSL, translateToDSL } from '@cr/core';
+import { useREPL, useVoiceToDSL, translateToDSL, useCognitivePlatform } from '@cr/core';
 import { clearApiKey } from '@cr/backend';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
@@ -16,6 +16,7 @@ function cn(...inputs: (string | undefined | null | false)[]) {
 
 export default function App() {
   const app = useREPL();
+  const { authStatus, auth } = useCognitivePlatform();
 
   const voice = useVoiceToDSL(async (transcript) => {
     // Determine translation using Gemini
@@ -30,6 +31,14 @@ export default function App() {
         app.setInput(translated);
     }
   });
+
+  if (authStatus !== 'authenticated') {
+    return (
+      <AuthScreen 
+        onLoginOAuth={() => auth.login()} 
+      />
+    );
+  }
 
   // API Key Modal
   if (app.showApiKeyModal) {

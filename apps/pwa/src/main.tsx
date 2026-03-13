@@ -6,15 +6,15 @@ import { CognitivePlatformProvider } from '@cr/core';
 import { 
   AnonymousAuthProvider, 
   LocalIndexedDBProvider, 
-  MockCloudAuthProvider, 
-  MockCloudStorageProvider 
+  AppwriteAuthProvider, 
+  AppwriteStorageProvider 
 } from '@cr/backend';
 
 // Initialize platform providers
 const localAuth = new AnonymousAuthProvider();
 const localStorage = new LocalIndexedDBProvider();
-const cloudAuth = new MockCloudAuthProvider();
-const cloudStorage = new MockCloudStorageProvider();
+const cloudAuth = new AppwriteAuthProvider();
+const cloudStorage = new AppwriteStorageProvider();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

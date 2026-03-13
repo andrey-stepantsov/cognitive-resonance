@@ -1,9 +1,9 @@
 import React, { useEffect } from 'react';
 import { Send, BrainCircuit, Activity, Network, Loader2, X, Download, Copy, Check, AlertTriangle, Paperclip, FileText, Diamond, Plus, Trash2, Star, Edit3, Database, Mic, MicOff, Square, Eye, EyeOff, Globe, Archive, ArchiveRestore } from 'lucide-react';
-import { SemanticGraph, DissonanceMeter, MarkdownRenderer } from '@cr/ui';
+import { SemanticGraph, DissonanceMeter, MarkdownRenderer, AuthScreen } from '@cr/ui';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { useREPL, useVoiceToDSL, translateToDSL } from '@cr/core';
+import { useREPL, useVoiceToDSL, translateToDSL, useCognitivePlatform } from '@cr/core';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
@@ -32,6 +32,8 @@ export default function App() {
     handleDeleteSession, handleArchiveSession, startRenameSession, handleRenameSessionSubmit, startNewSession, handleFileSelect,
     executeCommand, handleKeyDown, handleStopGeneration
   } = useREPL();
+
+  const { authStatus, auth } = useCognitivePlatform();
 
   const voice = useVoiceToDSL(async (transcript) => {
     const translated = await translateToDSL(transcript);
@@ -62,6 +64,15 @@ export default function App() {
 
   const activeSessions = sessions.filter(s => !s.isArchived);
   const archivedSessions = sessions.filter(s => s.isArchived);
+
+  if (authStatus !== 'authenticated') {
+    return (
+      <AuthScreen 
+        onLoginOAuth={() => auth.login()} 
+        isDev={true}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-[#111116] text-zinc-100 font-sans overflow-hidden">
