@@ -1,9 +1,9 @@
 import React, { useEffect } from 'react';
 import { Send, BrainCircuit, Activity, Network, Loader2, X, Download, Copy, Check, AlertTriangle, Paperclip, FileText, Diamond, Plus, Trash2, Star, Edit3, Database, Mic, MicOff, Square, Eye, EyeOff, Globe, Archive, ArchiveRestore } from 'lucide-react';
-import { SemanticGraph, DissonanceMeter, MarkdownRenderer, AuthScreen } from '@cr/ui';
+import { SemanticGraph, DissonanceMeter, MarkdownRenderer, AuthScreen, ArtifactEditor } from '@cr/ui';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { useREPL, useVoiceToDSL, translateToDSL, useCognitivePlatform } from '@cr/core';
+import { useREPL, useVoiceToDSL, translateToDSL, useCognitivePlatform, GitContextManager } from '@cr/core';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
@@ -18,7 +18,7 @@ export default function App() {
     sessions, activeSessionId, isHistorySidebarOpen, setIsHistorySidebarOpen,
     historySearchQuery, setHistorySearchQuery, activeSidebarTab, setActiveSidebarTab,
     searchResults, targetTurnIndex, editingSessionId, setEditingSessionId, editSessionName, setEditSessionName,
-    markerViewMode, setMarkerViewMode, markerSearchQuery, setMarkerSearchQuery,
+    markerViewMode, setMarkerViewMode, artifactContent, setArtifactContent, markerSearchQuery, setMarkerSearchQuery,
     mentionSearchQuery, mentionSuggestions, handleMentionSelect, handleInputChange,
     isDissonancePanelOpen, setIsDissonancePanelOpen, isRightSidebarOpen, setIsRightSidebarOpen,
     copiedIndex, setCopiedIndex, isGemSidebarOpen, setIsGemSidebarOpen,
@@ -759,6 +759,12 @@ export default function App() {
               >
                 List
               </button>
+              <button
+                onClick={() => setMarkerViewMode('artifact')}
+                className={cn("px-2.5 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1", markerViewMode === 'artifact' ? "bg-zinc-700/50 text-emerald-300 shadow-sm" : "text-zinc-500 hover:text-zinc-300")}
+              >
+                <FileText className="w-3 h-3" /> Artifacts
+              </button>
             </div>
             {isViewingHistory && (
               <button 
@@ -803,6 +809,22 @@ export default function App() {
                        }
                     }}
                   />
+              </div>
+          ) : markerViewMode === 'artifact' ? (
+              <div className="flex-1 min-h-0 relative -mx-2">
+                <ArtifactEditor
+                  filename="VirtualContext.md"
+                  initialContent={artifactContent}
+                  onSave={async (filename, content, commitMessage) => {
+                    setArtifactContent(content);
+                    const sessionId = ensureActiveSession();
+                    const git = new GitContextManager(sessionId);
+                    await git.initRepo();
+                    await git.stageFile(filename, content);
+                       await git.commitChange(commitMessage);
+                       // Add a system output directly (using REPL execute command in the hook normally, but here we just update silently for MVP)
+                  }}
+                />
               </div>
           ) : (
              <div className="flex-1 flex flex-col min-h-0">

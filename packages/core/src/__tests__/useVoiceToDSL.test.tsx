@@ -143,9 +143,7 @@ describe('useVoiceToDSL', () => {
     it('handles native speech recognition flow', async () => {
       vi.mocked(SpeechRecognition.checkPermissions).mockResolvedValue({ speechRecognition: 'granted' });
       
-      let emitPartial: any = null;
-      vi.mocked(SpeechRecognition.addListener).mockImplementation(async (event, callback) => {
-         if (event === 'partialResults') emitPartial = callback;
+      vi.mocked(SpeechRecognition.addListener).mockImplementation(async (_event, _callback) => {
          return { remove: vi.fn() };
       });
 

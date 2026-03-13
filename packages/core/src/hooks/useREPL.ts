@@ -1,5 +1,7 @@
 import { useCognitiveResonance, type Message } from './useCognitiveResonance';
 import { CommandAction, parseCommand } from '../services/CommandParser';
+import { gitRemoteSync } from '@cr/backend';
+import { GitContextManager } from '../services/GitContextManager';
 import Fuse from 'fuse.js';
 import { useState } from 'react';
 
@@ -241,6 +243,28 @@ export function useREPL() {
         case CommandAction.CONTEXT_DROP:
            injectSystemMessage(`Dropped context for: ${intent.args.join(' ')}`);
            break;
+        case CommandAction.GIT_SYNC:
+        case CommandAction.GIT_PUSH: {
+           const sessionId = cr.ensureActiveSession();
+           injectSystemMessage('Pushing local virtual repository to Cloudflare Remote...');
+           try {
+             const git = new GitContextManager(sessionId);
+             await git.initRepo(); // Ensure it exists locally
+             
+             if (!(await git.hasCommits())) {
+               injectSystemMessage('Repository is empty. Creating initial commit...');
+               await git.stageFile('VirtualContext.md', '# Initial Context\n');
+               await git.commitChange('Initial repository state');
+             }
+
+             const currentBranch = await git.getCurrentBranch() || 'main';
+             await gitRemoteSync.pushToRemote(git.fs, git.dir, currentBranch);
+             injectSystemMessage('Successfully pushed packfile to Cloudflare/Appwrite! 🎉');
+           } catch (err: any) {
+             injectSystemMessage(`Failed to push to remote: ${err.message}`);
+           }
+           break;
+        }
         case CommandAction.KEY_SET:
           if (intent.args[0]) {
             cr.handleSetApiKey(intent.args[0]);

@@ -1,16 +1,19 @@
-import { Client, Account, ID, Models } from 'appwrite';
+import { Client, Account, type Models } from 'appwrite';
 
 export class AuthService {
   private client: Client;
   private account: Account;
 
   constructor() {
-    this.client = new Client()
-      .setEndpoint(import.meta.env.VITE_APPWRITE_ENDPOINT || '')
-      .setProject(import.meta.env.VITE_APPWRITE_PROJECT || '');
-
+    this.client = new Client();
     this.account = new Account(this.client);
   }
+
+  configure(endpoint: string, project: string) {
+    if (endpoint) this.client.setEndpoint(endpoint);
+    if (project) this.client.setProject(project);
+  }
+
 
   getAccount(): Account {
     return this.account;

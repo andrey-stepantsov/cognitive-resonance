@@ -6,5 +6,8 @@ export * from './providers/MockCloudAuthProvider';
 export * from './providers/MockCloudStorageProvider';
 
 export * from './services/AuthService';
+export * from './services/GitRemoteSync';
 export * from './providers/AppwriteAuthProvider';
 export * from './providers/AppwriteStorageProvider';
+
+export * from './config';

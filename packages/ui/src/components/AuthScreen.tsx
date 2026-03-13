@@ -1,11 +1,5 @@
 import React, { useState } from 'react';
-import { clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-import { Mail, Globe } from 'lucide-react';
-
-function cn(...inputs: (string | undefined | null | false)[]) {
-  return twMerge(clsx(inputs));
-}
+import { Globe } from 'lucide-react';
 
 interface AuthScreenProps {
   onLoginOAuth?: (provider: string) => void;
@@ -14,7 +8,7 @@ interface AuthScreenProps {
   isDev?: boolean;
 }
 
-export function AuthScreen({ onLoginOAuth, onLoginEmail, onSignupEmail, isDev = false }: AuthScreenProps) {
+export function AuthScreen({ onLoginOAuth, onLoginEmail, onSignupEmail }: AuthScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState<'login' | 'signup'>('login');

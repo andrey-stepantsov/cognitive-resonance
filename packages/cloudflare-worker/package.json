@@ -8,7 +8,8 @@
     "start": "wrangler dev"
   },
   "dependencies": {
-    "@cloudflare/ai": "^1.1.0"
+    "@cloudflare/ai": "^1.1.0",
+    "node-appwrite": "^22.1.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240405.0",

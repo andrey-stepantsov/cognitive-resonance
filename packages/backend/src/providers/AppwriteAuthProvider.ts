@@ -1,6 +1,6 @@
-import { IAuthProvider, AuthStatus, UserProfile } from '@cr/core/src/interfaces/IAuthProvider';
+import { AuthStatus, type IAuthProvider, type UserProfile } from '@cr/core/src/interfaces/IAuthProvider';
 import { authService } from '../services/AuthService';
-import { Models } from 'appwrite';
+import { type Models } from 'appwrite';
 
 export class AppwriteAuthProvider implements IAuthProvider {
   private status: AuthStatus = AuthStatus.LOADING;

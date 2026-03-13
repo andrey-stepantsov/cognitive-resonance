@@ -64,7 +64,7 @@ describe('GeminiService', () => {
       initGemini('test-key');
       mockGenAIInstance.models.generateContent.mockResolvedValue({ text: JSON.stringify({ result: 'search raw output' }) });
 
-      const res = await generateResponse('gemini-2.5-flash', [{ role: 'user', content: 'hello' }], 'sys', null, null, true);
+      const res = await generateResponse('gemini-2.5-flash', [{ role: 'user', content: 'hello' }], 'sys', undefined, undefined, true);
       
       expect(mockGenAIInstance.models.generateContent).toHaveBeenCalledWith(
         expect.objectContaining({

@@ -4,10 +4,10 @@ import {
   AlertTriangle, Plus, Copy, FileText, Share2, Diamond,
   Database, Loader2, Paperclip, Star, Edit3, Upload, Mic, MicOff, Square, Globe, Eye, EyeOff
 } from 'lucide-react';
-import { SemanticGraph, DissonanceMeter, MarkdownRenderer, AuthScreen } from '@cr/ui';
+import { SemanticGraph, DissonanceMeter, MarkdownRenderer, AuthScreen, ArtifactEditor } from '@cr/ui';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { useREPL, useVoiceToDSL, translateToDSL, useCognitivePlatform } from '@cr/core';
+import { useREPL, useVoiceToDSL, translateToDSL, useCognitivePlatform, GitContextManager } from '@cr/core';
 import { clearApiKey } from '@cr/backend';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
@@ -462,6 +462,9 @@ export default function App() {
               <div className="flex bg-zinc-900/80 rounded-lg p-0.5 border border-zinc-800">
                 <button onClick={() => app.setMarkerViewMode('graph')} className={cn("px-2.5 py-1 text-xs font-medium rounded-md transition-all", app.markerViewMode === 'graph' ? "bg-zinc-700/50 text-indigo-300 shadow-sm" : "text-zinc-500 hover:text-zinc-300")}>Graph</button>
                 <button onClick={() => app.setMarkerViewMode('list')} className={cn("px-2.5 py-1 text-xs font-medium rounded-md transition-all", app.markerViewMode === 'list' ? "bg-zinc-700/50 text-indigo-300 shadow-sm" : "text-zinc-500 hover:text-zinc-300")}>List</button>
+                <button onClick={() => app.setMarkerViewMode('artifact')} className={cn("px-2.5 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1", app.markerViewMode === 'artifact' ? "bg-zinc-700/50 text-emerald-300 shadow-sm" : "text-zinc-500 hover:text-zinc-300")}>
+                  <FileText className="w-3 h-3" /> Artifacts
+                </button>
               </div>
               {app.isViewingHistory && <button onClick={() => app.setSelectedTurnIndex(null)} className="text-xs bg-indigo-500/20 text-indigo-300 px-2.5 py-1.5 rounded-md hover:bg-indigo-500/30 transition-colors">Return to Current</button>}
               <button className="lg:hidden p-1.5 text-zinc-400 hover:text-zinc-100 bg-zinc-800/50 rounded-md" onClick={() => app.setIsRightSidebarOpen(false)}><X className="w-4 h-4" /></button>
@@ -481,6 +484,28 @@ export default function App() {
                       if (element) { element.scrollIntoView({ behavior: 'smooth', block: 'center' }); element.classList.add('bg-indigo-900/40', 'transition-colors', 'duration-500'); setTimeout(() => element.classList.remove('bg-indigo-900/40'), 2000); }
                     }
                   }} />
+              </div>
+            ) : app.markerViewMode === 'artifact' ? (
+              <div className="flex-1 min-h-0 relative -mx-2">
+                <ArtifactEditor
+                  filename="VirtualContext.md"
+                  initialContent={app.artifactContent}
+                  onSave={async (filename, content, commitMessage) => {
+                    app.setArtifactContent(content);
+                    const sessionId = app.ensureActiveSession();
+                    const git = new GitContextManager(sessionId);
+                    await git.initRepo();
+                    await git.stageFile(filename, content);
+                    await git.commitChange(commitMessage);
+                       app.executeCommand('/system on');
+                       app.executeCommand(`/search off`); // Optional toggle
+                       
+                       // Feed a system message so the user knows
+                       // (This is a slightly hacky injection since we don't have direct access to injectSystemMessage here,
+                       // so we use the REPL execution hook instead to trigger a UI update)
+                       // Or we just rely on the ArtifactEditor save state turning green.
+                  }}
+                />
               </div>
             ) : (
               <div className="flex-1 flex flex-col min-h-0">

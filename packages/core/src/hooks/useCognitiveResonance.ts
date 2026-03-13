@@ -6,6 +6,7 @@ import { saveApiKey, loadApiKey, clearApiKey, downloadJSON, shareJSON, type Sess
 import { useCognitivePlatform } from '../providers/CognitivePlatformContext';
 import { initGemini, generateResponse, fetchModels } from '../services/GeminiService';
 import { searchHistory } from '../services/SearchService';
+import { GitContextManager } from '../services/GitContextManager';
 import Fuse from 'fuse.js';
 
 export const responseSchema = {
@@ -90,7 +91,8 @@ export function useCognitiveResonance() {
   const [targetTurnIndex, setTargetTurnIndex] = useState<number | null>(null);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editSessionName, setEditSessionName] = useState('');
-  const [markerViewMode, setMarkerViewMode] = useState<'graph' | 'list'>('graph');
+  const [markerViewMode, setMarkerViewMode] = useState<'graph' | 'list' | 'artifact'>('graph');
+  const [artifactContent, setArtifactContent] = useState('# Artifact context\n\nEdit this virtual file to persist changes into the local isomorphic-git repository.\nThe AI will automatically see your saved changes in its context window before every prompt.');
   const [markerSearchQuery, setMarkerSearchQuery] = useState('');
   const [mentionSearchQuery, setMentionSearchQuery] = useState<string | null>(null);
   const [mentionSuggestions, setMentionSuggestions] = useState<any[]>([]);
@@ -157,6 +159,20 @@ export function useCognitiveResonance() {
       scrollToBottom();
     }
   }, [messages, targetTurnIndex]);
+
+  // Load latest file state from VFS when session loads
+  useEffect(() => {
+    if (activeSessionId) {
+       import('../services/GitContextManager').then(({ vfs }) => {
+          vfs.promises.readFile(`/${activeSessionId}/VirtualContext.md`, 'utf8')
+            .then(content => {
+               const str = typeof content === 'string' ? content : new TextDecoder().decode(content);
+               if (str) setArtifactContent(str);
+            })
+            .catch(() => {});
+       });
+    }
+  }, [activeSessionId]);
 
   // Auto-save
   useEffect(() => {
@@ -375,6 +391,36 @@ export function useCognitiveResonance() {
         payloadMessageContent += `\n\n<system_directive>\nThe user explicitly referenced the following semantic markers from our conversation history. Focus your attention on these concepts in your response:\n${Array.from(matchedMarkers).map(m => `- ${m}`).join('\n')}\n</system_directive>`;
       }
     }
+
+    // Git Context Injection
+    try {
+      if (activeSessionId) {
+        const git = new GitContextManager(activeSessionId);
+        // Ensure virtual repo exists
+        await git.initRepo();
+        const matrix = await git.getStatusMatrix();
+        
+        // matrix format: [filepath, HEAD, WORKDIR, STAGE]
+        // 0 = absent, 1 = present, 2=differs
+        if (matrix && matrix.length > 0) {
+           let gitContext = 'Current Virtual Repository Status:\n';
+           for (const row of matrix) {
+              const [filepath, head, workdir, stage] = row;
+              let state = 'Unmodified';
+              if (head === 0 && workdir === 1 && stage === 0) state = 'Untracked';
+              else if (head === 0 && workdir === 1 && stage === 1) state = 'Added';
+              else if (head === 1 && workdir === 1 && stage === 1 && head !== workdir) state = 'Modified (staged)';
+              else if (head === 1 && workdir === 1 && stage === 0 && head !== workdir) state = 'Modified (unstaged)';
+              else if (head === 1 && workdir === 0 && stage === 0) state = 'Deleted (unstaged)';
+              else if (head === 1 && workdir === 0 && stage === 1) state = 'Deleted (staged)';
+              gitContext += `- ${filepath}: ${state}\n`;
+           }
+           payloadMessageContent += `\n\n<system_directive>\n${gitContext}\n</system_directive>`;
+        }
+      }
+    } catch (e) {
+       console.warn('Failed to inject Git Context', e);
+    }
     
     // Create a copy of the messages array for the LLM payload where the last message is the augmented one
     const payloadMessages = [...newMessages];
@@ -547,6 +593,13 @@ export function useCognitiveResonance() {
     setIsHistorySidebarOpen(false); handleSelectGem(defaultGemId);
   };
 
+  const ensureActiveSession = () => {
+    if (activeSessionId) return activeSessionId;
+    const id = `session-${Date.now()}`;
+    setActiveSessionId(id);
+    return id;
+  };
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
@@ -576,7 +629,7 @@ export function useCognitiveResonance() {
     sessions, activeSessionId, isHistorySidebarOpen, setIsHistorySidebarOpen,
     historySearchQuery, setHistorySearchQuery, activeSidebarTab, setActiveSidebarTab,
     searchResults, targetTurnIndex, editingSessionId, setEditingSessionId, editSessionName, setEditSessionName,
-    markerViewMode, setMarkerViewMode, markerSearchQuery, setMarkerSearchQuery,
+    markerViewMode, setMarkerViewMode, artifactContent, setArtifactContent, markerSearchQuery, setMarkerSearchQuery,
     mentionSearchQuery, setMentionSearchQuery, mentionSuggestions, handleInputChange, handleMentionSelect,
     isDissonancePanelOpen, setIsDissonancePanelOpen, isRightSidebarOpen, setIsRightSidebarOpen,
     copiedIndex, setCopiedIndex, isGemSidebarOpen, setIsGemSidebarOpen,
@@ -590,6 +643,6 @@ export function useCognitiveResonance() {
     modelMessages, activeTurnIndex, activeState, isViewingHistory, historyData, filteredMarkers,
     handleSetApiKey, handleClearApiKey, handleSelectGem, handleSaveGem, handleDeleteGem, handleSetDefaultGem,
     handleSubmit, handleStopGeneration, handleDownloadHistory, handleLoadSession, handleSearchResultClick,
-    handleDeleteSession, handleArchiveSession, startRenameSession, handleRenameSessionSubmit, startNewSession, handleFileSelect, handleImportSession,
+    handleDeleteSession, handleArchiveSession, startRenameSession, handleRenameSessionSubmit, startNewSession, ensureActiveSession, handleFileSelect, handleImportSession,
   };
 }

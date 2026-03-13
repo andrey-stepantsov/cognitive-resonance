@@ -1,23 +1,36 @@
-import { IStorageProvider, SessionRecord, GemsConfig } from '@cr/core/src/interfaces/IStorageProvider';
+import type { IStorageProvider, SessionRecord, GemsConfig } from '@cr/core/src/interfaces/IStorageProvider';
 import { Client, Databases, ID, Query } from 'appwrite';
+import { globalBackendConfig } from '../config';
 
 export class AppwriteStorageProvider implements IStorageProvider {
   readonly type = 'cloud';
   private db: Databases;
-  
-  private dbId = import.meta.env.VITE_APPWRITE_DB_ID || '';
-  private sessionsCollId = import.meta.env.VITE_APPWRITE_SESSIONS_COLLECTION_ID || '';
+  private client: Client;
+  private dbId = '';
+  private sessionsCollId = '';
   private ready = false;
 
   constructor() {
-    const client = new Client()
-      .setEndpoint(import.meta.env.VITE_APPWRITE_ENDPOINT || '')
-      .setProject(import.meta.env.VITE_APPWRITE_PROJECT || '');
-    this.db = new Databases(client);
+    this.client = new Client();
+    this.db = new Databases(this.client);
+  }
+
+  private ensureConfigured(): boolean {
+    if (this.dbId && this.sessionsCollId) return true;
+    
+    const endpoint = globalBackendConfig.endpoint;
+    const project = globalBackendConfig.project;
+    this.dbId = globalBackendConfig.dbId || '';
+    this.sessionsCollId = globalBackendConfig.collectionId || '';
+
+    if (endpoint) this.client.setEndpoint(endpoint);
+    if (project) this.client.setProject(project);
+
+    return !!this.dbId && !!this.sessionsCollId;
   }
 
   async init(): Promise<void> {
-    if (!this.dbId || !this.sessionsCollId) {
+    if (!this.ensureConfigured()) {
       console.warn('AppwriteStorageProvider: Missing DB_ID or COLLECTION_ID env vars.');
     }
     this.ready = true;
@@ -28,6 +41,7 @@ export class AppwriteStorageProvider implements IStorageProvider {
   }
 
   async saveSession(sessionId: string, data: any): Promise<string> {
+    this.ensureConfigured();
     const id = sessionId || ID.unique();
     const preview = data.messages?.length > 0
       ? (data.messages[0].content.substring(0, 40) + '...')
@@ -83,6 +97,7 @@ export class AppwriteStorageProvider implements IStorageProvider {
   }
 
   async loadAllSessions(): Promise<SessionRecord[]> {
+    if (!this.ensureConfigured()) return [];
     try {
       const response = await this.db.listDocuments(this.dbId, this.sessionsCollId, [
         Query.orderDesc('timestamp'),
@@ -96,6 +111,7 @@ export class AppwriteStorageProvider implements IStorageProvider {
   }
 
   async loadSession(sessionId: string): Promise<SessionRecord | undefined> {
+    if (!this.ensureConfigured()) return undefined;
     try {
       const doc = await this.db.getDocument(this.dbId, this.sessionsCollId, sessionId);
       return this.mapDocumentToRecord(doc as any);
@@ -106,6 +122,7 @@ export class AppwriteStorageProvider implements IStorageProvider {
   }
 
   async deleteSession(sessionId: string): Promise<void> {
+    if (!this.ensureConfigured()) return;
     try {
       await this.db.deleteDocument(this.dbId, this.sessionsCollId, sessionId);
     } catch (err) {
@@ -114,6 +131,7 @@ export class AppwriteStorageProvider implements IStorageProvider {
   }
 
   async renameSession(sessionId: string, newName: string): Promise<void> {
+    this.ensureConfigured();
     try {
       await this.db.updateDocument(this.dbId, this.sessionsCollId, sessionId, {
         customName: newName
@@ -124,6 +142,7 @@ export class AppwriteStorageProvider implements IStorageProvider {
   }
 
   async archiveSession(sessionId: string, archive: boolean): Promise<void> {
+    this.ensureConfigured();
     try {
       await this.db.updateDocument(this.dbId, this.sessionsCollId, sessionId, {
         isArchived: archive
@@ -134,7 +153,7 @@ export class AppwriteStorageProvider implements IStorageProvider {
   }
 
   // Gems config storage not strictly required in cloud instantly or can be stored in user prefs
-  async saveGemsConfig(config: GemsConfig): Promise<void> {
+  async saveGemsConfig(_config: GemsConfig): Promise<void> {
     // No-op for now unless we add a UserPreferences collection
   }
 

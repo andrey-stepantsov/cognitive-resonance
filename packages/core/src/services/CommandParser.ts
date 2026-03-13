@@ -20,6 +20,10 @@ export type CommandAction =
   | 'ATTACH'
   | 'CONTEXT_DROP'
 
+  // Git
+  | 'GIT_SYNC'
+  | 'GIT_PUSH'
+
   // Key Control
   | 'KEY_SET'
   | 'KEY_CLEAR'
@@ -53,6 +57,8 @@ export const CommandAction = {
   GEM_LS: 'GEM_LS' as CommandAction,
   ATTACH: 'ATTACH' as CommandAction,
   CONTEXT_DROP: 'CONTEXT_DROP' as CommandAction,
+  GIT_SYNC: 'GIT_SYNC' as CommandAction,
+  GIT_PUSH: 'GIT_PUSH' as CommandAction,
   KEY_SET: 'KEY_SET' as CommandAction,
   KEY_CLEAR: 'KEY_CLEAR' as CommandAction,
   GRAPH_LS: 'GRAPH_LS' as CommandAction,
@@ -100,6 +106,8 @@ export function parseCommand(input: string): CommandIntent | null {
   // Single namespace commands
   if (namespace === 'history') return { action: CommandAction.HISTORY, args: parts.slice(1), raw: input };
   if (namespace === 'clear') return { action: CommandAction.SESSION_CLEAR, args: parts.slice(1), raw: input };
+  if (namespace === 'sync') return { action: CommandAction.GIT_SYNC, args: parts.slice(1), raw: input };
+  if (namespace === 'push') return { action: CommandAction.GIT_PUSH, args: parts.slice(1), raw: input };
   if (namespace === 'attach') return { action: CommandAction.ATTACH, args: parts.slice(1), raw: input };
   if (namespace === 'search') return { action: CommandAction.SEARCH, args: parts.slice(1), raw: input };
   if (namespace === 'system') return { action: CommandAction.SYSTEM, args: parts.slice(1), raw: input };
@@ -125,6 +133,11 @@ export function parseCommand(input: string): CommandIntent | null {
 
   if (namespace === 'context') {
     if (verb === 'drop') return { action: CommandAction.CONTEXT_DROP, args, raw: input };
+  }
+
+  if (namespace === 'git') {
+    if (verb === 'sync') return { action: CommandAction.GIT_SYNC, args, raw: input };
+    if (verb === 'push') return { action: CommandAction.GIT_PUSH, args, raw: input };
   }
 
   if (namespace === 'key') {
