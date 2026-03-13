@@ -153,6 +153,49 @@ describe('useREPL', () => {
     expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: No saved sessions found.' }));
   });
 
+  it('handles /history with existing commands', async () => {
+    const { result, rerender } = setup();
+
+    await act(async () => {
+      mockCrOptions.input = '/gem ls';
+      await result.current.handleSubmit({ preventDefault: vi.fn() } as any);
+    });
+    rerender();
+
+    await act(async () => {
+      mockCrOptions.input = '/model use pro';
+      await result.current.handleSubmit({ preventDefault: vi.fn() } as any);
+    });
+    rerender();
+
+    await act(async () => {
+      mockCrOptions.input = '/history';
+      await result.current.handleSubmit({ preventDefault: vi.fn() } as any);
+    });
+    rerender();
+
+    const messages = mockCrOptions.messages;
+    const historyMessage = messages.find((m: any) => m.content.includes('Recent Command History'));
+    expect(historyMessage).toBeDefined();
+    expect(historyMessage?.content).toContain('1. /history');
+    expect(historyMessage?.content).toContain('2. /model use pro');
+    expect(historyMessage?.content).toContain('3. /gem ls');
+  });
+
+  it('handles /history with no previous commands', async () => {
+    mockCrOptions.input = '/history';
+    const { result, rerender } = setup();
+    
+    await act(async () => {
+      await result.current.handleSubmit({ preventDefault: vi.fn() } as any);
+    });
+    rerender();
+
+    expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({
+      content: expect.stringContaining('1. /history')
+    }));
+  });
+
   it('handles /model use', async () => {
     mockCrOptions.input = '/model use pro';
     const { result } = setup();

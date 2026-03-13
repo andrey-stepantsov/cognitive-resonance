@@ -5,6 +5,9 @@ export type CommandAction =
   | 'SESSION_LOAD'
   | 'SESSION_LS'
 
+  // History
+  | 'HISTORY'
+
   // Model & Gem Control
   | 'MODEL_USE'
   | 'GEM_USE'
@@ -36,6 +39,7 @@ export const CommandAction = {
   SESSION_NEW: 'SESSION_NEW' as CommandAction,
   SESSION_LOAD: 'SESSION_LOAD' as CommandAction,
   SESSION_LS: 'SESSION_LS' as CommandAction,
+  HISTORY: 'HISTORY' as CommandAction,
   MODEL_USE: 'MODEL_USE' as CommandAction,
   GEM_USE: 'GEM_USE' as CommandAction,
   GEM_LS: 'GEM_LS' as CommandAction,
@@ -84,6 +88,7 @@ export function parseCommand(input: string): CommandIntent | null {
   const args = parts.slice(2);
 
   // Single namespace commands
+  if (namespace === 'history') return { action: CommandAction.HISTORY, args: parts.slice(1), raw: input };
   if (namespace === 'clear') return { action: CommandAction.SESSION_CLEAR, args: parts.slice(1), raw: input };
   if (namespace === 'attach') return { action: CommandAction.ATTACH, args: parts.slice(1), raw: input };
 

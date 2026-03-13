@@ -14,7 +14,7 @@ export function useREPL() {
     cr.setMessages(prev => [...prev, sysMsg]);
   };
 
-  const executeCommand = async (inputStr: string) => {
+  const executeCommand = async (inputStr: string, activeHistory: string[] = commandHistory) => {
     const currentInput = inputStr.trim();
     if (!currentInput) return;
 
@@ -33,9 +33,21 @@ export function useREPL() {
     try {
       switch (intent.action) {
         case CommandAction.SESSION_CLEAR:
-          // Simulate clear by resetting messages. (Requires setMessages exposed, or we handle it via a new session)
           cr.startNewSession();
           break;
+        case CommandAction.HISTORY: {
+          const combinedHistory = activeHistory;
+          if (combinedHistory.length > 0) {
+            // Find unique historical commands in order of most recent to oldest
+            const uniqueHistory = Array.from(new Set([...combinedHistory].reverse()));
+            const latestHistory = uniqueHistory.slice(0, 10);
+            const historyOut = latestHistory.map((cmd, idx) => `${idx + 1}. ${cmd}`).join('\\n');
+            injectSystemMessage(`Recent Command History:\\n${historyOut}`);
+          } else {
+            injectSystemMessage('No command history found in this session.');
+          }
+          break;
+        }
         case CommandAction.SESSION_NEW:
           cr.startNewSession();
           break;
@@ -230,20 +242,28 @@ export function useREPL() {
       if (!query) return;
       
       const startIdx = historyIndex >= 0 ? historyIndex + 1 : 0;
-      let foundIdx = -1;
-      for (let i = startIdx; i < commandHistory.length; i++) {
-        const histCmd = commandHistory[commandHistory.length - 1 - i];
-        if (histCmd.includes(query)) {
-          foundIdx = i;
-          break;
-        }
-      }
-      if (foundIdx !== -1) {
-        setHistoryIndex(foundIdx);
-        cr.setInput(commandHistory[commandHistory.length - 1 - foundIdx]);
-        injectSystemMessage(`Reverse search: found item containing '${query}'`);
+      const searchableHistory = commandHistory.slice(0, commandHistory.length - startIdx).map((cmd, idx) => ({
+        originalIndex: commandHistory.length - 1 - idx - startIdx,
+        command: cmd
+      }));
+
+      // Find all matches using Fuse
+      const fuse = new Fuse(searchableHistory, { keys: ['command'], threshold: 0.4, ignoreLocation: true });
+      const results = fuse.search(query);
+
+      if (results.length > 0) {
+        // We want the most recent match (highest originalIndex)
+        results.sort((a, b) => b.item.originalIndex - a.item.originalIndex);
+        const bestMatch = results[0].item;
+        
+        // Convert originalIndex back to our historyIndex format (distance from end)
+        const foundHistoryIndex = commandHistory.length - 1 - bestMatch.originalIndex;
+        
+        setHistoryIndex(foundHistoryIndex);
+        cr.setInput(bestMatch.command);
+        injectSystemMessage(`Reverse search: fuzzy matched '${query}' -> '${bestMatch.command}'`);
       } else {
-        injectSystemMessage(`Reverse search: no older items containing '${query}'`);
+        injectSystemMessage(`Reverse search: no older items matching '${query}'`);
       }
     }
   };
@@ -253,15 +273,17 @@ export function useREPL() {
     const currentInput = cr.input.trim();
     if (!currentInput) return;
 
-    setCommandHistory(prev => [...prev, currentInput]);
+    const newHistory = [...commandHistory, currentInput];
+    setCommandHistory(newHistory);
     setHistoryIndex(-1);
 
     const intent = parseCommand(currentInput);
     if (!intent) {
       return cr.handleSubmit(e);
     }
-    
-    await executeCommand(currentInput);
+
+    cr.setInput('');
+    await executeCommand(currentInput, newHistory);
   };
 
   return {
