@@ -339,15 +339,6 @@ export default function App() {
                   app.input.startsWith('/') ? "h-[50vh] min-h-[300px] opacity-100 border border-zinc-800 shadow-xl mb-2" : "h-0 min-h-0 opacity-0 border-transparent mb-0"
                 )}
               >
-                <div className="px-5 py-3.5 bg-zinc-900/60 border-b border-zinc-800/80 flex items-center justify-between shrink-0">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-indigo-500/20 rounded-md">
-                      <span className="font-mono text-indigo-400 font-bold leading-none">/</span>
-                    </div>
-                    <span className="text-sm font-medium text-zinc-200">System Commands</span>
-                  </div>
-                  <span className="text-xs font-medium text-zinc-500 hidden sm:block">Select a command or keep typing</span>
-                </div>
                 <div className="flex-1 overflow-y-auto p-3 sm:p-4 custom-scrollbar">
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                     {[
