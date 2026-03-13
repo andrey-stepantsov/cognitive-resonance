@@ -29,7 +29,7 @@ export default function App() {
     handleSelectGem, handleSaveGem, handleDeleteGem, handleSetDefaultGem,
     handleSubmit, handleDownloadHistory, handleLoadSession, handleSearchResultClick,
     handleDeleteSession, startRenameSession, handleRenameSessionSubmit, startNewSession, handleFileSelect,
-    executeCommand
+    executeCommand, handleKeyDown
   } = useREPL();
 
   const voice = useVoiceToDSL(async (transcript) => {
@@ -586,6 +586,7 @@ export default function App() {
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
                   placeholder={voice.isListening ? "Listening..." : "Send a message..."}
                   disabled={isLoading || !selectedModel || voice.isListening || (chatModels.length > 0 && !chatModels.find(m => m.name.replace('models/', '') === selectedModel.replace('models/', '')))}
                   className={cn(

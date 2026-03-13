@@ -364,7 +364,7 @@ export default function App() {
                   <Paperclip className="w-4 h-4" />
                 </button>
                 <div className="relative w-full group">
-                  <input type="text" value={app.input} onChange={(e) => app.setInput(e.target.value)} placeholder={voice.isListening ? "Listening..." : "Send a message..."}
+                  <input type="text" value={app.input} onChange={(e) => app.setInput(e.target.value)} onKeyDown={app.handleKeyDown} placeholder={voice.isListening ? "Listening..." : "Send a message..."}
                     disabled={app.isLoading || !app.selectedModel || voice.isListening}
                     className={cn(
                       "w-full bg-zinc-950 border border-zinc-700/50 rounded-xl pl-4 pr-12 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all disabled:opacity-50",

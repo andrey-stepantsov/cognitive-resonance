@@ -1,9 +1,12 @@
 import { useCognitiveResonance, type Message } from './useCognitiveResonance';
 import { CommandAction, parseCommand } from '../services/CommandParser';
 import Fuse from 'fuse.js';
+import { useState } from 'react';
 
 export function useREPL() {
   const cr = useCognitiveResonance();
+  const [commandHistory, setCommandHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
 
   const injectSystemMessage = (content: string) => {
     cr.messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -203,10 +206,55 @@ export function useREPL() {
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (commandHistory.length > 0) {
+        const nextIdx = historyIndex < commandHistory.length - 1 ? historyIndex + 1 : historyIndex;
+        setHistoryIndex(nextIdx);
+        cr.setInput(commandHistory[commandHistory.length - 1 - nextIdx]);
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (historyIndex > 0) {
+        const nextIdx = historyIndex - 1;
+        setHistoryIndex(nextIdx);
+        cr.setInput(commandHistory[commandHistory.length - 1 - nextIdx]);
+      } else if (historyIndex === 0) {
+        setHistoryIndex(-1);
+        cr.setInput(''); 
+      }
+    } else if (e.ctrlKey && e.key === 'r') {
+      e.preventDefault();
+      const query = cr.input;
+      if (!query) return;
+      
+      const startIdx = historyIndex >= 0 ? historyIndex + 1 : 0;
+      let foundIdx = -1;
+      for (let i = startIdx; i < commandHistory.length; i++) {
+        const histCmd = commandHistory[commandHistory.length - 1 - i];
+        if (histCmd.includes(query)) {
+          foundIdx = i;
+          break;
+        }
+      }
+      if (foundIdx !== -1) {
+        setHistoryIndex(foundIdx);
+        cr.setInput(commandHistory[commandHistory.length - 1 - foundIdx]);
+        injectSystemMessage(`Reverse search: found item containing '${query}'`);
+      } else {
+        injectSystemMessage(`Reverse search: no older items containing '${query}'`);
+      }
+    }
+  };
+
   const handleREPLSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const currentInput = cr.input.trim();
     if (!currentInput) return;
+
+    setCommandHistory(prev => [...prev, currentInput]);
+    setHistoryIndex(-1);
 
     const intent = parseCommand(currentInput);
     if (!intent) {
@@ -219,6 +267,7 @@ export function useREPL() {
   return {
     ...cr,
     handleSubmit: handleREPLSubmit,
+    handleKeyDown,
     executeCommand,
   };
 }
