@@ -200,7 +200,7 @@ export function useCognitiveResonance() {
   };
 
   // Computed values
-  const modelMessages = messages.filter(m => m.role === 'model');
+  const modelMessages = messages.filter(m => m.role === 'model' && !m.content.startsWith('[System]:'));
   const latestTurnIndex = modelMessages.length > 0 ? modelMessages.length - 1 : -1;
   const activeTurnIndex = selectedTurnIndex !== null ? selectedTurnIndex : latestTurnIndex;
   const activeState = activeTurnIndex >= 0 ? modelMessages[activeTurnIndex]?.internalState : null;
