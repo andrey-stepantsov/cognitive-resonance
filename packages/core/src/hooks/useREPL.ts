@@ -248,7 +248,13 @@ export function useREPL() {
       }));
 
       // Find all matches using Fuse
-      const fuse = new Fuse(searchableHistory, { keys: ['command'], threshold: 0.4, ignoreLocation: true });
+      const fuse = new Fuse(searchableHistory, { 
+        keys: ['command'], 
+        threshold: 0.4, 
+        ignoreLocation: true,
+        findAllMatches: true,
+        minMatchCharLength: 1
+      });
       const results = fuse.search(query);
 
       if (results.length > 0) {
