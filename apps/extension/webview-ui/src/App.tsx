@@ -73,7 +73,7 @@ export default function App() {
       {/* Session Sidebar Options Panel */}
       <div 
         className={cn(
-          "fixed top-0 left-0 bottom-0 w-[280px] bg-zinc-900 border-r border-zinc-800/50 shadow-2xl z-50 transform transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col",
+          "fixed top-0 left-0 bottom-0 w-full sm:w-[320px] lg:w-[280px] bg-zinc-900 border-r border-zinc-800/50 shadow-2xl z-50 transform transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col pb-36 lg:pb-0",
           isHistorySidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -336,7 +336,7 @@ export default function App() {
 
       {/* Left Sidebar: Dissonance */}
       <div className={cn(
-        "fixed inset-y-0 left-0 z-50 w-[85vw] sm:w-80 bg-zinc-950 lg:bg-zinc-900/30 border-r border-zinc-800/50 flex flex-col p-6",
+        "fixed inset-y-0 left-0 z-50 w-full lg:w-80 bg-zinc-950 lg:bg-zinc-900/30 border-r border-zinc-800/50 flex flex-col p-6 pb-36 lg:pb-6",
         "transform transition-transform duration-300 ease-in-out lg:relative lg:transform-none lg:z-auto",
         isDissonancePanelOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
       )}>
@@ -370,7 +370,7 @@ export default function App() {
       </div>
 
       {/* Center: Chat */}
-      <div className="flex-1 flex flex-col min-w-0 w-full lg:min-w-[400px] max-w-3xl mx-auto lg:border-x border-zinc-800/30 bg-[#0a0a0a] shadow-2xl z-10">
+      <div className="flex-1 flex flex-col min-w-0 w-full lg:min-w-[400px] max-w-3xl mx-auto lg:border-x border-zinc-800/30 bg-[#0a0a0a] shadow-2xl relative lg:z-10">
         <div className="p-4 lg:p-6 border-b border-zinc-800/50 flex items-center justify-between bg-zinc-900/20 backdrop-blur-md relative">
           <div className="flex items-center">
             <button className="lg:hidden p-2 -ml-2 text-zinc-400 hover:text-zinc-100" onClick={() => setIsDissonancePanelOpen(true)}>
@@ -483,7 +483,7 @@ export default function App() {
         </div>
 
         {!isViewMode && (
-          <div className="p-4 bg-zinc-900/50 border-t border-zinc-800/50 flex flex-col gap-2 relative z-20">
+          <div className="p-4 bg-zinc-950/95 backdrop-blur-xl lg:bg-zinc-900/50 border-t border-zinc-800/50 flex flex-col gap-2 relative z-[60] lg:z-20 shadow-[0_-20px_40px_rgba(0,0,0,0.5)] lg:shadow-none">
             {/* Prompt Area Controls */}
             <div className="flex items-center gap-2 px-1 pb-1">
               <button 
@@ -626,7 +626,7 @@ export default function App() {
 
       {/* Right Sidebar: Semantic Graph */}
       <div className={cn(
-        "fixed inset-y-0 right-0 z-50 w-[85vw] sm:w-96 bg-zinc-950 lg:bg-zinc-900/30 border-l border-zinc-800/50 flex flex-col p-6",
+        "fixed inset-y-0 right-0 z-50 w-full lg:w-96 bg-zinc-950 lg:bg-zinc-900/30 border-l border-zinc-800/50 flex flex-col p-6 pb-36 lg:pb-6",
         "transform transition-transform duration-300 ease-in-out lg:relative lg:transform-none lg:z-auto",
         isRightSidebarOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0"
       )}>
@@ -739,7 +739,7 @@ export default function App() {
       )}
       <div 
         className={cn(
-          "fixed top-0 right-0 bottom-0 w-[340px] bg-zinc-900 border-l border-zinc-800/50 shadow-2xl z-50 transform transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col",
+          "fixed top-0 right-0 bottom-0 w-full sm:w-[400px] lg:w-[340px] bg-zinc-900 border-l border-zinc-800/50 shadow-2xl z-50 transform transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col pb-36 lg:pb-0",
           isGemSidebarOpen ? "translate-x-0" : "translate-x-full"
         )}
       >
