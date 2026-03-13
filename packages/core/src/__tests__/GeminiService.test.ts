@@ -60,6 +60,22 @@ describe('GeminiService', () => {
       expect(res).toEqual({ summary: 'test' });
     });
 
+    it('injects googleSearch tool when enableSearch is true', async () => {
+      initGemini('test-key');
+      mockGenAIInstance.models.generateContent.mockResolvedValue({ text: JSON.stringify({ result: 'search raw output' }) });
+
+      const res = await generateResponse('gemini-2.5-flash', [{ role: 'user', content: 'hello' }], 'sys', null, null, true);
+      
+      expect(mockGenAIInstance.models.generateContent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            tools: expect.arrayContaining([{ googleSearch: {} }])
+          })
+        })
+      );
+      expect(res).toEqual({ result: 'search raw output' });
+    });
+
     it('throws error if response is empty', async () => {
       initGemini('test-key');
       const mockResponse = { text: '' };

@@ -17,6 +17,8 @@ describe('CommandParser', () => {
     expect(parseCommand('/clear')).toEqual({ action: CommandAction.SESSION_CLEAR, args: [], raw: '/clear' });
     expect(parseCommand('/attach ./file.json')).toEqual({ action: CommandAction.ATTACH, args: ['./file.json'], raw: '/attach ./file.json' });
     expect(parseCommand('!attach doc.txt')).toEqual({ action: CommandAction.ATTACH, args: ['doc.txt'], raw: '!attach doc.txt' });
+    expect(parseCommand('/search on')).toEqual({ action: CommandAction.SEARCH, args: ['on'], raw: '/search on' });
+    expect(parseCommand('/system off')).toEqual({ action: CommandAction.SYSTEM, args: ['off'], raw: '/system off' });
   });
 
   it('parses session commands', () => {

@@ -207,6 +207,20 @@ export function useREPL() {
           }
           break;
         }
+        case CommandAction.SYSTEM: {
+          const mode = intent.args[0]?.toLowerCase();
+          if (mode === 'on') {
+            cr.setShowSystemMessages(true);
+            injectSystemMessage('System message visibility has been ENABLED.');
+          } else if (mode === 'off') {
+            cr.setShowSystemMessages(false);
+            injectSystemMessage('System message visibility has been DISABLED.');
+          } else {
+            cr.setShowSystemMessages(!cr.showSystemMessages);
+            injectSystemMessage(`System message visibility is now ${!cr.showSystemMessages ? 'ENABLED' : 'DISABLED'}.`);
+          }
+          break;
+        }
         case CommandAction.CONTEXT_DROP:
            injectSystemMessage(`Dropped context for: ${intent.args.join(' ')}`);
            break;

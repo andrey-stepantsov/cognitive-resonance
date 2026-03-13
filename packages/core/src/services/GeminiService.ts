@@ -105,6 +105,14 @@ export async function translateToDSL(transcript: string): Promise<string> {
 - /graph describe [node_id]
 - /attach [file]
 - /search [on|off]
+- /system [on|off]
+
+## Examples
+* "enable search" -> \`/search on\`
+* "turn off grounding" -> \`/search off\`
+* "hide system messages" -> \`/system off\`
+* "show system outputs" -> \`/system on\`
+* "explain the graph" -> \`/graph describe\` [node_id]
 
 Rules:
 1. If the user is clearly giving a command (e.g. "Start a new session", "Switch to the pro model"), return ONLY the corresponding / slash command(s), separated by newlines.

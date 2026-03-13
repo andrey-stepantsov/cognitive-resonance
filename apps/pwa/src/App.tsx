@@ -2,7 +2,7 @@
 import {
   Send, BrainCircuit, Activity, Network, Trash2, Check, X,
   AlertTriangle, Plus, Copy, FileText, Share2, Diamond,
-  Database, Loader2, Paperclip, Star, Edit3, Upload, Mic, MicOff, Square
+  Database, Loader2, Paperclip, Star, Edit3, Upload, Mic, MicOff, Square, Globe, Eye, EyeOff
 } from 'lucide-react';
 import { SemanticGraph, DissonanceMeter, MarkdownRenderer } from '@cr/ui';
 import { clsx } from 'clsx';
@@ -220,6 +220,13 @@ export default function App() {
             <div className="flex items-center"><button className="lg:hidden p-2 -ml-2 text-zinc-400 hover:text-zinc-100" onClick={() => app.setIsDissonancePanelOpen(true)}><Activity className="w-5 h-5" /></button></div>
 
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => app.setShowSystemMessages(!app.showSystemMessages)}
+                className="flex items-center justify-center p-1.5 text-zinc-400 hover:text-indigo-400 bg-zinc-800/30 hover:bg-zinc-800 rounded border border-zinc-800 transition-colors"
+                title={app.showSystemMessages ? "Hide System Interactions" : "Show System Interactions"}
+              >
+                {app.showSystemMessages ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+              </button>
               {app.activeState?.tokenUsage?.totalTokenCount != null && (
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold tabular-nums transition-all border bg-zinc-800/50 text-zinc-400 border-zinc-700/50 shadow-inner" title={`Context Size: ${app.activeState.tokenUsage.totalTokenCount.toLocaleString()} tokens`}>
                   <Database className="w-3.5 h-3.5 opacity-70" />
@@ -254,7 +261,7 @@ export default function App() {
               </div>
             )}
 
-            {app.messages.map((msg, idx) => (
+            {app.messages.filter(m => app.showSystemMessages || !(m.role === 'model' && typeof m.content === 'string' && m.content.startsWith('[System]:'))).map((msg, idx) => (
               <div key={idx} id={`message-${idx}`} className={cn("flex w-full flex-col scroll-mt-24 min-w-0 break-words", msg.role === 'user' ? "items-end" : "items-start")}>
                 {msg.isError ? (
                   <div className="max-w-[80%] rounded-2xl px-5 py-3.5 text-sm leading-relaxed bg-red-950/60 text-red-200 border border-red-800/60 rounded-bl-sm">

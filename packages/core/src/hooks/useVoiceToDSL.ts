@@ -1,4 +1,6 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 
 // Extend Window interface for SpeechRecognition since it's non-standard
 declare global {
@@ -90,7 +92,48 @@ export function useVoiceToDSL(
     return recognitionRef.current;
   }, [onFinalTranscript]);
 
-  const startListening = useCallback(() => {
+  const startListening = useCallback(async () => {
+    if (Capacitor.isNativePlatform()) {
+      if (isListening) return;
+      try {
+        const { speechRecognition } = await SpeechRecognition.checkPermissions();
+        if (speechRecognition !== 'granted') {
+          const req = await SpeechRecognition.requestPermissions();
+          if (req.speechRecognition !== 'granted') {
+             setError('Microphone access denied for speech recognition.');
+             return;
+          }
+        }
+        
+        setError(null);
+        setTranscript('');
+        setIsListening(true);
+        
+        const listener = await SpeechRecognition.addListener('partialResults', (data: { matches: string[] }) => {
+           if (data.matches && data.matches.length > 0) {
+              setTranscript(data.matches[0]);
+           }
+        });
+
+        const res = await SpeechRecognition.start({ language: "en-US", maxResults: 1, partialResults: true, popup: false });
+        
+        if (res && res.matches && res.matches.length > 0) {
+           const final = res.matches[0];
+           setTranscript(final);
+           onFinalTranscript(final.trim());
+        }
+        
+        setIsListening(false);
+        listener.remove();
+        
+      } catch (e: any) {
+        console.error(e);
+        setError(e.message || 'Error starting native speech recognition');
+        setIsListening(false);
+      }
+      return;
+    }
+
     const recognition = initRecognition();
     if (recognition && !isListening) {
       setTranscript('');
@@ -101,12 +144,30 @@ export function useVoiceToDSL(
         console.error("Could not start recognition", e);
       }
     }
-  }, [initRecognition, isListening]);
+  }, [initRecognition, isListening, onFinalTranscript]);
 
-  const stopListening = useCallback(() => {
+  const stopListening = useCallback(async () => {
+    if (Capacitor.isNativePlatform()) {
+      if (isListening) {
+        try {
+          await SpeechRecognition.stop();
+        } catch(e) {}
+        setIsListening(false);
+      }
+      return;
+    }
+
     if (recognitionRef.current && isListening) {
       recognitionRef.current.stop();
     }
+  }, [isListening]);
+
+  useEffect(() => {
+     return () => {
+       if (Capacitor.isNativePlatform() && isListening) {
+          SpeechRecognition.stop().catch(() => {});
+       }
+     };
   }, [isListening]);
 
   const reset = useCallback(() => {

@@ -31,6 +31,7 @@ export type CommandAction =
   | 'GRAPH_STATS'
   | 'GRAPH_CLUSTER'
   | 'SEARCH'
+  | 'SYSTEM'
   
   // Fallback
   | 'UNKNOWN';
@@ -57,6 +58,7 @@ export const CommandAction = {
   GRAPH_STATS: 'GRAPH_STATS' as CommandAction,
   GRAPH_CLUSTER: 'GRAPH_CLUSTER' as CommandAction,
   SEARCH: 'SEARCH' as CommandAction,
+  SYSTEM: 'SYSTEM' as CommandAction,
   UNKNOWN: 'UNKNOWN' as CommandAction,
 };
 
@@ -94,6 +96,7 @@ export function parseCommand(input: string): CommandIntent | null {
   if (namespace === 'clear') return { action: CommandAction.SESSION_CLEAR, args: parts.slice(1), raw: input };
   if (namespace === 'attach') return { action: CommandAction.ATTACH, args: parts.slice(1), raw: input };
   if (namespace === 'search') return { action: CommandAction.SEARCH, args: parts.slice(1), raw: input };
+  if (namespace === 'system') return { action: CommandAction.SYSTEM, args: parts.slice(1), raw: input };
 
   // Compound commands
   if (namespace === 'session') {

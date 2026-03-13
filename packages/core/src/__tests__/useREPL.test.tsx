@@ -238,6 +238,66 @@ describe('useREPL', () => {
     rerender();
     
     expect(mockCrOptions.setInput).toHaveBeenCalledWith('/graph ls');
+
+    // Third Ctrl+R with no older matches
+    await act(async () => {
+      const event = { ctrlKey: true, key: 'r', preventDefault: vi.fn() } as unknown as React.KeyboardEvent<HTMLInputElement>;
+      result.current.handleKeyDown(event);
+    });
+
+    expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({
+      content: "[System]: Reverse search: no older items matching 'gr'"
+    }));
+  });
+
+  it('handles ArrowUp and ArrowDown history navigation', async () => {
+    const { result, rerender } = setup();
+
+    await act(async () => {
+      mockCrOptions.input = '/cmd 1';
+      await result.current.handleSubmit({ preventDefault: vi.fn() } as any);
+    });
+    rerender();
+
+    await act(async () => {
+      mockCrOptions.input = '/cmd 2';
+      await result.current.handleSubmit({ preventDefault: vi.fn() } as any);
+    });
+    rerender();
+
+    // ArrowUp 1 -> /cmd 2
+    await act(async () => {
+      const event = { key: 'ArrowUp', preventDefault: vi.fn() } as unknown as React.KeyboardEvent<HTMLInputElement>;
+      result.current.handleKeyDown(event);
+    });
+    expect(mockCrOptions.setInput).toHaveBeenCalledWith('/cmd 2');
+
+    // ArrowUp 2 -> /cmd 1
+    await act(async () => {
+      const event = { key: 'ArrowUp', preventDefault: vi.fn() } as unknown as React.KeyboardEvent<HTMLInputElement>;
+      result.current.handleKeyDown(event);
+    });
+    expect(mockCrOptions.setInput).toHaveBeenCalledWith('/cmd 1');
+
+    // ArrowUp 3 -> saturates at /cmd 1
+    await act(async () => {
+      const event = { key: 'ArrowUp', preventDefault: vi.fn() } as unknown as React.KeyboardEvent<HTMLInputElement>;
+      result.current.handleKeyDown(event);
+    });
+
+    // ArrowDown 1 -> /cmd 2
+    await act(async () => {
+      const event = { key: 'ArrowDown', preventDefault: vi.fn() } as unknown as React.KeyboardEvent<HTMLInputElement>;
+      result.current.handleKeyDown(event);
+    });
+    expect(mockCrOptions.setInput).toHaveBeenCalledWith('/cmd 2');
+
+    // ArrowDown 2 -> clear
+    await act(async () => {
+      const event = { key: 'ArrowDown', preventDefault: vi.fn() } as unknown as React.KeyboardEvent<HTMLInputElement>;
+      result.current.handleKeyDown(event);
+    });
+    expect(mockCrOptions.setInput).toHaveBeenCalledWith('');
   });
 
   it('handles /model use', async () => {
@@ -430,6 +490,68 @@ describe('useREPL', () => {
       const { result } = setup();
       await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
       expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Command not yet fully implemented for terminal rendering: GRAPH_CLUSTER' }));
+    });
+  });
+
+  describe('toggle commands', () => {
+    it('handles /search on, off, and toggle', async () => {
+      mockCrOptions.isSearchEnabled = false;
+      mockCrOptions.setIsSearchEnabled = vi.fn();
+      
+      const { result, rerender } = setup();
+
+      await act(async () => {
+        mockCrOptions.input = '/search on';
+        await result.current.handleSubmit({ preventDefault: vi.fn() } as any);
+      });
+      expect(mockCrOptions.setIsSearchEnabled).toHaveBeenCalledWith(true);
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Google Search Grounding has been ENABLED for new messages.' }));
+      
+      rerender();
+      await act(async () => {
+        mockCrOptions.input = '/search off';
+        await result.current.handleSubmit({ preventDefault: vi.fn() } as any);
+      });
+      expect(mockCrOptions.setIsSearchEnabled).toHaveBeenCalledWith(false);
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Google Search Grounding has been DISABLED.' }));
+
+      rerender();
+      await act(async () => {
+        mockCrOptions.input = '/search';
+        await result.current.handleSubmit({ preventDefault: vi.fn() } as any);
+      });
+      expect(mockCrOptions.setIsSearchEnabled).toHaveBeenCalledWith(true); // Because !false === true
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Google Search Grounding is now ENABLED.' }));
+    });
+
+    it('handles /system on, off, and toggle', async () => {
+      mockCrOptions.showSystemMessages = false;
+      mockCrOptions.setShowSystemMessages = vi.fn();
+      
+      const { result, rerender } = setup();
+
+      await act(async () => {
+        mockCrOptions.input = '/system on';
+        await result.current.handleSubmit({ preventDefault: vi.fn() } as any);
+      });
+      expect(mockCrOptions.setShowSystemMessages).toHaveBeenCalledWith(true);
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: System message visibility has been ENABLED.' }));
+      
+      rerender();
+      await act(async () => {
+        mockCrOptions.input = '/system off';
+        await result.current.handleSubmit({ preventDefault: vi.fn() } as any);
+      });
+      expect(mockCrOptions.setShowSystemMessages).toHaveBeenCalledWith(false);
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: System message visibility has been DISABLED.' }));
+
+      rerender();
+      await act(async () => {
+        mockCrOptions.input = '/system';
+        await result.current.handleSubmit({ preventDefault: vi.fn() } as any);
+      });
+      expect(mockCrOptions.setShowSystemMessages).toHaveBeenCalledWith(true);
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: System message visibility is now ENABLED.' }));
     });
   });
 

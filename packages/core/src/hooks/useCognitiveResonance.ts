@@ -74,6 +74,7 @@ export function useCognitiveResonance() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSearchEnabled, setIsSearchEnabled] = useState(false);
+  const [showSystemMessages, setShowSystemMessages] = useState(true);
   const [selectedTurnIndex, setSelectedTurnIndex] = useState<number | null>(null);
 
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
@@ -571,6 +572,7 @@ export function useCognitiveResonance() {
     availableModels, chatModels, savedGems, defaultGemId, activeGemId, selectedModel, setSelectedModel,
     sessionSystemPrompt, editingGem, setEditingGem, creatingGem, setCreatingGem, draftGem, setDraftGem,
     isSearchEnabled, setIsSearchEnabled,
+    showSystemMessages, setShowSystemMessages,
     isViewMode, historyFilename, setHistoryFilename, attachedFiles, setAttachedFiles,
     apiKey, showApiKeyModal, setShowApiKeyModal, apiKeyInput, setApiKeyInput,
     messagesEndRef, fileInputRef, importInputRef, inputRef,

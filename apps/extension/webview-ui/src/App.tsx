@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Send, BrainCircuit, Activity, Network, Loader2, X, Download, Copy, Check, AlertTriangle, Paperclip, FileText, Diamond, Plus, Trash2, Star, Edit3, Database, Mic, MicOff, Square } from 'lucide-react';
+import { Send, BrainCircuit, Activity, Network, Loader2, X, Download, Copy, Check, AlertTriangle, Paperclip, FileText, Diamond, Plus, Trash2, Star, Edit3, Database, Mic, MicOff, Square, Eye, EyeOff, Globe } from 'lucide-react';
 import { SemanticGraph, DissonanceMeter, MarkdownRenderer } from '@cr/ui';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -14,7 +14,7 @@ const vscode = window.vscode;
 
 export default function App() {
   const {
-    messages, input, setInput, isLoading, isSearchEnabled, setIsSearchEnabled, selectedTurnIndex, setSelectedTurnIndex,
+    messages, input, setInput, isLoading, isSearchEnabled, setIsSearchEnabled, showSystemMessages, setShowSystemMessages, selectedTurnIndex, setSelectedTurnIndex,
     sessions, activeSessionId, isHistorySidebarOpen, setIsHistorySidebarOpen,
     historySearchQuery, setHistorySearchQuery, activeSidebarTab, setActiveSidebarTab,
     searchResults, targetTurnIndex, editingSessionId, setEditingSessionId, editSessionName, setEditSessionName,
@@ -313,6 +313,13 @@ export default function App() {
           {!isViewMode && (
             <>
               <button
+                onClick={() => setShowSystemMessages(!showSystemMessages)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-indigo-400 bg-zinc-800/30 hover:bg-zinc-800 rounded border border-zinc-800 transition-colors"
+                title={showSystemMessages ? "Hide System Interactions" : "Show System Interactions"}
+              >
+                {showSystemMessages ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+              </button>
+              <button
                 onClick={handleDownloadHistory}
                 disabled={messages.length === 0}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 disabled:opacity-30 disabled:cursor-not-allowed hover:text-white bg-zinc-800/30 hover:bg-zinc-800 rounded border border-zinc-800 transition-colors"
@@ -398,7 +405,7 @@ export default function App() {
             </div>
           )}
           
-          {messages.map((msg, idx) => (
+          {messages.filter(m => showSystemMessages || !(m.role === 'model' && typeof m.content === 'string' && m.content.startsWith('[System]:'))).map((msg, idx) => (
             <div 
               key={idx} 
               id={`message-${idx}`}

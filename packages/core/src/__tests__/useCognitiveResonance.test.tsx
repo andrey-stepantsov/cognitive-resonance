@@ -104,6 +104,21 @@ describe('useCognitiveResonance', () => {
     expect(result.current.isHistorySidebarOpen).toBe(true);
   });
 
+  it('manages isSearchEnabled and showSystemMessages state', () => {
+    const { result } = renderHook(() => useCognitiveResonance());
+
+    expect(result.current.isSearchEnabled).toBe(false);
+    expect(result.current.showSystemMessages).toBe(true);
+
+    act(() => {
+      result.current.setIsSearchEnabled(true);
+      result.current.setShowSystemMessages(false);
+    });
+
+    expect(result.current.isSearchEnabled).toBe(true);
+    expect(result.current.showSystemMessages).toBe(false);
+  });
+
   it('manages active gem and model changing appropriately', () => {
     const { result } = renderHook(() => useCognitiveResonance());
     
@@ -248,10 +263,18 @@ describe('useCognitiveResonance', () => {
 
   it('falls back to downloadJSON if shareJSON returns false (web fallback)', async () => {
     vi.mocked(CrBackend.shareJSON).mockResolvedValue(false);
+    
+    // Polyfill navigator.share to trigger the AbortError branch as well
+    const orgNavigatorShare = navigator.share;
+    const orgNavigatorCanShare = navigator.canShare;
+    Object.assign(navigator, {
+      canShare: vi.fn().mockReturnValue(true),
+      share: vi.fn().mockRejectedValue(Object.assign(new Error('AbortError'), { name: 'AbortError' }))
+    });
+
     const { result } = renderHook(() => useCognitiveResonance());
 
     act(() => {
-      // Simulate existing messages to bypass empty check
       result.current.setInput('History test');
     });
 
@@ -272,7 +295,14 @@ describe('useCognitiveResonance', () => {
     });
 
     expect(CrBackend.shareJSON).toHaveBeenCalled();
-    expect(CrBackend.downloadJSON).toHaveBeenCalled();
+    expect(navigator.share).toHaveBeenCalled();
+    expect(CrBackend.downloadJSON).not.toHaveBeenCalled(); // Because it aborted
+
+    // Restore navigator
+    if (orgNavigatorShare) Object.assign(navigator, { share: orgNavigatorShare });
+    else delete (navigator as any).share;
+    if (orgNavigatorCanShare) Object.assign(navigator, { canShare: orgNavigatorCanShare });
+    else delete (navigator as any).canShare;
   });
 
   it('sets a default gem', () => {
@@ -351,6 +381,27 @@ describe('useCognitiveResonance', () => {
 
     await waitFor(() => {
       expect(window.alert).toHaveBeenCalledWith('Failed to parse session file.');
+    });
+    
+    window.alert = originalAlert;
+  });
+
+  it('handles session JSON import without messages array', async () => {
+    const originalAlert = window.alert;
+    window.alert = vi.fn();
+    const { result } = renderHook(() => useCognitiveResonance());
+
+    const mockFile = new File(['{"config": {"model": "test"}}'], 'session.json', { type: 'application/json' });
+    const mockEvent = {
+        target: { files: [mockFile], value: 'fakepath/session.json' }
+    } as unknown as React.ChangeEvent<HTMLInputElement>;
+
+    act(() => {
+      result.current.handleImportSession(mockEvent);
+    });
+
+    await waitFor(() => {
+      expect(window.alert).toHaveBeenCalledWith('Invalid session file: missing messages array.');
     });
     
     window.alert = originalAlert;
