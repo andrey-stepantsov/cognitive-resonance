@@ -210,7 +210,8 @@ function setupChatPanel(panel, context, apiKey) {
                             timestamp: stat.mtimeMs,
                             preview: json.messages.length > 0 ? (json.messages[0].content.substring(0, 40) + '...') : 'Empty Session',
                             customName: json.customName,
-                            config: json.config
+                            config: json.config,
+                            isArchived: json.isArchived
                         });
                     }
                     catch (e) { }
@@ -376,6 +377,23 @@ function setupChatPanel(panel, context, apiKey) {
                     }
                     catch (err) {
                         console.error("Failed to rename session:", err);
+                    }
+                    return;
+                case 'archive_session':
+                    try {
+                        if (message.sessionId) {
+                            const fp = path.join(sessionsPath, `${message.sessionId}.json`);
+                            if (fs.existsSync(fp)) {
+                                const content = await fs.promises.readFile(fp, 'utf8');
+                                const json = JSON.parse(content);
+                                json.isArchived = message.archive;
+                                await fs.promises.writeFile(fp, JSON.stringify(json, null, 2), 'utf8');
+                                broadcastSessions();
+                            }
+                        }
+                    }
+                    catch (err) {
+                        console.error("Failed to archive session:", err);
                     }
                     return;
                 case 'request_sessions':

@@ -4,6 +4,9 @@ export type CommandAction =
   | 'SESSION_NEW'
   | 'SESSION_LOAD'
   | 'SESSION_LS'
+  | 'SESSION_ARCHIVE'
+  | 'SESSION_RECOVER'
+  | 'SESSION_DELETE'
 
   // History
   | 'HISTORY'
@@ -41,6 +44,9 @@ export const CommandAction = {
   SESSION_NEW: 'SESSION_NEW' as CommandAction,
   SESSION_LOAD: 'SESSION_LOAD' as CommandAction,
   SESSION_LS: 'SESSION_LS' as CommandAction,
+  SESSION_ARCHIVE: 'SESSION_ARCHIVE' as CommandAction,
+  SESSION_RECOVER: 'SESSION_RECOVER' as CommandAction,
+  SESSION_DELETE: 'SESSION_DELETE' as CommandAction,
   HISTORY: 'HISTORY' as CommandAction,
   MODEL_USE: 'MODEL_USE' as CommandAction,
   GEM_USE: 'GEM_USE' as CommandAction,
@@ -103,6 +109,9 @@ export function parseCommand(input: string): CommandIntent | null {
     if (verb === 'new') return { action: CommandAction.SESSION_NEW, args, raw: input };
     if (verb === 'load') return { action: CommandAction.SESSION_LOAD, args, raw: input };
     if (verb === 'ls') return { action: CommandAction.SESSION_LS, args, raw: input };
+    if (verb === 'archive') return { action: CommandAction.SESSION_ARCHIVE, args, raw: input };
+    if (verb === 'recover') return { action: CommandAction.SESSION_RECOVER, args, raw: input };
+    if (verb === 'delete') return { action: CommandAction.SESSION_DELETE, args, raw: input };
   }
 
   if (namespace === 'model') {

@@ -99,6 +99,11 @@ export class VSCodeStorageProvider implements IStorageProvider {
     return Promise.resolve();
   }
 
+  async archiveSession(sessionId: string, archive: boolean): Promise<void> {
+    vscode.postMessage({ type: 'archive_session', sessionId, archive });
+    return Promise.resolve();
+  }
+
   async renameSession(sessionId: string, newName: string): Promise<void> {
     vscode.postMessage({ type: 'rename_session', sessionId, newName });
     return Promise.resolve();

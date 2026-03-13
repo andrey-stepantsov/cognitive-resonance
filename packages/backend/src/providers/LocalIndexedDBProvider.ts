@@ -109,6 +109,20 @@ export class LocalIndexedDBProvider implements IStorageProvider {
     });
   }
 
+  async archiveSession(sessionId: string, archive: boolean): Promise<void> {
+    const record = await this.loadSession(sessionId);
+    if (!record) return;
+    record.isArchived = archive;
+    record.data.isArchived = archive;
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(SESSIONS_STORE, 'readwrite');
+      tx.objectStore(SESSIONS_STORE).put(record);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
   async clearAll(): Promise<void> {
     const db = await openDB();
     return new Promise((resolve, reject) => {

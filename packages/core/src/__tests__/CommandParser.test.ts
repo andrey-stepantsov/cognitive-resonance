@@ -25,6 +25,9 @@ describe('CommandParser', () => {
     expect(parseCommand('/session new')).toEqual({ action: CommandAction.SESSION_NEW, args: [], raw: '/session new' });
     expect(parseCommand('/session load 123')).toEqual({ action: CommandAction.SESSION_LOAD, args: ['123'], raw: '/session load 123' });
     expect(parseCommand('/session ls')).toEqual({ action: CommandAction.SESSION_LS, args: [], raw: '/session ls' });
+    expect(parseCommand('/session archive 123')).toEqual({ action: CommandAction.SESSION_ARCHIVE, args: ['123'], raw: '/session archive 123' });
+    expect(parseCommand('/session recover 123')).toEqual({ action: CommandAction.SESSION_RECOVER, args: ['123'], raw: '/session recover 123' });
+    expect(parseCommand('/session delete 123')).toEqual({ action: CommandAction.SESSION_DELETE, args: ['123'], raw: '/session delete 123' });
   });
 
   it('parses model and gem commands', () => {
@@ -55,7 +58,6 @@ describe('CommandParser', () => {
 
   it('returns UNKNOWN for unmapped commands', () => {
     expect(parseCommand('/unknown command')).toEqual({ action: CommandAction.UNKNOWN, args: ['command'], raw: '/unknown command' });
-    expect(parseCommand('/session delete 123')).toEqual({ action: CommandAction.UNKNOWN, args: ['delete', '123'], raw: '/session delete 123' });
     expect(parseCommand('/model ls')).toEqual({ action: CommandAction.UNKNOWN, args: ['ls'], raw: '/model ls' });
     expect(parseCommand('/gem create')).toEqual({ action: CommandAction.UNKNOWN, args: ['create'], raw: '/gem create' });
     expect(parseCommand('/context add')).toEqual({ action: CommandAction.UNKNOWN, args: ['add'], raw: '/context add' });

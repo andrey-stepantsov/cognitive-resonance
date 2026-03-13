@@ -30,6 +30,8 @@ describe('useREPL', () => {
       handleSubmit: vi.fn(),
       startNewSession: vi.fn(),
       handleLoadSession: vi.fn(),
+      handleArchiveSession: vi.fn(),
+      handleDeleteSession: vi.fn(),
       setIsHistorySidebarOpen: vi.fn(),
       setSelectedModel: vi.fn(),
       handleSelectGem: vi.fn(),
@@ -111,7 +113,7 @@ describe('useREPL', () => {
     const { result } = setup();
     await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
     expect(mockCrOptions.handleLoadSession).toHaveBeenCalledWith('abc-123');
-    expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Fuzzy matched session: My Auth Setup' }));
+    expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Loading session: My Auth Setup' }));
   });
 
   it('handles /session load without query', async () => {
@@ -128,6 +130,55 @@ describe('useREPL', () => {
     await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
     expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: "[System]: No session found matching 'banana'." }));
     expect(mockCrOptions.handleLoadSession).not.toHaveBeenCalled();
+  });
+
+  describe('session archive/recover/delete commands', () => {
+    beforeEach(() => {
+      mockCrOptions.sessions = [
+        { id: '123', customName: 'Project Alpha', preview: 'Discussing project A' },
+        { id: '456', customName: 'Project Beta', preview: 'Discussing project B' }
+      ];
+    });
+
+    it('handles /session archive with exact ID', async () => {
+      mockCrOptions.input = '/session archive 123';
+      const { result } = setup();
+      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+      expect(mockCrOptions.handleArchiveSession).toHaveBeenCalledWith('123', true, expect.any(Event));
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Archived session: Project Alpha' }));
+    });
+
+    it('handles /session archive with fuzzy match', async () => {
+      mockCrOptions.input = '/session archive beta';
+      const { result } = setup();
+      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+      expect(mockCrOptions.handleArchiveSession).toHaveBeenCalledWith('456', true, expect.any(Event));
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Archived session: Project Beta' }));
+    });
+
+    it('handles /session recover with exact ID', async () => {
+      mockCrOptions.input = '/session recover 456';
+      const { result } = setup();
+      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+      expect(mockCrOptions.handleArchiveSession).toHaveBeenCalledWith('456', false, expect.any(Event));
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Recovered session: Project Beta' }));
+    });
+
+    it('handles /session delete with exact ID', async () => {
+      mockCrOptions.input = '/session delete 123';
+      const { result } = setup();
+      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+      expect(mockCrOptions.handleDeleteSession).toHaveBeenCalledWith('123', expect.any(Event));
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Permanently deleted session: Project Alpha' }));
+    });
+
+    it('handles command without query', async () => {
+      mockCrOptions.input = '/session archive';
+      const { result } = setup();
+      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Please provide a session name or ID to archive.' }));
+      expect(mockCrOptions.handleArchiveSession).not.toHaveBeenCalled();
+    });
   });
 
   it('handles /session ls with saved sessions', async () => {

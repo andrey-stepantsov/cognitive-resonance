@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Send, BrainCircuit, Activity, Network, Loader2, X, Download, Copy, Check, AlertTriangle, Paperclip, FileText, Diamond, Plus, Trash2, Star, Edit3, Database, Mic, MicOff, Square, Eye, EyeOff, Globe, Undo2 } from 'lucide-react';
+import { Send, BrainCircuit, Activity, Network, Loader2, X, Download, Copy, Check, AlertTriangle, Paperclip, FileText, Diamond, Plus, Trash2, Star, Edit3, Database, Mic, MicOff, Square, Eye, EyeOff, Globe, Archive, ArchiveRestore } from 'lucide-react';
 import { SemanticGraph, DissonanceMeter, MarkdownRenderer } from '@cr/ui';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -27,10 +27,9 @@ export default function App() {
     isViewMode, historyFilename, setHistoryFilename, attachedFiles, setAttachedFiles,
     messagesEndRef, fileInputRef, inputRef,
     modelMessages, activeTurnIndex, activeState, isViewingHistory, historyData, filteredMarkers,
-    deletedSessionId, handleUndoDelete,
     handleSelectGem, handleSaveGem, handleDeleteGem, handleSetDefaultGem,
     handleSubmit, handleDownloadHistory, handleLoadSession, handleSearchResultClick,
-    handleDeleteSession, startRenameSession, handleRenameSessionSubmit, startNewSession, handleFileSelect,
+    handleDeleteSession, handleArchiveSession, startRenameSession, handleRenameSessionSubmit, startNewSession, handleFileSelect,
     executeCommand, handleKeyDown, handleStopGeneration
   } = useREPL();
 
@@ -60,6 +59,9 @@ export default function App() {
   const requestFileSelection = () => {
     vscode.postMessage({ type: 'request_file_selection' });
   };
+
+  const activeSessions = sessions.filter(s => !s.isArchived);
+  const archivedSessions = sessions.filter(s => s.isArchived);
 
   return (
     <div className="flex flex-col h-screen bg-[#111116] text-zinc-100 font-sans overflow-hidden">
@@ -137,72 +139,111 @@ export default function App() {
         )}
 
         <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-1 mt-1">
-          {activeSidebarTab === 'history' && sessions.length === 0 && (
-            <div className="text-xs text-zinc-500 text-center mt-6">No previous sessions found</div>
+          {activeSidebarTab === 'history' && activeSessions.length === 0 && (
+             <div className="text-xs text-zinc-500 text-center mt-6">No previous sessions found</div>
           )}
-          {activeSidebarTab === 'history' && sessions.map(s => (
-            <div 
-              key={s.id}
-              onClick={() => {
-                if (editingSessionId !== s.id) {
-                   handleLoadSession(s.id);
-                }
-              }}
-              className={cn(
-                "group relative px-3 py-2.5 rounded-lg transition-colors border border-transparent flex justify-between items-center",
-                editingSessionId !== s.id && "cursor-pointer",
-                activeSessionId === s.id 
-                  ? "bg-zinc-800/80 border-zinc-700/50 text-indigo-300" 
-                  : "hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-200"
-              )}
-            >
-              {editingSessionId === s.id ? (
-                <div className="flex items-center gap-2 w-full" onClick={e => e.stopPropagation()}>
-                  <input
-                    type="text"
-                    value={editSessionName}
-                    onChange={(e) => setEditSessionName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleRenameSessionSubmit(s.id, e);
-                      if (e.key === 'Escape') setEditSessionName('');
-                    }}
-                    autoFocus
-                    className="flex-1 bg-zinc-950 border border-indigo-500/50 rounded px-2 py-1 text-xs text-zinc-100 focus:outline-none"
-                  />
-                  <button onClick={(e) => handleRenameSessionSubmit(s.id, e)} className="text-indigo-400 hover:text-indigo-300">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                  </button>
-                  <button onClick={(e) => { e.stopPropagation(); setEditingSessionId(null); }} className="text-zinc-500 hover:text-zinc-300">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="truncate text-xs font-medium">
-                    {s.customName || s.preview}
-                    <div className="text-[10px] text-zinc-600 mt-0.5">{new Date(s.timestamp).toLocaleString()}</div>
-                  </div>
-                  
-                  <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all shrink-0">
-                    <button
-                      onClick={(e) => startRenameSession(s.id, s.customName || s.preview, e)}
-                      className="p-1.5 text-zinc-500 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-md transition-colors"
-                      title="Rename Session"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                    </button>
-                    <button
-                      onClick={(e) => handleDeleteSession(s.id, e)}
-                      className="p-1.5 text-red-500/70 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors"
-                      title="Delete Session"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+          {activeSidebarTab === 'history' && activeSessions.map(s => (
+             <div 
+               key={s.id}
+               onClick={() => {
+                 if (editingSessionId !== s.id) {
+                    handleLoadSession(s.id);
+                 }
+               }}
+               className={cn(
+                 "group relative px-3 py-2.5 rounded-lg transition-colors border border-transparent flex justify-between items-center",
+                 editingSessionId !== s.id && "cursor-pointer",
+                 activeSessionId === s.id 
+                   ? "bg-zinc-800/80 border-zinc-700/50 text-indigo-300" 
+                   : "hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-200"
+               )}
+             >
+               {editingSessionId === s.id ? (
+                 <div className="flex items-center gap-2 w-full" onClick={e => e.stopPropagation()}>
+                   <input
+                     type="text"
+                     value={editSessionName}
+                     onChange={(e) => setEditSessionName(e.target.value)}
+                     onKeyDown={(e) => {
+                       if (e.key === 'Enter') handleRenameSessionSubmit(s.id, e);
+                       if (e.key === 'Escape') setEditSessionName('');
+                     }}
+                     autoFocus
+                     className="flex-1 bg-zinc-950 border border-indigo-500/50 rounded px-2 py-1 text-xs text-zinc-100 focus:outline-none"
+                   />
+                   <button onClick={(e) => handleRenameSessionSubmit(s.id, e)} className="text-indigo-400 hover:text-indigo-300">
+                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                   </button>
+                   <button onClick={(e) => { e.stopPropagation(); setEditingSessionId(null); }} className="text-zinc-500 hover:text-zinc-300">
+                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                   </button>
+                 </div>
+               ) : (
+                 <>
+                   <div className="truncate text-xs font-medium">
+                     {s.customName || s.preview}
+                     <div className="text-[10px] text-zinc-600 mt-0.5">{new Date(s.timestamp).toLocaleString()}</div>
+                   </div>
+                   
+                   <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all shrink-0">
+                     <button
+                       onClick={(e) => startRenameSession(s.id, s.customName || s.preview, e)}
+                       className="p-1.5 text-zinc-500 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-md transition-colors"
+                       title="Rename Session"
+                     >
+                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                     </button>
+                     <button
+                       onClick={(e) => handleArchiveSession(s.id, true, e)}
+                       className="p-1.5 text-orange-500/70 hover:text-orange-400 hover:bg-orange-500/10 rounded-md transition-colors"
+                       title="Archive Session"
+                     >
+                       <Archive className="w-3.5 h-3.5" />
+                     </button>
+                   </div>
+                 </>
+               )}
+             </div>
           ))}
+
+          {activeSidebarTab === 'history' && archivedSessions.length > 0 && (
+             <div className="mt-6">
+                <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider px-4 mb-2">Archived</div>
+                {archivedSessions.map((s) => (
+                   <div 
+                     key={s.id}
+                     onClick={() => handleLoadSession(s.id)}
+                     className={cn(
+                       "group relative px-3 py-2.5 rounded-lg transition-colors border border-transparent flex justify-between items-center cursor-pointer",
+                       activeSessionId === s.id 
+                         ? "bg-zinc-800/80 border-zinc-700/50 text-indigo-300" 
+                         : "hover:bg-zinc-800/50 text-zinc-500 hover:text-zinc-300"
+                     )}
+                   >
+                     <div className="truncate text-xs font-medium opacity-60">
+                       {s.customName || s.preview}
+                       <div className="text-[10px] mt-0.5">{new Date(s.timestamp).toLocaleString()}</div>
+                     </div>
+                     <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all shrink-0">
+                       <button
+                         onClick={(e) => handleArchiveSession(s.id, false, e)}
+                         className="p-1.5 text-indigo-500/70 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-md transition-colors"
+                         title="Recover Session"
+                       >
+                         <ArchiveRestore className="w-3.5 h-3.5" />
+                       </button>
+                       <button
+                         onClick={(e) => handleDeleteSession(s.id, e)}
+                         className="p-1.5 text-red-500/70 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors"
+                         title="Permanent Delete"
+                       >
+                         <Trash2 className="w-3.5 h-3.5" />
+                       </button>
+                     </div>
+                   </div>
+                ))}
+             </div>
+          )}
 
           {activeSidebarTab === 'search' && historySearchQuery.trim() === '' && (
              <div className="text-xs text-zinc-500 text-center mt-6 px-4 leading-relaxed">
@@ -284,23 +325,6 @@ export default function App() {
 
         </div>
       </div>
-
-      {/* Undo Delete Toast */}
-      {deletedSessionId && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300">
-          <div className="bg-zinc-800/95 border border-zinc-700/50 shadow-2xl rounded-full px-4 py-3 flex items-center gap-4 backdrop-blur-md">
-            <span className="text-sm text-zinc-300 font-medium">Session deleted</span>
-            <div className="w-px h-4 bg-zinc-700"></div>
-            <button
-              onClick={handleUndoDelete}
-              className="flex items-center gap-1.5 text-sm font-semibold text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 px-3 py-1.5 rounded-full transition-colors"
-            >
-              <Undo2 className="w-4 h-4" />
-              Undo
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Header */}
       <header className="flex-none px-6 py-4 border-b border-zinc-800/50 bg-zinc-900/30 flex items-center justify-between backdrop-blur-md sticky top-0 z-20">

@@ -52,31 +52,48 @@ export function useREPL() {
         case CommandAction.SESSION_NEW:
           cr.startNewSession();
           break;
-        case CommandAction.SESSION_LOAD: {
+        case CommandAction.SESSION_LOAD:
+        case CommandAction.SESSION_ARCHIVE:
+        case CommandAction.SESSION_RECOVER:
+        case CommandAction.SESSION_DELETE: {
           const query = intent.args.join(' ').trim();
           if (query) {
             let targetSessionId = query;
+            let targetCustomName = '';
             if (cr.sessions && cr.sessions.length > 0) {
                // Try to match the exact ID first
                const exactMatch = cr.sessions.find(s => s.id === query);
                if (exactMatch) {
                  targetSessionId = exactMatch.id;
+                 targetCustomName = exactMatch.customName || exactMatch.preview;
                } else {
                  // Fuzzy search against customName or preview
                  const fuse = new Fuse(cr.sessions, { keys: ['customName', 'preview', 'id'], threshold: 0.4 });
                  const results = fuse.search(query);
                  if (results.length > 0) {
                    targetSessionId = results[0].item.id;
-                   injectSystemMessage(`Fuzzy matched session: ${results[0].item.customName || results[0].item.preview}`);
+                   targetCustomName = results[0].item.customName || results[0].item.preview;
                  } else {
                    injectSystemMessage(`No session found matching '${query}'.`);
                    break;
                  }
                }
             }
-            await cr.handleLoadSession(targetSessionId);
+            if (intent.action === CommandAction.SESSION_LOAD) {
+               if (targetCustomName) injectSystemMessage(`Loading session: ${targetCustomName}`);
+               await cr.handleLoadSession(targetSessionId);
+            } else if (intent.action === CommandAction.SESSION_ARCHIVE) {
+               cr.handleArchiveSession(targetSessionId, true, new Event('custom') as any);
+               injectSystemMessage(`Archived session: ${targetCustomName || query}`);
+            } else if (intent.action === CommandAction.SESSION_RECOVER) {
+               cr.handleArchiveSession(targetSessionId, false, new Event('custom') as any);
+               injectSystemMessage(`Recovered session: ${targetCustomName || query}`);
+            } else if (intent.action === CommandAction.SESSION_DELETE) {
+               cr.handleDeleteSession(targetSessionId, new Event('custom') as any);
+               injectSystemMessage(`Permanently deleted session: ${targetCustomName || query}`);
+            }
           } else {
-            injectSystemMessage('Please provide a session name or ID to load.');
+            injectSystemMessage(`Please provide a session name or ID to ${intent.action.split('_')[1].toLowerCase()}.`);
           }
           break;
         }

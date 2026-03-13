@@ -5,8 +5,9 @@ export interface SessionRecord {
   preview: string;
   customName?: string;
   config?: any;
-  data: any;
+  data: any; // the actual message/node payload
   isCloud?: boolean; // Useful for UI indicators
+  isArchived?: boolean; // Indicates if the session is archived
 }
 
 export interface GemsConfig {
@@ -61,6 +62,11 @@ export interface IStorageProvider {
    * Clears all session data (used during migrations).
    */
   clearAll?(): Promise<void>;
+
+  /**
+   * Archives or unarchives a session.
+   */
+  archiveSession?(sessionId: string, archive: boolean): Promise<void>;
 
   // --- Gems config methods ---
   saveGemsConfig(config: GemsConfig): Promise<void>;

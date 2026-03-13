@@ -22,6 +22,8 @@ export async function searchHistory(query: string, storage: IStorageProvider): P
   const searchableItems: any[] = [];
 
   for (const session of sessions) {
+    if (session.isArchived) continue;
+
     const messages = session.data?.messages;
     if (!messages || !Array.isArray(messages)) continue;
 

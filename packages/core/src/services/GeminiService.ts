@@ -96,6 +96,9 @@ export async function translateToDSL(transcript: string): Promise<string> {
 - /session new
 - /session load [id_or_name]
 - /session ls
+- /session archive [id_or_name]
+- /session recover [id_or_name]
+- /session delete [id_or_name]
 - /model use [name]
 - /gem use [id_or_name]
 - /gem ls

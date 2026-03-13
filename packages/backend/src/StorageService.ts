@@ -34,6 +34,7 @@ export interface SessionRecord {
   customName?: string;
   config?: any;
   data: any;
+  isArchived?: boolean;
 }
 
 // ── Sessions ──────────────────────────────────────────────────
@@ -52,6 +53,7 @@ export async function saveSession(sessionId: string, data: any): Promise<string>
     customName: data.customName,
     config: data.config,
     data,
+    isArchived: data.isArchived || false
   };
 
   return new Promise((resolve, reject) => {
