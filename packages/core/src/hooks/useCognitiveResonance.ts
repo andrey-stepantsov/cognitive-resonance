@@ -396,25 +396,55 @@ export function useCognitiveResonance() {
     try {
       if (activeSessionId) {
         const git = new GitContextManager(activeSessionId);
-        // Ensure virtual repo exists
+        // Ensure virtual repos exist
         await git.initRepo();
-        const matrix = await git.getStatusMatrix();
+        await git.initGlobalRepo();
         
-        // matrix format: [filepath, HEAD, WORKDIR, STAGE]
-        // 0 = absent, 1 = present, 2=differs
-        if (matrix && matrix.length > 0) {
-           let gitContext = 'Current Virtual Repository Status:\n';
-           for (const row of matrix) {
-              const [filepath, head, workdir, stage] = row;
-              let state = 'Unmodified';
-              if (head === 0 && workdir === 1 && stage === 0) state = 'Untracked';
-              else if (head === 0 && workdir === 1 && stage === 1) state = 'Added';
-              else if (head === 1 && workdir === 1 && stage === 1 && head !== workdir) state = 'Modified (staged)';
-              else if (head === 1 && workdir === 1 && stage === 0 && head !== workdir) state = 'Modified (unstaged)';
-              else if (head === 1 && workdir === 0 && stage === 0) state = 'Deleted (unstaged)';
-              else if (head === 1 && workdir === 0 && stage === 1) state = 'Deleted (staged)';
-              gitContext += `- ${filepath}: ${state}\n`;
-           }
+        const localMatrix = await git.getStatusMatrix();
+        const globalMatrix = await git.getGlobalStatusMatrix();
+        
+        let gitContext = '';
+
+        // Helper to format matrix into context string
+        const formatMatrix = async (matrix: any[], dir: string, title: string) => {
+          if (!matrix || matrix.length === 0) return '';
+          
+          let ctx = `${title}:\n`;
+          let hasFiles = false;
+
+          for (const row of matrix) {
+            const [filepath, head, workdir, stage] = row;
+            let state = 'Unmodified';
+            if (head === 0 && workdir === 1 && stage === 0) state = 'Untracked';
+            else if (head === 0 && workdir === 1 && stage === 1) state = 'Added';
+            else if (head === 1 && workdir === 1 && stage === 1 && head !== workdir) state = 'Modified (staged)';
+            else if (head === 1 && workdir === 1 && stage === 0 && head !== workdir) state = 'Modified (unstaged)';
+            else if (head === 1 && workdir === 0 && stage === 0) state = 'Deleted (unstaged)';
+            else if (head === 1 && workdir === 0 && stage === 1) state = 'Deleted (staged)';
+            
+            // Only skip truly unmodified/committed files if we want to save tokens, 
+            // but for full context we usually want them embedded.
+            ctx += `- ${filepath}: ${state}\n`;
+            hasFiles = true;
+            
+            if (workdir === 1 || workdir === 2 || head === 1) {
+                try {
+                    const content = await git.fs.promises.readFile(`${dir}/${filepath}`, 'utf8');
+                    const strContent = typeof content === 'string' ? content : new TextDecoder().decode(content as Uint8Array);
+                    ctx += `\n--- START ${filepath} ---\n${strContent}\n--- END ${filepath} ---\n\n`;
+                } catch (e) { /* ignore read error */ }
+            }
+          }
+          return hasFiles ? ctx : '';
+        };
+
+        const globalCtxStr = await formatMatrix(globalMatrix, git.globalDir, 'Global Workspace Repository Status');
+        const localCtxStr = await formatMatrix(localMatrix, git.dir, 'Current Session Virtual Repository Status');
+
+        if (globalCtxStr) gitContext += globalCtxStr + '\n';
+        if (localCtxStr) gitContext += localCtxStr;
+
+        if (gitContext) {
            payloadMessageContent += `\n\n<system_directive>\n${gitContext}\n</system_directive>`;
         }
       }

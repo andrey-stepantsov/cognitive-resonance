@@ -140,10 +140,26 @@ export function CognitivePlatformProvider({
     setActiveStorage(cloudStorage);
   };
 
+  const interceptLoginWithEmail = async (email: string, password: string) => {
+    setActiveAuth(cloudAuth);
+    if (cloudAuth.loginWithEmail) {
+      await cloudAuth.loginWithEmail(email, password);
+    }
+  };
+
+  const interceptSignupWithEmail = async (email: string, password: string) => {
+    setActiveAuth(cloudAuth);
+    if (cloudAuth.signupWithEmail) {
+      await cloudAuth.signupWithEmail(email, password);
+    }
+  };
+
   // We wrap the active auth with our interception logic
   const proxyAuth: IAuthProvider = {
     ...activeAuth,
     login: activeAuth === localAuth ? interceptLogin : activeAuth.login.bind(activeAuth),
+    loginWithEmail: activeAuth === localAuth ? interceptLoginWithEmail : activeAuth.loginWithEmail?.bind(activeAuth) || interceptLoginWithEmail,
+    signupWithEmail: activeAuth === localAuth ? interceptSignupWithEmail : activeAuth.signupWithEmail?.bind(activeAuth) || interceptSignupWithEmail,
     logout: activeAuth === cloudAuth ? activeAuth.logout.bind(activeAuth) : async () => {}, // Cannot logout of local
     init: async () => {}, // Already init
     getStatus: () => authStatus,

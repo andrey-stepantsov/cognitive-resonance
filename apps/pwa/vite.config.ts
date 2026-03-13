@@ -18,6 +18,10 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_APPWRITE_DB_ID': JSON.stringify(env.VITE_APPWRITE_DB_ID),
       'import.meta.env.VITE_APPWRITE_SESSIONS_COLLECTION_ID': JSON.stringify(env.VITE_APPWRITE_SESSIONS_COLLECTION_ID),
       'import.meta.env.VITE_CLOUDFLARE_WORKER_URL': JSON.stringify(env.VITE_CLOUDFLARE_WORKER_URL),
+    },
+    server: {
+      port: 5173,
+      strictPort: true,
     }
   }
 })

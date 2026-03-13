@@ -27,6 +27,16 @@ export class AnonymousAuthProvider implements IAuthProvider {
     return Promise.resolve();
   }
 
+  async loginWithEmail(_email: string, _password: string): Promise<void> {
+    console.warn("loginWithEmail() called on AnonymousAuthProvider.");
+    return Promise.resolve();
+  }
+
+  async signupWithEmail(_email: string, _password: string): Promise<void> {
+    console.warn("signupWithEmail() called on AnonymousAuthProvider.");
+    return Promise.resolve();
+  }
+
   async logout(): Promise<void> {
     return Promise.resolve();
   }

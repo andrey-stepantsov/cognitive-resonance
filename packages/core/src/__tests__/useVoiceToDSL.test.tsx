@@ -121,6 +121,42 @@ describe('useVoiceToDSL', () => {
     expect(result.current.isListening).toBe(false);
   });
 
+  it('stops listening on web', async () => {
+    (window as any).SpeechRecognition = mockSpeechRecognition;
+    const onFinalTranscript = vi.fn();
+    const { result } = renderHook(() => useVoiceToDSL(onFinalTranscript));
+
+    act(() => {
+      result.current.startListening();
+      mockRecognitionInstance.onstart(); // sets isListening = true
+    });
+
+    await act(async () => {
+      await result.current.stopListening();
+    });
+
+    expect(mockRecognitionInstance.stop).toHaveBeenCalled();
+  });
+
+  it('resets transcript and error', () => {
+    const onFinalTranscript = vi.fn();
+    const { result } = renderHook(() => useVoiceToDSL(onFinalTranscript));
+
+    // Force error state
+    act(() => {
+      result.current.startListening();
+    });
+    // error is 'Speech recognition is not supported in this browser.'
+    expect(result.current.error).not.toBeNull();
+
+    act(() => {
+      result.current.reset();
+    });
+
+    expect(result.current.transcript).toBe('');
+    expect(result.current.error).toBeNull();
+  });
+
   describe('Capacitor Native Flow', () => {
     beforeEach(() => {
       vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);

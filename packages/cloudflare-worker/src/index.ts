@@ -1,13 +1,12 @@
 import { Ai } from '@cloudflare/ai';
-import { Client, Storage, InputFile } from 'node-appwrite';
 
 export interface Env {
   // Bindings
   AI: any;
   VECTORIZE: any;
+  GIT_PACKS_BUCKET: R2Bucket;
   // Secrets
   APPWRITE_WEBHOOK_SECRET: string;
-  APPWRITE_API_KEY: string;
 }
 
 export default {
@@ -134,33 +133,12 @@ async function handleGitReceivePack(request: Request, env: Env): Promise<Respons
   console.log(`Received packfile of ${packfileBuffer.byteLength} bytes for session ${sessionId}`);
 
   try {
-    // Write packfile to Appwrite Storage
-    // Assuming bucket ID 'cr-git-packs' exists
-    const appwriteClient = new Client()
-        .setEndpoint('https://cloud.appwrite.io/v1')
-        .setProject('cognitive-resonance')
-        .setKey(env.APPWRITE_API_KEY || '');
-        
-    const storage = new Storage(appwriteClient);
-    
-    // We upload the raw buffer as a file
-    // Note: node-appwrite expects a File/Blob/InputFile-like object
     const fileName = `pack-${sessionId}-${Date.now()}.pack`;
-    
-    // Convert ArrayBuffer to Blob for Appwrite using standard web API since Workers support it
-    const fileBlob = new Blob([packfileBuffer], { type: 'application/x-git-receive-pack' });
-    const fileObj = new File([fileBlob], fileName, { type: 'application/x-git-receive-pack' });
-    
-    await storage.createFile(
-      'cr-git-packs', 
-      'unique()', 
-      fileObj as any
-    );
-    console.log(`Successfully persisted packfile to Appwrite for ${sessionId}`);
+    await env.GIT_PACKS_BUCKET.put(fileName, packfileBuffer);
+    console.log(`Successfully persisted packfile to R2 for ${sessionId}`);
   } catch (err: any) {
-    console.warn(`Failed to push to Appwrite! Check API Key or Bucket ID: ${err.message}`);
-    // We still return 200 to the git client so it doesn't hard-crash the local repo right now,
-    // but in production this should return an error pkt-line.
+    console.warn(`Failed to push to R2 Bucket: ${err.message}`);
+    // We still return 200 to the git client so it doesn't hard-crash the local repo right now
   }
 
   const headers = new Headers({

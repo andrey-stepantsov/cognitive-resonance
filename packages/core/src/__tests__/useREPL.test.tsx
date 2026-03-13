@@ -11,6 +11,36 @@ vi.mock('../hooks/useCognitiveResonance', async (importOriginal) => {
   };
 });
 
+vi.mock('@cr/backend', () => ({
+  gitRemoteSync: {
+    pushToRemote: vi.fn(),
+  }
+}));
+
+const mockGitContextManager = {
+  initRepo: vi.fn().mockResolvedValue(true),
+  initGlobalRepo: vi.fn().mockResolvedValue(true),
+  hasCommits: vi.fn().mockResolvedValue(true),
+  hasGlobalCommits: vi.fn().mockResolvedValue(true),
+  stageFile: vi.fn().mockResolvedValue(true),
+  stageGlobalFile: vi.fn().mockResolvedValue(true),
+  commitChange: vi.fn().mockResolvedValue('123'),
+  commitGlobalChange: vi.fn().mockResolvedValue('123'),
+  getCurrentBranch: vi.fn().mockResolvedValue('main'),
+  getGlobalBranch: vi.fn().mockResolvedValue('main'),
+  fs: {},
+  dir: '/session-test',
+  globalDir: '/global-workspace'
+};
+
+vi.mock('../services/GitContextManager', () => {
+  return {
+    GitContextManager: vi.fn().mockImplementation(function() {
+      return mockGitContextManager;
+    })
+  };
+});
+
 describe('useREPL', () => {
   let mockCrOptions: any;
 
@@ -38,6 +68,7 @@ describe('useREPL', () => {
       setIsGemSidebarOpen: vi.fn(),
       handleSetApiKey: vi.fn(),
       handleClearApiKey: vi.fn(),
+      handleMentionSelect: vi.fn(),
       activeState: null,
     };
     vi.mocked(useCognitiveResonanceModule.useCognitiveResonance).mockReturnValue(mockCrOptions);
@@ -603,6 +634,58 @@ describe('useREPL', () => {
       });
       expect(mockCrOptions.setShowSystemMessages).toHaveBeenCalledWith(true);
       expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: System message visibility is now ENABLED.' }));
+  });
+
+  describe('handleKeyDown coverage', () => {
+    it('autocompletes mention on space', () => {
+        mockCrOptions.mentionSearchQuery = 'auth';
+        mockCrOptions.mentionSuggestions = [{ name: 'AuthNode', label: 'auth node' }] as any;
+        
+        const { result } = setup();
+        
+        const mockEvent = { key: ' ', preventDefault: vi.fn() };
+        act(() => {
+          result.current.handleKeyDown(mockEvent as any);
+        });
+    
+        expect(mockEvent.preventDefault).toHaveBeenCalled();
+        expect(mockCrOptions.handleMentionSelect).toHaveBeenCalledWith('AuthNode');
+    });
+  });
+
+  describe('graph search with regex', () => {
+    it('handles /graph search with regex', async () => {
+      mockCrOptions.activeState = { 
+        dissonanceScore: 0, 
+        dissonanceReason: '', 
+        semanticNodes: [{ id: '1', label: 'AuthNode' }, { id: '2', label: 'other' }], 
+        semanticEdges: [] 
+      };
+      mockCrOptions.input = '/graph search /auth/i';
+      
+      const { result } = setup();
+      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+      
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({
+        content: expect.stringContaining('AuthNode')
+      }));
+    });
+
+    it('handles /graph search with invalid regex', async () => {
+      mockCrOptions.activeState = { 
+        dissonanceScore: 0, 
+        dissonanceReason: '', 
+        semanticNodes: [{ id: '1', label: 'AuthNode' }], 
+        semanticEdges: [] 
+      };
+      mockCrOptions.input = '/graph search /[unclosed/i';
+      
+      const { result } = setup();
+      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+      
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({
+        content: expect.stringContaining('None found')
+      }));
     });
   });
 
@@ -620,4 +703,102 @@ describe('useREPL', () => {
     await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
     expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Error executing command: Test Error' }));
   });
+
+  describe('git sync commands', () => {
+    let mockGitRemoteSync: any;
+    
+    beforeEach(async () => {
+      mockCrOptions.ensureActiveSession = vi.fn().mockReturnValue('session-123');
+      const backendModule = await import('@cr/backend');
+      mockGitRemoteSync = backendModule.gitRemoteSync;
+      vi.clearAllMocks();
+      
+      // Default to having commits so it just pushes
+      mockGitContextManager.hasCommits.mockResolvedValue(true);
+      mockGitContextManager.hasGlobalCommits.mockResolvedValue(true);
+    });
+
+    it('handles /sync', async () => {
+      mockCrOptions.input = '/sync';
+      const { result } = setup();
+      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+      
+      expect(mockCrOptions.ensureActiveSession).toHaveBeenCalled();
+      expect(mockGitContextManager.initRepo).toHaveBeenCalled();
+      expect(mockGitRemoteSync.pushToRemote).toHaveBeenCalledWith(
+        mockGitContextManager.fs,
+        mockGitContextManager.dir,
+        'main'
+      );
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Successfully pushed packfile to Cloudflare/Appwrite! 🎉' }));
+    });
+
+    it('handles /sync when repo is empty', async () => {
+      mockGitContextManager.hasCommits.mockResolvedValue(false);
+      
+      mockCrOptions.input = '/sync';
+      const { result } = setup();
+      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+      
+      expect(mockGitContextManager.stageFile).toHaveBeenCalledWith('VirtualContext.md', expect.any(String));
+      expect(mockGitContextManager.commitChange).toHaveBeenCalledWith('Initial repository state');
+      expect(mockGitRemoteSync.pushToRemote).toHaveBeenCalled();
+    });
+
+    it('handles /sync errors', async () => {
+      mockGitRemoteSync.pushToRemote.mockRejectedValueOnce(new Error('Sync failed'));
+      
+      mockCrOptions.input = '/sync';
+      const { result } = setup();
+      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+      
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Failed to push to remote: Sync failed' }));
+    });
+
+    it('handles /global sync', async () => {
+      mockCrOptions.input = '/global sync';
+      const { result } = setup();
+      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+      
+      expect(mockCrOptions.ensureActiveSession).toHaveBeenCalled();
+      expect(mockGitContextManager.initGlobalRepo).toHaveBeenCalled();
+      expect(mockGitRemoteSync.pushToRemote).toHaveBeenCalledWith(
+        mockGitContextManager.fs,
+        mockGitContextManager.globalDir,
+        'main'
+      );
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Successfully pushed Global Workspace packfile! 🌍' }));
+    });
+
+    it('handles /global sync when global repo is empty', async () => {
+      mockGitContextManager.hasGlobalCommits.mockResolvedValue(false);
+      
+      mockCrOptions.input = '/global sync';
+      const { result } = setup();
+      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+      
+      expect(mockGitContextManager.stageGlobalFile).toHaveBeenCalledWith('SystemPrompt.md', expect.any(String));
+      expect(mockGitContextManager.commitGlobalChange).toHaveBeenCalledWith('Initial global repository state');
+      expect(mockGitRemoteSync.pushToRemote).toHaveBeenCalled();
+    });
+
+    it('handles /global sync errors', async () => {
+      mockGitRemoteSync.pushToRemote.mockRejectedValueOnce(new Error('Global sync failed'));
+      
+      mockCrOptions.input = '/global sync';
+      const { result } = setup();
+      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+      
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Failed to push to global remote: Global sync failed' }));
+    });
+
+    it('handles /global edit', async () => {
+      mockCrOptions.input = '/global edit test.md';
+      const { result } = setup();
+      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+      
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Please toggle the "Global Workspace" tab in the Artifact Editor to edit: test.md' }));
+    });
+  });
+});
 });

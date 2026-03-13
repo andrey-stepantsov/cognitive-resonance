@@ -265,6 +265,33 @@ export function useREPL() {
            }
            break;
         }
+        case CommandAction.GLOBAL_SYNC: {
+           const sessionId = cr.ensureActiveSession();
+           injectSystemMessage('Pushing global workspace repository to Cloudflare Remote...');
+           try {
+             const git = new GitContextManager(sessionId);
+             await git.initGlobalRepo(); // Ensure it exists locally
+             
+             if (!(await git.hasGlobalCommits())) {
+               injectSystemMessage('Global Repository is empty. Creating initial commit...');
+               await git.stageGlobalFile('SystemPrompt.md', '# Global System Prompt\n');
+               await git.commitGlobalChange('Initial global repository state');
+             }
+
+             const currentBranch = await git.getGlobalBranch() || 'main';
+             await gitRemoteSync.pushToRemote(git.fs, git.globalDir, currentBranch);
+             injectSystemMessage('Successfully pushed Global Workspace packfile! 🌍');
+           } catch (err: any) {
+             injectSystemMessage(`Failed to push to global remote: ${err.message}`);
+           }
+           break;
+        }
+        case CommandAction.GLOBAL_EDIT: {
+           // For now, MVP toggles the Artifact Editor UI based on file selection, 
+           // but we can at least log this. UI will need an explicit toggle switch or dropdown.
+           injectSystemMessage(`Please toggle the "Global Workspace" tab in the Artifact Editor to edit: ${intent.args.join(' ') || 'files'}`);
+           break;
+        }
         case CommandAction.KEY_SET:
           if (intent.args[0]) {
             cr.handleSetApiKey(intent.args[0]);

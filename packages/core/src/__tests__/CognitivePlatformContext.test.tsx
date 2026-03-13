@@ -15,6 +15,9 @@ const TestComponent = () => {
       <button data-testid="migrate-btn" onClick={migrateToCloud}>Migrate</button>
       <button data-testid="skip-btn" onClick={skipMigration}>Skip</button>
       <button data-testid="login-btn" onClick={auth.login}>Login</button>
+      <button data-testid="login-email-btn" onClick={() => auth.loginWithEmail?.('test@test.com', 'pass')}>Login Email</button>
+      <button data-testid="signup-email-btn" onClick={() => auth.signupWithEmail?.('test@test.com', 'pass')}>Signup Email</button>
+      <button data-testid="logout-btn" onClick={auth.logout}>Logout</button>
     </div>
   );
 };
@@ -54,6 +57,8 @@ describe('CognitivePlatformContext', () => {
         return vi.fn();
       }),
       login: vi.fn(),
+      loginWithEmail: vi.fn(),
+      signupWithEmail: vi.fn(),
       logout: vi.fn()
     };
 
@@ -106,6 +111,46 @@ describe('CognitivePlatformContext', () => {
     });
 
     expect(mockCloudAuth.login).toHaveBeenCalled();
+  });
+
+  it('intercepts loginWithEmail to swap to cloud tracking', async () => {
+    customRender();
+    await waitFor(() => {
+       if (screen.getByTestId('status').textContent !== AuthStatus.ANONYMOUS) throw new Error();
+    });
+
+    await act(async () => {
+      screen.getByTestId('login-email-btn').click();
+    });
+
+    expect(mockCloudAuth.loginWithEmail).toHaveBeenCalledWith('test@test.com', 'pass');
+  });
+
+  it('intercepts signupWithEmail to swap to cloud tracking', async () => {
+    customRender();
+    await waitFor(() => {
+       if (screen.getByTestId('status').textContent !== AuthStatus.ANONYMOUS) throw new Error();
+    });
+
+    await act(async () => {
+      screen.getByTestId('signup-email-btn').click();
+    });
+
+    expect(mockCloudAuth.signupWithEmail).toHaveBeenCalledWith('test@test.com', 'pass');
+  });
+
+  it('ignores local logout but triggers cloud logout', async () => {
+    mockCloudAuth.getStatus.mockReturnValue(AuthStatus.AUTHENTICATED);
+    customRender();
+    await waitFor(() => {
+       if (screen.getByTestId('status').textContent !== AuthStatus.AUTHENTICATED) throw new Error();
+    });
+
+    await act(async () => {
+      screen.getByTestId('logout-btn').click();
+    });
+
+    expect(mockCloudAuth.logout).toHaveBeenCalled();
   });
 
   it('handles migration prompt on cloud login', async () => {

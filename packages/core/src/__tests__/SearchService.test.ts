@@ -31,6 +31,39 @@ describe('searchHistory', () => {
           }
         }]
       }
+    },
+    {
+      id: 'session-archived',
+      preview: 'Archived',
+      isArchived: true,
+      timestamp: 3000,
+      data: {
+        messages: [{
+          role: 'model',
+          content: 'archived topic discussion',
+          internalState: {
+            semanticNodes: [{ id: 'discussion', label: 'Discussion Concept' }]
+          }
+        }]
+      }
+    },
+    {
+      id: 'session-no-messages',
+      preview: 'Empty',
+      timestamp: 4000,
+      data: {}
+    },
+    {
+      id: 'session-no-nodes',
+      preview: 'No Nodes',
+      timestamp: 5000,
+      data: {
+        messages: [{
+          role: 'model',
+          content: 'no nodes here discussion',
+          internalState: {}
+        }]
+      }
     }
   ];
 
@@ -50,7 +83,7 @@ describe('searchHistory', () => {
   it('filters sessions by nodes (fuzzy match on label/id)', async () => {
     const results = await searchHistory('discussion', mockStorage);
     expect(results).toHaveLength(1);
-    expect(results[0].sessionId).toBe('session-2');
+    expect(results[0].sessionId).toBe('session-2'); // Should not return session-archived or session-no-nodes
   });
 
   it('filters sessions by nodes', async () => {

@@ -6,7 +6,23 @@ import * as CrBackend from '@cr/backend';
 import * as SearchService from '../services/SearchService';
 
 vi.mock('../services/SearchService', () => ({
-  searchHistory: vi.fn()
+  searchHistory: vi.fn(),
+  searchGoogle: vi.fn()
+}));
+
+const mockGitContextManager = {
+  initRepo: vi.fn().mockResolvedValue(true),
+  initGlobalRepo: vi.fn().mockResolvedValue(true),
+  getStatusMatrix: vi.fn().mockResolvedValue([]),
+  getGlobalStatusMatrix: vi.fn().mockResolvedValue([]),
+  fs: { promises: { readFile: vi.fn() } },
+  dir: '/session',
+  globalDir: '/global'
+};
+
+vi.mock('../services/GitContextManager', () => ({
+  GitContextManager: vi.fn().mockImplementation(function() { return mockGitContextManager; }),
+  vfs: { promises: { readFile: vi.fn().mockResolvedValue('') } }
 }));
 
 vi.mock('../services/GeminiService', () => ({
@@ -232,6 +248,184 @@ describe('useCognitiveResonance', () => {
     expect(result.current.messages[1].content).toBe('Network error');
   });
 
+  it('ignores submission if loading', async () => {
+    const { result } = renderHook(() => useCognitiveResonance());
+    act(() => {
+      result.current.setInput('test');
+    });
+    
+    // Forcibly set loading to true (need to trigger a fetch or mock it)
+    vi.mocked(GeminiService.generateResponse).mockImplementation(() => new Promise(() => {})); // hang forever
+    vi.mocked(GeminiService.fetchModels).mockResolvedValue([{ name: 'models/gemini-2.5-flash', displayName: 'Gemini 2.5 Flash' }]);
+
+    await waitFor(() => {
+      expect(result.current.availableModels.length).toBeGreaterThan(0);
+    });
+
+    // Start first submit
+    act(() => {
+      result.current.handleSubmit({ preventDefault: vi.fn() } as unknown as React.FormEvent);
+    });
+
+    expect(result.current.isLoading).toBe(true);
+
+    // Try second submit
+    const mockEvent = { preventDefault: vi.fn() };
+    await act(async () => {
+      await result.current.handleSubmit(mockEvent as unknown as React.FormEvent);
+    });
+
+    // Messages should only have 1 user message, not 2
+    expect(result.current.messages.length).toBe(1);
+    expect(mockEvent.preventDefault).toHaveBeenCalled();
+  });
+
+  it('handles AbortError during message submission', async () => {
+    vi.mocked(GeminiService.generateResponse).mockRejectedValue(Object.assign(new Error('AbortError'), { name: 'AbortError' }));
+    vi.mocked(GeminiService.fetchModels).mockResolvedValue([{ name: 'models/gemini-2.5-flash', displayName: 'Gemini 2.5 Flash' }]);
+
+    const { result } = renderHook(() => useCognitiveResonance());
+
+    await waitFor(() => {
+      expect(result.current.availableModels.length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+      result.current.setInput('Interrupt me');
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit({ preventDefault: vi.fn() } as unknown as React.FormEvent);
+    });
+
+    expect(result.current.messages[1].content).toBe('[Generation Interrupted]');
+  });
+
+  it('injects git context and mentions into payload', async () => {
+    vi.mocked(GeminiService.generateResponse).mockResolvedValue({
+      reply: 'Mocked response with git context', dissonanceScore: 0, dissonanceReason: '', semanticNodes: [], semanticEdges: []
+    } as any);
+    vi.mocked(GeminiService.fetchModels).mockResolvedValue([{ name: 'models/gemini-2.5-flash', displayName: 'Gemini 2.5 Flash' }]);
+    
+    // Setup git matrix mocks
+    mockGitContextManager.getStatusMatrix.mockResolvedValue([['local.txt', 1, 1, 0]]);
+    mockGitContextManager.getGlobalStatusMatrix.mockResolvedValue([['global.txt', 0, 1, 0]]);
+    mockGitContextManager.fs.promises.readFile.mockImplementation((path: string) => {
+      if (path.includes('local.txt')) return Promise.resolve('Local Content');
+      if (path.includes('global.txt')) return Promise.resolve('Global Content');
+      return Promise.resolve('');
+    });
+
+    const { result } = renderHook(() => useCognitiveResonance());
+
+    // Mock an active session to trigger the logic
+    act(() => {
+      mockStorage.saveSession.mockResolvedValueOnce('active-123');
+      result.current.startNewSession(); // Set initial state
+    });
+
+    // We must manually trigger loadSession logic to set activeSessionId since save/load is complex to fake instantly
+    await act(async () => {
+      await result.current.handleLoadSession('active-123'); // Assume this sets activeSessionId = active-123
+    });
+
+    await waitFor(() => {
+      expect(result.current.availableModels.length).toBeGreaterThan(0);
+    });
+
+    // Send input to trigger git context fetching
+    act(() => {
+      result.current.setSelectedModel('gemini-2.5-flash');
+      result.current.setInput('Please review local.txt');
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit({ preventDefault: vi.fn() } as unknown as React.FormEvent);
+    });
+
+    expect(GeminiService.generateResponse).toHaveBeenCalled();
+    const payloadMessages = vi.mocked(GeminiService.generateResponse).mock.calls[0][1];
+    const payloadPassed = payloadMessages[payloadMessages.length - 1].content;
+    
+    // Check for git injected texts
+    expect(payloadPassed).toContain('Current Session Virtual Repository Status');
+    expect(payloadPassed).toContain('Global Workspace Repository Status');
+    expect(payloadPassed).toContain('Local Content');
+    expect(payloadPassed).toContain('Global Content');
+  });
+
+  it('intercepts @mentions and injects semantic markers into the payload', async () => {
+    let payloadPassed = '';
+    vi.mocked(GeminiService.generateResponse).mockImplementation(async (...args: any[]) => {
+      payloadPassed = args[1][args[1].length - 1].content;
+      return { reply: 'Mocked', dissonanceScore: 0, dissonanceReason: '', semanticNodes: [], semanticEdges: [] };
+    });
+    vi.mocked(GeminiService.fetchModels).mockResolvedValue([{ name: 'models/gemini-2.5-flash', displayName: 'Gemini 2.5 Flash' }]);
+
+    const { result } = renderHook(() => useCognitiveResonance());
+
+    await waitFor(() => {
+      expect(result.current.availableModels.length).toBeGreaterThan(0);
+    });
+
+    // Mock an active state with some markers via setMessages
+    act(() => {
+        result.current.setMessages([{
+          role: 'model',
+          content: 'Here is some state',
+          internalState: {
+            dissonanceScore: 0,
+            dissonanceReason: '',
+            semanticNodes: [{ id: 'node1', label: 'AuthSystem', weight: 5 }],
+            semanticEdges: []
+          }
+        }]);
+    });
+
+    act(() => {
+      result.current.setInput('Fix the bug in @AuthSystem');
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit({ preventDefault: vi.fn() } as unknown as React.FormEvent);
+    });
+
+    expect(payloadPassed).toContain('AuthSystem');
+    expect(payloadPassed).toContain('<system_directive>');
+    expect(payloadPassed).toContain('(Weight: 5)');
+  });
+
+  it('handles mention selection', () => {
+    const { result } = renderHook(() => useCognitiveResonance());
+    
+    act(() => {
+      result.current.handleInputChange({ target: { value: 'Hello @aut', selectionStart: 10 } } as any);
+    });
+
+    act(() => {
+      result.current.handleMentionSelect('AuthSystem');
+    });
+
+    expect(result.current.input).toBe('Hello @AuthSystem ');
+    expect(result.current.mentionSearchQuery).toBeNull();
+    expect(result.current.mentionSuggestions).toEqual([]);
+  });
+
+  it('ignores mention selection if cursor is null', () => {
+    const { result } = renderHook(() => useCognitiveResonance());
+    
+    act(() => {
+      // Cursor is null by default until typing, we just set input directly
+      result.current.setInput('Hello @aut');
+    });
+
+    act(() => {
+      result.current.handleMentionSelect('AuthSystem');
+    });
+
+    expect(result.current.input).toBe('Hello @aut');
+  });
+
   it('exports session history using backend share interface', async () => {
     vi.mocked(CrBackend.shareJSON).mockResolvedValue(true);
     const { result } = renderHook(() => useCognitiveResonance());
@@ -299,6 +493,105 @@ describe('useCognitiveResonance', () => {
     expect(CrBackend.downloadJSON).not.toHaveBeenCalled(); // Because it aborted
 
     // Restore navigator
+    if (orgNavigatorShare) Object.assign(navigator, { share: orgNavigatorShare });
+    else delete (navigator as any).share;
+    if (orgNavigatorCanShare) Object.assign(navigator, { canShare: orgNavigatorCanShare });
+    else delete (navigator as any).canShare;
+  });
+
+  it('calls downloadJSON if share throws a non-abort error', async () => {
+    vi.mocked(CrBackend.shareJSON).mockResolvedValue(false);
+    
+    const orgNavigatorShare = navigator.share;
+    const orgNavigatorCanShare = navigator.canShare;
+    Object.assign(navigator, {
+      canShare: vi.fn().mockReturnValue(true),
+      share: vi.fn().mockRejectedValue(new Error('Some Other Error'))
+    });
+
+    const { result } = renderHook(() => useCognitiveResonance());
+
+    act(() => { result.current.setInput('History test'); });
+    vi.mocked(GeminiService.generateResponse).mockResolvedValue({ reply: 'R', dissonanceScore: 0, dissonanceReason: '', semanticNodes: [], semanticEdges: [] } as any);
+    await waitFor(() => expect(result.current.availableModels.length).toBeGreaterThan(0));
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as unknown as React.FormEvent); });
+    
+    await act(async () => {
+      await result.current.handleDownloadHistory();
+    });
+
+    expect(CrBackend.downloadJSON).toHaveBeenCalled();
+
+    // Restore navigator
+    if (orgNavigatorShare) Object.assign(navigator, { share: orgNavigatorShare });
+    else delete (navigator as any).share;
+    if (orgNavigatorCanShare) Object.assign(navigator, { canShare: orgNavigatorCanShare });
+    else delete (navigator as any).canShare;
+  });
+
+  it('calls downloadJSON if share API is not available at all', async () => {
+    vi.mocked(CrBackend.shareJSON).mockResolvedValue(false);
+    
+    const orgNavigatorShare = navigator.share;
+    const orgNavigatorCanShare = navigator.canShare;
+    delete (navigator as any).share;
+    delete (navigator as any).canShare;
+
+    const { result } = renderHook(() => useCognitiveResonance());
+
+    act(() => { result.current.setInput('History test 2'); });
+    vi.mocked(GeminiService.generateResponse).mockResolvedValue({ reply: 'R2', dissonanceScore: 0, dissonanceReason: '', semanticNodes: [], semanticEdges: [] } as any);
+    await waitFor(() => expect(result.current.availableModels.length).toBeGreaterThan(0));
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as unknown as React.FormEvent); });
+    
+    await act(async () => {
+      await result.current.handleDownloadHistory();
+    });
+
+    expect(CrBackend.downloadJSON).toHaveBeenCalled();
+
+    // Restore navigator
+    if (orgNavigatorShare) Object.assign(navigator, { share: orgNavigatorShare });
+    if (orgNavigatorCanShare) Object.assign(navigator, { canShare: orgNavigatorCanShare });
+  });
+
+  it('uses navigator.share if available and supported (success)', async () => {
+    vi.mocked(CrBackend.shareJSON).mockResolvedValue(false);
+    
+    // Polyfill navigator.share to trigger the success branch
+    const orgNavigatorShare = navigator.share;
+    const orgNavigatorCanShare = navigator.canShare;
+    Object.assign(navigator, {
+      canShare: vi.fn().mockReturnValue(true),
+      share: vi.fn().mockResolvedValue(undefined)
+    });
+
+    const { result } = renderHook(() => useCognitiveResonance());
+
+    act(() => {
+      result.current.setInput('History test success');
+    });
+
+    vi.mocked(GeminiService.generateResponse).mockResolvedValue({
+      reply: 'Response', dissonanceScore: 0, dissonanceReason: '', semanticNodes: [], semanticEdges: []
+    } as any);
+
+    await waitFor(() => {
+      expect(result.current.availableModels.length).toBeGreaterThan(0);
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit({ preventDefault: vi.fn() } as unknown as React.FormEvent);
+    });
+
+    await act(async () => {
+      await result.current.handleDownloadHistory();
+    });
+
+    expect(CrBackend.shareJSON).toHaveBeenCalled();
+    expect(navigator.share).toHaveBeenCalled();
+    
+    // Restore
     if (orgNavigatorShare) Object.assign(navigator, { share: orgNavigatorShare });
     else delete (navigator as any).share;
     if (orgNavigatorCanShare) Object.assign(navigator, { canShare: orgNavigatorCanShare });
@@ -513,5 +806,62 @@ describe('useCognitiveResonance', () => {
 
     expect(result.current.attachedFiles[0].name).toBe('hello.png');
     expect(result.current.attachedFiles[0].mimeType).toBe('image/png');
+  });
+
+  it('handles archiving and unarchiving a session', async () => {
+    mockStorage.archiveSession = vi.fn().mockResolvedValue(true);
+    const { result } = renderHook(() => useCognitiveResonance());
+    
+    act(() => {
+      // Mock some sessions
+      mockStorage.loadAllSessions.mockResolvedValue([
+        { id: 'fake-session-id', customName: 'Old', preview: 'Old', turnCount: 1, timestamp: Date.now() }
+      ]);
+      result.current.setIsHistorySidebarOpen(true);
+    });
+
+    await waitFor(() => {
+      expect(result.current.sessions.length).toBe(1);
+    });
+
+    // Make it active so we can test the fallback
+    await act(async () => {
+      await result.current.handleLoadSession('fake-session-id');
+    });
+
+    const mockEvent = { stopPropagation: vi.fn() } as unknown as React.MouseEvent;
+
+    await act(async () => {
+      await result.current.handleArchiveSession('fake-session-id', true, mockEvent);
+    });
+
+    expect(mockStorage.archiveSession).toHaveBeenCalledWith('fake-session-id', true);
+    expect(result.current.sessions[0].isArchived).toBe(true);
+    expect(result.current.activeSessionId).toBe(null); // Active session should clear if archived
+  });
+
+  it('ensures an active session exists', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2020-01-01'));
+    const { result } = renderHook(() => useCognitiveResonance());
+
+    expect(result.current.activeSessionId).toBe(null);
+
+    let generatedId: string | undefined;
+    act(() => {
+      generatedId = result.current.ensureActiveSession();
+    });
+
+    expect(generatedId).toMatch(/session-\d+/);
+    expect(result.current.activeSessionId).toBe(generatedId);
+
+    // Call it again and it should return the exact same ID
+    let secondId: string | undefined;
+    act(() => {
+      secondId = result.current.ensureActiveSession();
+    });
+
+    expect(secondId).toBe(generatedId);
+    vi.useRealTimers();
   });
 });

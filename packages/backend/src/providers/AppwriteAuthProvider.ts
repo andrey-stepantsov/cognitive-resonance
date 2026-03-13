@@ -40,6 +40,28 @@ export class AppwriteAuthProvider implements IAuthProvider {
     await authService.loginWithOAuth('google', window.location.href, window.location.href);
   }
 
+  async loginWithEmail(email: string, password: string): Promise<void> {
+    this.setStatus(AuthStatus.LOADING);
+    try {
+      await authService.loginWithEmail(email, password);
+      await this.init(); // Re-initialize to fetch user details
+    } catch (err) {
+      this.setStatus(AuthStatus.ERROR);
+      throw err;
+    }
+  }
+
+  async signupWithEmail(email: string, password: string): Promise<void> {
+    this.setStatus(AuthStatus.LOADING);
+    try {
+      await authService.signupWithEmail(email, password);
+      await this.init(); // Re-initialize to fetch user details
+    } catch (err) {
+      this.setStatus(AuthStatus.ERROR);
+      throw err;
+    }
+  }
+
   async logout(): Promise<void> {
     await authService.logout();
     this.user = undefined;

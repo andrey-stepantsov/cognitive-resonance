@@ -45,6 +45,11 @@ describe('CommandParser', () => {
     expect(parseCommand('/key clear')).toEqual({ action: CommandAction.KEY_CLEAR, args: [], raw: '/key clear' });
   });
 
+  it('parses git commands', () => {
+    expect(parseCommand('/git sync')).toEqual({ action: CommandAction.GIT_SYNC, args: [], raw: '/git sync' });
+    expect(parseCommand('/git push origin')).toEqual({ action: CommandAction.GIT_PUSH, args: ['origin'], raw: '/git push origin' });
+  });
+
   it('parses graph commands', () => {
     expect(parseCommand('/graph ls')).toEqual({ action: CommandAction.GRAPH_LS, args: [], raw: '/graph ls' });
     expect(parseCommand('/graph search auth')).toEqual({ action: CommandAction.GRAPH_SEARCH, args: ['auth'], raw: '/graph search auth' });

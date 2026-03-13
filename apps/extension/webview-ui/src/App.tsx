@@ -69,6 +69,16 @@ export default function App() {
     return (
       <AuthScreen 
         onLoginOAuth={() => auth.login()} 
+        onLoginEmail={(email, password) => {
+          if (auth.loginWithEmail) {
+            auth.loginWithEmail(email, password).catch((err: any) => alert(`Login failed: ${err.message}`));
+          }
+        }}
+        onSignupEmail={(email, password) => {
+          if (auth.signupWithEmail) {
+            auth.signupWithEmail(email, password).catch((err: any) => alert(`Signup failed: ${err.message}`));
+          }
+        }}
         isDev={true}
       />
     );

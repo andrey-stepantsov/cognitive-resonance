@@ -36,6 +36,22 @@ export default function App() {
     return (
       <AuthScreen 
         onLoginOAuth={() => auth.login()} 
+        onLoginEmail={(email, password) => {
+          if (auth.loginWithEmail) {
+            auth.loginWithEmail(email, password).catch((err: any) => {
+              console.error(err);
+              alert(`Login failed: ${err?.message || JSON.stringify(err)}`);
+            });
+          }
+        }}
+        onSignupEmail={(email, password) => {
+          if (auth.signupWithEmail) {
+            auth.signupWithEmail(email, password).catch((err: any) => {
+              console.error(err);
+              alert(`Signup failed: ${err?.message || JSON.stringify(err)}`);
+            });
+          }
+        }}
       />
     );
   }
@@ -490,20 +506,23 @@ export default function App() {
                 <ArtifactEditor
                   filename="VirtualContext.md"
                   initialContent={app.artifactContent}
-                  onSave={async (filename, content, commitMessage) => {
+                  onSave={async (filename, content, commitMessage, scope) => {
                     app.setArtifactContent(content);
                     const sessionId = app.ensureActiveSession();
                     const git = new GitContextManager(sessionId);
-                    await git.initRepo();
-                    await git.stageFile(filename, content);
-                    await git.commitChange(commitMessage);
-                       app.executeCommand('/system on');
-                       app.executeCommand(`/search off`); // Optional toggle
-                       
-                       // Feed a system message so the user knows
-                       // (This is a slightly hacky injection since we don't have direct access to injectSystemMessage here,
-                       // so we use the REPL execution hook instead to trigger a UI update)
-                       // Or we just rely on the ArtifactEditor save state turning green.
+                    
+                    if (scope === 'global') {
+                      await git.initGlobalRepo();
+                      await git.stageGlobalFile(filename, content);
+                      await git.commitGlobalChange(commitMessage);
+                    } else {
+                      await git.initRepo();
+                      await git.stageFile(filename, content);
+                      await git.commitChange(commitMessage);
+                    }
+
+                    app.executeCommand('/system on');
+                    app.executeCommand(`/search off`); // Optional toggle
                   }}
                 />
               </div>

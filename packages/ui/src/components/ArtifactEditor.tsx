@@ -10,7 +10,7 @@ function cn(...inputs: (string | undefined | null | false)[]) {
 interface ArtifactEditorProps {
   filename: string;
   initialContent: string;
-  onSave: (filename: string, content: string, commitMessage: string) => Promise<void>;
+  onSave: (filename: string, content: string, commitMessage: string, scope: 'session' | 'global') => Promise<void>;
 }
 
 export function ArtifactEditor({ filename, initialContent, onSave }: ArtifactEditorProps) {
@@ -19,6 +19,7 @@ export function ArtifactEditor({ filename, initialContent, onSave }: ArtifactEdi
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [scope, setScope] = useState<'session' | 'global'>('session');
 
   useEffect(() => {
     setHasChanges(content !== initialContent);
@@ -27,7 +28,7 @@ export function ArtifactEditor({ filename, initialContent, onSave }: ArtifactEdi
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await onSave(filename, content, commitMessage || `Update ${filename}`);
+      await onSave(filename, content, commitMessage || `Update ${filename}`, scope);
       setHasChanges(false);
     } catch(err) {
       console.error('Failed to save artifact', err);
@@ -50,9 +51,25 @@ export function ArtifactEditor({ filename, initialContent, onSave }: ArtifactEdi
           ? "fixed inset-2 md:inset-8 z-50 rounded-xl" 
           : "h-full w-full rounded-xl relative"
       )}>
+        {/* Scope Toggle Bar */}
+        <div className="flex items-center px-4 py-1.5 bg-zinc-950 border-b border-zinc-800 gap-2">
+           <button
+             onClick={() => setScope('session')}
+             className={cn("text-xs font-medium px-2 py-1 rounded transition-colors", scope === 'session' ? 'bg-indigo-500/20 text-indigo-300' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800')}
+           >
+             Session Workspace
+           </button>
+           <button
+             onClick={() => setScope('global')}
+             className={cn("text-xs font-medium px-2 py-1 rounded transition-colors", scope === 'global' ? 'bg-emerald-500/20 text-emerald-300' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800')}
+           >
+             Global Workspace
+           </button>
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 py-2 bg-zinc-900 border-b border-zinc-800 shrink-0">
           <div className="flex items-center gap-2 text-zinc-300 min-w-0 pr-2">
-            <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
+            <FileText className={cn("w-4 h-4 shrink-0", scope === 'global' ? 'text-emerald-400' : 'text-indigo-400')} />
             <span className="text-sm font-mono font-medium truncate">{filename}</span>
             {hasChanges && <span className="w-2 h-2 rounded-full bg-amber-500 ml-2 shrink-0" title="Unsaved changes" />}
           </div>
@@ -69,11 +86,13 @@ export function ArtifactEditor({ filename, initialContent, onSave }: ArtifactEdi
                onClick={handleSave}
                disabled={!hasChanges || isSaving}
                className={cn("flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors shrink-0",
-                  hasChanges ? "bg-indigo-600 hover:bg-indigo-500 text-white" : "bg-zinc-800 text-zinc-500 cursor-not-allowed"
+                  hasChanges 
+                    ? (scope === 'global' ? "bg-emerald-600 hover:bg-emerald-500 text-white" : "bg-indigo-600 hover:bg-indigo-500 text-white") 
+                    : "bg-zinc-800 text-zinc-500 cursor-not-allowed"
                )}
              >
                <Save className="w-3.5 h-3.5" />
-               <span className="hidden sm:inline">{isSaving ? 'Committing...' : 'Commit'}</span>
+               <span className="hidden sm:inline">{isSaving ? 'Committing...' : `Commit to ${scope === 'global' ? 'Global' : 'Session'}`}</span>
                <span className="inline sm:hidden">{isSaving ? '...' : 'Save'}</span>
              </button>
              <button
@@ -95,7 +114,7 @@ export function ArtifactEditor({ filename, initialContent, onSave }: ArtifactEdi
         />
         {/* Simple line number guider */}
         <div className="absolute top-4 left-0 w-8 flex flex-col items-center pointer-events-none opacity-0 group-hover:opacity-30 transition-opacity">
-           <CornerDownRight className="w-4 h-4 text-indigo-400" />
+           <CornerDownRight className={cn("w-4 h-4", scope === 'global' ? "text-emerald-400" : "text-indigo-400")} />
         </div>
       </div>
     </div>

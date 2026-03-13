@@ -8,3 +8,7 @@ binding = "AI"
 [[vectorize]]
 binding = "VECTORIZE"
 index_name = "cr-sessions-index"
+
+[[r2_buckets]]
+binding = "GIT_PACKS_BUCKET"
+bucket_name = "cr-git-repos"

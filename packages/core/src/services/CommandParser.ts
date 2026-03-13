@@ -40,6 +40,10 @@ export type CommandAction =
   | 'SEARCH'
   | 'SYSTEM'
   
+  // Global Workspace
+  | 'GLOBAL_SYNC'
+  | 'GLOBAL_EDIT'
+  
   // Fallback
   | 'UNKNOWN';
 
@@ -71,6 +75,8 @@ export const CommandAction = {
   GRAPH_CLUSTER: 'GRAPH_CLUSTER' as CommandAction,
   SEARCH: 'SEARCH' as CommandAction,
   SYSTEM: 'SYSTEM' as CommandAction,
+  GLOBAL_SYNC: 'GLOBAL_SYNC' as CommandAction,
+  GLOBAL_EDIT: 'GLOBAL_EDIT' as CommandAction,
   UNKNOWN: 'UNKNOWN' as CommandAction,
 };
 
@@ -154,6 +160,11 @@ export function parseCommand(input: string): CommandIntent | null {
     if (verb === 'dependants') return { action: CommandAction.GRAPH_DEPENDANTS, args, raw: input };
     if (verb === 'stats') return { action: CommandAction.GRAPH_STATS, args, raw: input };
     if (verb === 'cluster') return { action: CommandAction.GRAPH_CLUSTER, args, raw: input };
+  }
+
+  if (namespace === 'global') {
+    if (verb === 'sync') return { action: CommandAction.GLOBAL_SYNC, args, raw: input };
+    if (verb === 'edit') return { action: CommandAction.GLOBAL_EDIT, args, raw: input };
   }
 
   return { action: CommandAction.UNKNOWN, args: parts.slice(1), raw: input };

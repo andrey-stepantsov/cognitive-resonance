@@ -23,6 +23,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitest/coverage-v8": "^4.0.18",
     "custom-env": "^2.0.6",
+    "fake-indexeddb": "^6.2.5",
     "jsdom": "^28.1.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

@@ -120,4 +120,24 @@ describe('LocalIndexedDBProvider', () => {
     const config = await provider.loadGemsConfig();
     expect(config).toBeNull();
   });
+
+  it('archives and unarchives a session', async () => {
+    await provider.saveSession('archive-test', { customName: 'To Archive', messages: [], config: {} });
+    
+    // Archive it
+    await provider.archiveSession('archive-test', true);
+    let loaded = await provider.loadSession('archive-test');
+    expect(loaded?.isArchived).toBe(true);
+    expect(loaded?.data.isArchived).toBe(true);
+
+    // Unarchive it
+    await provider.archiveSession('archive-test', false);
+    loaded = await provider.loadSession('archive-test');
+    expect(loaded?.isArchived).toBe(false);
+    expect(loaded?.data.isArchived).toBe(false);
+  });
+
+  it('ignores archiving a non-existent session', async () => {
+    await expect(provider.archiveSession('non-existent', true)).resolves.toBeUndefined();
+  });
 });

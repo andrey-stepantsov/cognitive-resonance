@@ -37,6 +37,16 @@ export interface IAuthProvider {
   login(): Promise<void>;
 
   /**
+   * Logs the user in with email and password.
+   */
+  loginWithEmail?(email: string, password: string): Promise<void>;
+
+  /**
+   * Signs the user up with email and password.
+   */
+  signupWithEmail?(email: string, password: string): Promise<void>;
+
+  /**
    * Logs the user out.
    */
   logout(): Promise<void>;

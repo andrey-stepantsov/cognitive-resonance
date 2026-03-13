@@ -1,4 +1,4 @@
-import { Client, Account, type Models } from 'appwrite';
+import { Client, Account, ID, type Models } from 'appwrite';
 
 export class AuthService {
   private client: Client;
@@ -22,7 +22,11 @@ export class AuthService {
   async getCurrentUser(): Promise<Models.User<Models.Preferences> | null> {
     try {
       return await this.account.get();
-    } catch (err) {
+    } catch (err: any) {
+      // 401 is expected if the user has no active session
+      if (err?.code !== 401) {
+        console.warn('Silent auth check failure:', err);
+      }
       return null;
     }
   }
@@ -31,6 +35,15 @@ export class AuthService {
     // Appwrite creates a full browser redirect for OAuth
     // The provider string should be e.g. 'google', 'github'
     await this.account.createOAuth2Session(provider as any, successUrl, failureUrl);
+  }
+
+  async loginWithEmail(email: string, password: string): Promise<void> {
+    await this.account.createEmailPasswordSession(email, password);
+  }
+
+  async signupWithEmail(email: string, password: string): Promise<void> {
+    await this.account.create(ID.unique(), email, password);
+    await this.loginWithEmail(email, password);
   }
 
   async logout(): Promise<void> {
