@@ -2,7 +2,7 @@
 import {
   Send, BrainCircuit, Activity, Network, Trash2, Check, X,
   AlertTriangle, Plus, Copy, FileText, Share2, Diamond,
-  Database, Loader2, Paperclip, Star, Edit3, Upload, Mic, MicOff
+  Database, Loader2, Paperclip, Star, Edit3, Upload, Mic, MicOff, Square
 } from 'lucide-react';
 import { SemanticGraph, DissonanceMeter, MarkdownRenderer } from '@cr/ui';
 import { clsx } from 'clsx';
@@ -218,12 +218,7 @@ export default function App() {
         <div className="flex-1 flex flex-col min-w-0 w-full lg:min-w-[400px] max-w-3xl mx-auto lg:border-x border-zinc-800/30 bg-[#0a0a0a] shadow-2xl relative lg:z-10">
           <div className="p-4 lg:p-6 border-b border-zinc-800/50 flex items-center justify-between bg-zinc-900/20 backdrop-blur-md relative">
             <div className="flex items-center"><button className="lg:hidden p-2 -ml-2 text-zinc-400 hover:text-zinc-100" onClick={() => app.setIsDissonancePanelOpen(true)}><Activity className="w-5 h-5" /></button></div>
-            <div className="flex items-center gap-3 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-              <BrainCircuit className="w-6 h-6 text-indigo-500" />
-              <h1 className="text-lg lg:text-xl font-semibold tracking-tight whitespace-nowrap hidden sm:block">
-                {app.isViewMode ? `Resonance History: ${app.historyFilename}` : 'Cognitive Resonance'}
-              </h1>
-            </div>
+
             <div className="flex items-center gap-2">
               {app.activeState?.tokenUsage?.totalTokenCount != null && (
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold tabular-nums transition-all border bg-zinc-800/50 text-zinc-400 border-zinc-700/50 shadow-inner" title={`Context Size: ${app.activeState.tokenUsage.totalTokenCount.toLocaleString()} tokens`}>
@@ -332,46 +327,87 @@ export default function App() {
                 </div>
               )}
               
-              {/* REPL Autocomplete Panel */}
+              {/* Autocomplete Panel */}
               <div 
                 className={cn(
                   "w-full flex flex-col overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] bg-zinc-950/80 backdrop-blur-md rounded-2xl",
-                  app.input.startsWith('/') ? "h-[50vh] min-h-[300px] opacity-100 border border-zinc-800 shadow-xl mb-2" : "h-0 min-h-0 opacity-0 border-transparent mb-0"
+                  app.input.startsWith('/') || app.mentionSearchQuery !== null ? "h-[50vh] min-h-[300px] opacity-100 border border-zinc-800 shadow-xl mb-2" : "h-0 min-h-0 opacity-0 border-transparent mb-0"
                 )}
               >
                 <div className="flex-1 overflow-y-auto p-3 sm:p-4 custom-scrollbar">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                    {[
-                      { cmd: '/session ls', desc: 'List recent sessions in the sidebar' },
-                      { cmd: '/session new', desc: 'Start a fresh chat session' },
-                      { cmd: '/session clear', desc: 'Wipe current session context entirely' },
-                      { cmd: '/history', desc: 'View local REPL command history' },
-                      { cmd: '/model use [name]', desc: 'Switch active LLM (e.g. pro, flash)' },
-                      { cmd: '/gem ls', desc: 'List your available agent profiles' },
-                      { cmd: '/graph ls', desc: 'Dump active semantic nodes to chat' },
-                      { cmd: '/graph search [query]', desc: 'Fuzzy search across graph nodes' },
-                      { cmd: '/graph stats', desc: 'View graph memory metrics' },
-                      { cmd: '/clear', desc: 'Clear the chat viewport' }
-                    ].filter(c => c.cmd.includes(app.input) || app.input === '/').map((c, i) => (
-                      <div key={i} className="group relative flex flex-col p-4 bg-zinc-900/30 hover:bg-zinc-800/80 rounded-xl cursor-pointer transition-all border border-zinc-800/50 hover:border-indigo-500/30 overflow-hidden shrink-0 h-fit"
-                           onClick={() => app.setInput(c.cmd.replace(/ \[.*\]/, ' '))}>
-                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        <span className="relative text-sm font-mono text-indigo-300 font-medium mb-1.5 drop-shadow-sm">{c.cmd}</span>
-                        <span className="relative text-xs text-zinc-400 leading-relaxed">{c.desc}</span>
-                      </div>
-                    ))}
-                  </div>
+                  {/* Mention Search Results */}
+                  {app.mentionSearchQuery !== null && (
+                    <div className="flex flex-col gap-2">
+                       <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1 px-1">Semantic Markers</div>
+                       {app.mentionSuggestions.length === 0 ? (
+                         <div className="text-xs text-zinc-500 italic px-1 py-2">No matching concepts found in history.</div>
+                       ) : (
+                         app.mentionSuggestions.map((m, i) => (
+                           <div key={i} className={cn(
+                             "group relative flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border overflow-hidden",
+                             i === 0 
+                               ? "bg-zinc-800/90 border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.15)]" 
+                               : "bg-zinc-900/30 border-zinc-800/50 hover:bg-zinc-800/80 hover:border-indigo-500/30"
+                           )} onClick={() => app.handleMentionSelect(m.name)}>
+                             <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                             <span className="relative text-sm font-medium text-indigo-300">
+                               {m.name} {i === 0 && <span className="ml-2 text-[10px] text-zinc-500 font-normal border border-zinc-700/50 px-1 rounded bg-zinc-900/50">Spacebar to insert</span>}
+                             </span>
+                             <span className="relative text-[10px] font-mono bg-zinc-800/80 px-1.5 py-0.5 rounded text-zinc-500 group-hover:bg-indigo-500/20 group-hover:text-indigo-400 transition-colors">Weight: {m.count}</span>
+                           </div>
+                         ))
+                       )}
+                    </div>
+                  )}
+
+                  {/* Slash Command Results */}
+                  {app.input.startsWith('/') && app.mentionSearchQuery === null && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {[
+                        { cmd: '/session ls', desc: 'List recent sessions in the sidebar' },
+                        { cmd: '/session new', desc: 'Start a fresh chat session' },
+                        { cmd: '/session clear', desc: 'Wipe current session context entirely' },
+                        { cmd: '/history', desc: 'View local REPL command history' },
+                        { cmd: '/model use [name]', desc: 'Switch active LLM (e.g. pro, flash)' },
+                        { cmd: '/gem ls', desc: 'List your available agent profiles' },
+                        { cmd: '/graph ls', desc: 'Dump active semantic nodes to chat' },
+                        { cmd: '/graph search [query]', desc: 'Fuzzy search across graph nodes' },
+                        { cmd: '/graph stats', desc: 'View graph memory metrics' },
+                        { cmd: '/clear', desc: 'Clear the chat viewport' }
+                      ].filter(c => c.cmd.includes(app.input) || app.input === '/').map((c, i) => (
+                        <div key={i} className="group relative flex flex-col p-4 bg-zinc-900/30 hover:bg-zinc-800/80 rounded-xl cursor-pointer transition-all border border-zinc-800/50 hover:border-indigo-500/30 overflow-hidden shrink-0 h-fit"
+                             onClick={() => app.setInput(c.cmd.replace(/ \[.*\]/, ' '))}>
+                          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          <span className="relative text-sm font-mono text-indigo-300 font-medium mb-1.5 drop-shadow-sm">{c.cmd}</span>
+                          <span className="relative text-xs text-zinc-400 leading-relaxed">{c.desc}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
               <form onSubmit={app.handleSubmit} className="relative flex items-center">
-                <input type="file" ref={app.fileInputRef} onChange={app.handleFileSelect} multiple className="hidden" />
-                <button type="button" onClick={() => app.fileInputRef.current?.click()} disabled={app.isLoading} className="p-2.5 text-zinc-400 hover:text-indigo-400 transition-colors disabled:opacity-40 shrink-0" title="Attach files">
-                  <Paperclip className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1 shrink-0 px-2 lg:px-0">
+                  <button
+                    type="button"
+                    onClick={() => app.setIsSearchEnabled(!app.isSearchEnabled)}
+                    disabled={app.isLoading}
+                    className={cn("p-2 transition-colors disabled:opacity-40 rounded-lg",
+                      app.isSearchEnabled ? "text-blue-400 bg-blue-500/10" : "text-zinc-400 hover:text-indigo-400"
+                    )}
+                    title={app.isSearchEnabled ? "Google Search Grounding: ON" : "Google Search Grounding: OFF"}
+                  >
+                    <Globe className={cn("w-4 h-4", app.isSearchEnabled ? "animate-pulse" : "")} />
+                  </button>
+                  <input type="file" ref={app.fileInputRef} onChange={app.handleFileSelect} multiple className="hidden" />
+                  <button type="button" onClick={() => app.fileInputRef.current?.click()} disabled={app.isLoading} className="p-2.5 text-zinc-400 hover:text-indigo-400 transition-colors disabled:opacity-40" title="Attach files">
+                    <Paperclip className="w-4 h-4" />
+                  </button>
+                </div>
                 <div className="relative w-full group">
-                  <input type="text" value={app.input} onChange={(e) => app.setInput(e.target.value)} onKeyDown={app.handleKeyDown} placeholder={voice.isListening ? "Listening..." : "Send a message..."}
-                    disabled={app.isLoading || !app.selectedModel || voice.isListening}
+                  <input type="text" ref={app.inputRef} value={app.input} onChange={app.handleInputChange} onKeyDown={app.handleKeyDown} placeholder={voice.isListening ? "Listening..." : "Send a message..."}
+                    disabled={!app.selectedModel || voice.isListening}
                     className={cn(
                       "w-full bg-zinc-950 border border-zinc-700/50 rounded-xl pl-4 pr-12 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all disabled:opacity-50",
                       voice.isListening ? "border-indigo-500/50 focus:border-indigo-500/50 animate-pulse text-indigo-300" : "focus:border-indigo-500/50"
@@ -383,10 +419,16 @@ export default function App() {
                     {voice.isListening ? <MicOff className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
                   </button>
                 </div>
-                <button type="submit" disabled={!app.input.trim() || app.isLoading || !app.selectedModel}
-                  className="ml-2 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors disabled:opacity-50 disabled:hover:bg-indigo-600 shrink-0">
-                  <Send className="w-4 h-4" />
-                </button>
+                {app.isLoading ? (
+                  <button type="button" onClick={app.handleStopGeneration} className="ml-2 p-2 bg-red-600/20 hover:bg-red-600/40 text-red-500 rounded-lg transition-colors shrink-0" title="Stop generation">
+                    <Square className="w-4 h-4 fill-current" />
+                  </button>
+                ) : (
+                  <button type="submit" disabled={!app.input.trim() || !app.selectedModel}
+                    className="ml-2 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors disabled:opacity-50 disabled:hover:bg-indigo-600 shrink-0">
+                    <Send className="w-4 h-4" />
+                  </button>
+                )}
               </form>
             </div>
           )}

@@ -193,6 +193,20 @@ export function useREPL() {
         case CommandAction.ATTACH:
            injectSystemMessage(`Attached file: ${intent.args.join(' ')}`);
            break;
+        case CommandAction.SEARCH: {
+          const mode = intent.args[0]?.toLowerCase();
+          if (mode === 'on') {
+            cr.setIsSearchEnabled(true);
+            injectSystemMessage('Google Search Grounding has been ENABLED for new messages.');
+          } else if (mode === 'off') {
+            cr.setIsSearchEnabled(false);
+            injectSystemMessage('Google Search Grounding has been DISABLED.');
+          } else {
+            cr.setIsSearchEnabled(!cr.isSearchEnabled);
+            injectSystemMessage(`Google Search Grounding is now ${!cr.isSearchEnabled ? 'ENABLED' : 'DISABLED'}.`);
+          }
+          break;
+        }
         case CommandAction.CONTEXT_DROP:
            injectSystemMessage(`Dropped context for: ${intent.args.join(' ')}`);
            break;
@@ -220,6 +234,12 @@ export function useREPL() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (e.key === ' ' && cr.mentionSearchQuery !== null && cr.mentionSuggestions.length > 0) {
+      e.preventDefault();
+      cr.handleMentionSelect(cr.mentionSuggestions[0].name);
+      return;
+    }
+    
     if (e.key === 'ArrowUp') {
       e.preventDefault();
       if (commandHistory.length > 0) {

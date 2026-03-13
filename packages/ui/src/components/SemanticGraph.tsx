@@ -147,6 +147,7 @@ export const SemanticGraph: React.FC<SemanticGraphProps> = ({ nodes, edges, onNo
         : "w-full h-full flex-1 min-h-[300px] overflow-hidden rounded-xl bg-zinc-950/50 border border-zinc-800/50 relative group"
     }>
       <button 
+        type="button"
         onClick={() => setIsFullscreen(!isFullscreen)}
         className={`fixed md:absolute top-2 right-2 p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors z-[110] ${!isFullscreen ? 'opacity-0 group-hover:opacity-100' : ''}`}
         title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}

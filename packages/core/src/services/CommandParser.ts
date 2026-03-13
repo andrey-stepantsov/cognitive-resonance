@@ -30,6 +30,7 @@ export type CommandAction =
   | 'GRAPH_DEPENDANTS'
   | 'GRAPH_STATS'
   | 'GRAPH_CLUSTER'
+  | 'SEARCH'
   
   // Fallback
   | 'UNKNOWN';
@@ -55,6 +56,7 @@ export const CommandAction = {
   GRAPH_DEPENDANTS: 'GRAPH_DEPENDANTS' as CommandAction,
   GRAPH_STATS: 'GRAPH_STATS' as CommandAction,
   GRAPH_CLUSTER: 'GRAPH_CLUSTER' as CommandAction,
+  SEARCH: 'SEARCH' as CommandAction,
   UNKNOWN: 'UNKNOWN' as CommandAction,
 };
 
@@ -91,6 +93,7 @@ export function parseCommand(input: string): CommandIntent | null {
   if (namespace === 'history') return { action: CommandAction.HISTORY, args: parts.slice(1), raw: input };
   if (namespace === 'clear') return { action: CommandAction.SESSION_CLEAR, args: parts.slice(1), raw: input };
   if (namespace === 'attach') return { action: CommandAction.ATTACH, args: parts.slice(1), raw: input };
+  if (namespace === 'search') return { action: CommandAction.SEARCH, args: parts.slice(1), raw: input };
 
   // Compound commands
   if (namespace === 'session') {

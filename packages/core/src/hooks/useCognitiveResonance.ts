@@ -6,6 +6,7 @@ import { saveApiKey, loadApiKey, clearApiKey, downloadJSON, shareJSON, type Sess
 import { useCognitivePlatform } from '../providers/CognitivePlatformContext';
 import { initGemini, generateResponse, fetchModels } from '../services/GeminiService';
 import { searchHistory } from '../services/SearchService';
+import Fuse from 'fuse.js';
 
 export const responseSchema = {
   type: Type.OBJECT,
@@ -72,6 +73,7 @@ export function useCognitiveResonance() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isSearchEnabled, setIsSearchEnabled] = useState(false);
   const [selectedTurnIndex, setSelectedTurnIndex] = useState<number | null>(null);
 
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
@@ -89,6 +91,9 @@ export function useCognitiveResonance() {
   const [editSessionName, setEditSessionName] = useState('');
   const [markerViewMode, setMarkerViewMode] = useState<'graph' | 'list'>('graph');
   const [markerSearchQuery, setMarkerSearchQuery] = useState('');
+  const [mentionSearchQuery, setMentionSearchQuery] = useState<string | null>(null);
+  const [mentionSuggestions, setMentionSuggestions] = useState<any[]>([]);
+  const [cursorPosition, setCursorPosition] = useState<number | null>(null);
 
   const [isDissonancePanelOpen, setIsDissonancePanelOpen] = useState(false);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
@@ -120,6 +125,21 @@ export function useCognitiveResonance() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const handleStopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    if (!isLoading && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isLoading]);
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
 
@@ -240,6 +260,75 @@ export function useCognitiveResonance() {
     storage.saveGemsConfig({ gems: savedGems.filter(g => !g.isBuiltIn), defaultGemId: id });
   };
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setInput(val);
+    const cursor = e.target.selectionStart || 0;
+    setCursorPosition(cursor);
+
+    // Check if the word before the cursor starts with @
+    const textBeforeCursor = val.slice(0, cursor);
+    const words = textBeforeCursor.split(/\s/);
+    const targetWord = words[words.length - 1];
+
+    if (targetWord && targetWord.startsWith('@')) {
+      // Allow valid semantic node characters (letters, numbers, underscores, dashes)
+      const query = targetWord.slice(1);
+      if (/^[a-zA-Z0-9_\-]*$/.test(query)) {
+        setMentionSearchQuery(query);
+      } else {
+        setMentionSearchQuery(null);
+      }
+    } else {
+      setMentionSearchQuery(null);
+    }
+  };
+
+  // Perform fuzzy search whenever mentionSearchQuery or allMarkersList changes
+  useEffect(() => {
+    if (mentionSearchQuery === null) {
+      setMentionSuggestions([]);
+      return;
+    }
+    
+    // allMarkersList already has ranked nodes from historyData aggregation below
+    const markers = Array.from(markerCounts.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+    
+    if (!mentionSearchQuery) {
+       // If just '@', show top ranked
+       setMentionSuggestions(markers);
+       return;
+    }
+    
+    // Use Fuse to search and maintain rank weight
+    const fuse = new Fuse(markers, { keys: ['name'], threshold: 0.4 });
+    const results = fuse.search(mentionSearchQuery)
+                        .map(r => r.item)
+                        .sort((a, b) => b.count - a.count);
+    setMentionSuggestions(results);
+  }, [mentionSearchQuery, messages]);
+
+  const handleMentionSelect = (markerLabel: string) => {
+    if (cursorPosition === null) return;
+    
+    const textBeforeCursor = input.slice(0, cursorPosition);
+    const textAfterCursor = input.slice(cursorPosition);
+    
+    // Find the @word we are replacing
+    const words = textBeforeCursor.split(/\s/);
+    const targetWord = words[words.length - 1];
+    
+    if (targetWord && targetWord.startsWith('@')) {
+      const newTextBefore = textBeforeCursor.slice(0, -targetWord.length);
+      const replacement = `@${markerLabel} `;
+      const newInput = newTextBefore + replacement + textAfterCursor;
+      setInput(newInput);
+      setMentionSearchQuery(null);
+      setMentionSuggestions([]);
+      // We ideally want to set cursor position after the replaced word, but React state makes it tricky without a ref
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) {
@@ -249,15 +338,59 @@ export function useCognitiveResonance() {
       setMessages([...messages, { role: 'user', content: input }, { role: 'model', content: 'Invalid model selected. Please choose a compliant gemini- chat model.', isError: true }]);
       return;
     }
-    const userMessage = input.trim();
+    
+    setMentionSearchQuery(null);
+    setMentionSuggestions([]);
+    const rawUserMessage = input.trim();
     setInput('');
-    const newMessages: Message[] = [...messages, { role: 'user', content: userMessage }];
+    
+    // Add the un-modified message to the visible UI history
+    const newMessages: Message[] = [...messages, { role: 'user', content: rawUserMessage }];
     setMessages(newMessages);
     setIsLoading(true);
     setSelectedTurnIndex(null);
+    abortControllerRef.current = new AbortController();
+
+    // Prompt Interception: Look for @ mentions
+    let payloadMessageContent = rawUserMessage;
+    const mentionRegex = /@([a-zA-Z0-9_\-]+)/g;
+    const matches = Array.from(rawUserMessage.matchAll(mentionRegex));
+    const matchedMarkers: Set<string> = new Set();
+    
+    if (matches.length > 0 && allMarkersList.length > 0) {
+      matches.forEach(match => {
+        const query = match[1].toLowerCase();
+        // Check if query exactly matches a known node label or ID
+        const hit = allMarkersList.find(n => 
+          (n.label && n.label.toLowerCase() === query) || 
+          n.id.toLowerCase() === query
+        );
+        if (hit) {
+          matchedMarkers.add(`${hit.label || hit.id} (Weight: ${hit.weight || 1})`);
+        }
+      });
+      
+      if (matchedMarkers.size > 0) {
+        payloadMessageContent += `\n\n<system_directive>\nThe user explicitly referenced the following semantic markers from our conversation history. Focus your attention on these concepts in your response:\n${Array.from(matchedMarkers).map(m => `- ${m}`).join('\n')}\n</system_directive>`;
+      }
+    }
+    
+    // Create a copy of the messages array for the LLM payload where the last message is the augmented one
+    const payloadMessages = [...newMessages];
+    payloadMessages[payloadMessages.length - 1] = { 
+      role: 'user', 
+      content: payloadMessageContent 
+    };
 
     try {
-      const data = await generateResponse(selectedModel, newMessages, sessionSystemPrompt, responseSchema);
+      const data = await generateResponse(
+        selectedModel, 
+        payloadMessages, 
+        sessionSystemPrompt, 
+        responseSchema,
+        abortControllerRef.current?.signal,
+        isSearchEnabled
+      );
       const newState: InternalState = {
         dissonanceScore: data.dissonanceScore, dissonanceReason: data.dissonanceReason,
         semanticNodes: data.semanticNodes || [], semanticEdges: data.semanticEdges || [],
@@ -272,10 +405,15 @@ export function useCognitiveResonance() {
         return [...prev, { role: 'model', content: data.reply, internalState: newState, modelTurnIndex: modelCount }];
       });
     } catch (error: any) {
-      setMessages(prev => [...prev, { role: 'model', content: error.message || 'An error occurred.', isError: true }]);
+      if (error.name === 'AbortError') {
+        setMessages(prev => [...prev, { role: 'model', content: '[Generation Interrupted]', isError: true }]);
+      } else {
+        setMessages(prev => [...prev, { role: 'model', content: error.message || 'An error occurred.', isError: true }]);
+      }
     } finally {
       setIsLoading(false);
       setAttachedFiles([]);
+      abortControllerRef.current = null;
     }
   };
 
@@ -427,16 +565,18 @@ export function useCognitiveResonance() {
     historySearchQuery, setHistorySearchQuery, activeSidebarTab, setActiveSidebarTab,
     searchResults, targetTurnIndex, editingSessionId, setEditingSessionId, editSessionName, setEditSessionName,
     markerViewMode, setMarkerViewMode, markerSearchQuery, setMarkerSearchQuery,
+    mentionSearchQuery, setMentionSearchQuery, mentionSuggestions, handleInputChange, handleMentionSelect,
     isDissonancePanelOpen, setIsDissonancePanelOpen, isRightSidebarOpen, setIsRightSidebarOpen,
     copiedIndex, setCopiedIndex, isGemSidebarOpen, setIsGemSidebarOpen,
     availableModels, chatModels, savedGems, defaultGemId, activeGemId, selectedModel, setSelectedModel,
     sessionSystemPrompt, editingGem, setEditingGem, creatingGem, setCreatingGem, draftGem, setDraftGem,
+    isSearchEnabled, setIsSearchEnabled,
     isViewMode, historyFilename, setHistoryFilename, attachedFiles, setAttachedFiles,
     apiKey, showApiKeyModal, setShowApiKeyModal, apiKeyInput, setApiKeyInput,
-    messagesEndRef, fileInputRef, importInputRef,
+    messagesEndRef, fileInputRef, importInputRef, inputRef,
     modelMessages, activeTurnIndex, activeState, isViewingHistory, historyData, filteredMarkers,
     handleSetApiKey, handleClearApiKey, handleSelectGem, handleSaveGem, handleDeleteGem, handleSetDefaultGem,
-    handleSubmit, handleDownloadHistory, handleLoadSession, handleSearchResultClick,
+    handleSubmit, handleStopGeneration, handleDownloadHistory, handleLoadSession, handleSearchResultClick,
     handleDeleteSession, startRenameSession, handleRenameSessionSubmit, startNewSession, handleFileSelect, handleImportSession,
   };
 }

@@ -22,7 +22,9 @@ export async function generateResponse(
   model: string,
   history: Array<{ role: string; content: string }>,
   systemPrompt: string,
-  responseSchema: any
+  responseSchema: any,
+  abortSignal?: AbortSignal,
+  enableSearch?: boolean
 ): Promise<any> {
   const ai = getAI();
 
@@ -42,6 +44,8 @@ export async function generateResponse(
       systemInstruction: finalInstruction,
       responseMimeType: 'application/json',
       responseSchema,
+      abortSignal,
+      ...(enableSearch ? { tools: [{ googleSearch: {} }] } : {}),
     },
   });
 
@@ -100,6 +104,7 @@ export async function translateToDSL(transcript: string): Promise<string> {
 - /graph search [query]
 - /graph describe [node_id]
 - /attach [file]
+- /search [on|off]
 
 Rules:
 1. If the user is clearly giving a command (e.g. "Start a new session", "Switch to the pro model"), return ONLY the corresponding / slash command(s), separated by newlines.
