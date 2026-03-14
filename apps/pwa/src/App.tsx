@@ -506,6 +506,7 @@ export default function App() {
                 <ArtifactEditor
                   filename="VirtualContext.md"
                   initialContent={app.artifactContent}
+                  sessionId={app.activeSessionId}
                   onSave={async (filename, content, commitMessage, scope) => {
                     app.setArtifactContent(content);
                     const sessionId = app.ensureActiveSession();

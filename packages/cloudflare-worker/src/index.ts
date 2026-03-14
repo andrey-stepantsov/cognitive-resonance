@@ -5,9 +5,12 @@ export interface Env {
   AI: any;
   VECTORIZE: any;
   GIT_PACKS_BUCKET: R2Bucket;
+  ROOM_SESSION: DurableObjectNamespace;
   // Secrets
   APPWRITE_WEBHOOK_SECRET: string;
 }
+
+export { RoomSession } from './roomSession';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -24,6 +27,24 @@ export default {
           'Access-Control-Max-Age': '86400',
         }
       });
+    }
+
+    if (path.startsWith('/room/')) {
+      const parts = path.split('/');
+      const sessionId = parts[2];
+      if (!sessionId) {
+        return new Response('Missing Session ID', { status: 400 });
+      }
+
+      const upgradeHeader = request.headers.get('Upgrade');
+      if (!upgradeHeader || upgradeHeader !== 'websocket') {
+        return new Response('Expected Upgrade: websocket', { status: 426 });
+      }
+
+      const id = env.ROOM_SESSION.idFromName(sessionId);
+      const stub = env.ROOM_SESSION.get(id);
+
+      return stub.fetch(request);
     }
 
     if (path.startsWith('/git/') && path.endsWith('/info/refs')) {

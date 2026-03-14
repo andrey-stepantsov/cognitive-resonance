@@ -12,3 +12,12 @@ index_name = "cr-sessions-index"
 [[r2_buckets]]
 binding = "GIT_PACKS_BUCKET"
 bucket_name = "cr-git-repos"
+
+[durable_objects]
+bindings = [
+  { name = "ROOM_SESSION", class_name = "RoomSession" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["RoomSession"]

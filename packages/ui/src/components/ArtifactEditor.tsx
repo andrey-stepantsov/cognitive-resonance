@@ -7,14 +7,17 @@ function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
 }
 
+import { useMultiplayerSync } from '@cr/core';
+
 interface ArtifactEditorProps {
   filename: string;
   initialContent: string;
   onSave: (filename: string, content: string, commitMessage: string, scope: 'session' | 'global') => Promise<void>;
   onSync?: (scope: 'session' | 'global') => Promise<void>;
+  sessionId?: string; // Phase 3: Multiplayer Edge
 }
 
-export function ArtifactEditor({ filename, initialContent, onSave, onSync }: ArtifactEditorProps) {
+export function ArtifactEditor({ filename, initialContent, onSave, onSync, sessionId }: ArtifactEditorProps) {
   const [content, setContent] = useState(initialContent);
   const [commitMessage, setCommitMessage] = useState(`Update ${filename}`);
   const [isSaving, setIsSaving] = useState(false);
@@ -22,9 +25,23 @@ export function ArtifactEditor({ filename, initialContent, onSave, onSync }: Art
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [scope, setScope] = useState<'session' | 'global'>('session');
 
+  // Multiplayer Hook
+  const { isConnected, cursors, sendCursor } = useMultiplayerSync({
+    workerUrl: (import.meta as any).env?.VITE_WORKER_URL || 'localhost:8787',
+    sessionId: sessionId || 'default-room'
+  });
+
   useEffect(() => {
     setHasChanges(content !== initialContent);
   }, [content, initialContent]);
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!isConnected) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    sendCursor(x, y);
+  };
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -68,11 +85,26 @@ export function ArtifactEditor({ filename, initialContent, onSave, onSync }: Art
            </button>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 py-2 bg-zinc-900 border-b border-zinc-800 shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 py-2 bg-zinc-900 border-b border-zinc-800 shrink-0 relative overflow-hidden">
+          {/* subtle indicator for connection status */}
+          <div className={cn(
+            "absolute top-0 right-0 h-0.5 w-full bg-gradient-to-r",
+            isConnected ? "from-emerald-500/0 via-emerald-500/20 to-emerald-500/0 opacity-100" : "opacity-0"
+          )} />
+          
           <div className="flex items-center gap-2 text-zinc-300 min-w-0 pr-2">
             <FileText className={cn("w-4 h-4 shrink-0", scope === 'global' ? 'text-emerald-400' : 'text-indigo-400')} />
             <span className="text-sm font-mono font-medium truncate">{filename}</span>
             {hasChanges && <span className="w-2 h-2 rounded-full bg-amber-500 ml-2 shrink-0" title="Unsaved changes" />}
+            {sessionId && (
+              <span className={cn(
+                "ml-2 flex items-center gap-1.5 px-1.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider font-semibold border",
+                isConnected ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-amber-500/10 text-amber-500 border-amber-500/20"
+              )}>
+                <span className={cn("w-1.5 h-1.5 rounded-full", isConnected ? "bg-emerald-400 animate-pulse" : "bg-amber-500")} />
+                {isConnected ? `${Object.keys(cursors).length + 1} LIVE` : 'CONNECTING...'}
+              </span>
+            )}
           </div>
           
           <div className="flex items-center gap-2 flex-wrap ml-auto">
@@ -118,7 +150,30 @@ export function ArtifactEditor({ filename, initialContent, onSave, onSync }: Art
           </div>
         </div>
       
-      <div className="flex-1 min-h-0 relative group">
+      <div 
+        className="flex-1 min-h-0 relative group"
+        onPointerMove={handlePointerMove}
+      >
+        {/* Remote Cursors Overlay */}
+        {Object.entries(cursors).map(([senderId, pos]) => (
+          <div 
+            key={senderId} 
+            className="absolute pointer-events-none z-[60] text-indigo-400 drop-shadow-md transition-all duration-75 ease-linear flex items-center gap-1"
+            style={{ 
+              left: `${pos.x * 100}%`, 
+              top: `${pos.y * 100}%`,
+              transform: 'translate(-50%, -50%)'
+            }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="white" strokeWidth="1.5" className="w-4 h-4 drop-shadow">
+              <path d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86c.16-.16.38-.25.6-.25h6.98c.45 0 .67-.54.35-.85L6.35 2.36c-.24-.24-.85-.07-.85.85z"/>
+            </svg>
+            <div className="bg-indigo-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm opacity-80 whitespace-nowrap hidden md:block">
+              {senderId.substring(0, 4)}...
+            </div>
+          </div>
+        ))}
+        
         <textarea 
           value={content}
           onChange={(e) => setContent(e.target.value)}
