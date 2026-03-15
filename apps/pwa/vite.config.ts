@@ -13,10 +13,6 @@ export default defineConfig(({ mode }) => {
     base: process.env.GITHUB_ACTIONS ? '/cognitive-resonance/' : '/',
     plugins: [react(), tailwindcss()],
     define: {
-      'import.meta.env.VITE_APPWRITE_ENDPOINT': JSON.stringify(env.VITE_APPWRITE_ENDPOINT),
-      'import.meta.env.VITE_APPWRITE_PROJECT': JSON.stringify(env.VITE_APPWRITE_PROJECT),
-      'import.meta.env.VITE_APPWRITE_DB_ID': JSON.stringify(env.VITE_APPWRITE_DB_ID),
-      'import.meta.env.VITE_APPWRITE_SESSIONS_COLLECTION_ID': JSON.stringify(env.VITE_APPWRITE_SESSIONS_COLLECTION_ID),
       'import.meta.env.VITE_CLOUDFLARE_WORKER_URL': JSON.stringify(env.VITE_CLOUDFLARE_WORKER_URL),
     },
     server: {

@@ -27,7 +27,7 @@ export function ArtifactEditor({ filename, initialContent, onSave, onSync, sessi
 
   // Multiplayer Hook
   const { isConnected, cursors, sendCursor } = useMultiplayerSync({
-    workerUrl: (import.meta as any).env?.VITE_WORKER_URL || 'localhost:8787',
+    workerUrl: (import.meta as any).env?.VITE_CLOUDFLARE_WORKER_URL || 'localhost:8787',
     sessionId: sessionId || 'default-room'
   });
 

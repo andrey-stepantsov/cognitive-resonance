@@ -730,7 +730,7 @@ describe('useREPL', () => {
         mockGitContextManager.dir,
         'main'
       );
-      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Successfully pushed packfile to Cloudflare/Appwrite! 🎉' }));
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Successfully pushed packfile to Cloudflare! 🎉' }));
     });
 
     it('handles /sync when repo is empty', async () => {

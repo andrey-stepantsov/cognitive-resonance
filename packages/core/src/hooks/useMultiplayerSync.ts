@@ -22,10 +22,11 @@ export function useMultiplayerSync({ workerUrl, sessionId }: UseMultiplayerSyncO
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const connect = useCallback(() => {
-    // Determine wss:// vs ws:// based on workerUrl
-    const protocol = workerUrl.startsWith('localhost') || workerUrl.startsWith('127.0.0.1') ? 'ws' : 'wss';
-    // Remove trailing slash if present
-    const cleanWorkerUrl = workerUrl.replace(/\/$/, '');
+    // Determine wss:// vs ws://
+    const isLocal = workerUrl.includes('localhost') || workerUrl.includes('127.0.0.1');
+    const protocol = isLocal ? 'ws' : 'wss';
+    // Strip trailing slashes and any existing http(s) protocol prefix
+    const cleanWorkerUrl = workerUrl.replace(/\/$/, '').replace(/^https?:\/\//, '');
     const wsUrl = `${protocol}://${cleanWorkerUrl}/room/${sessionId}`;
     
     const ws = new WebSocket(wsUrl);

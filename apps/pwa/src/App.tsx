@@ -2,7 +2,7 @@
 import {
   Send, BrainCircuit, Activity, Network, Trash2, Check, X,
   AlertTriangle, Plus, Copy, FileText, Share2, Diamond,
-  Database, Loader2, Paperclip, Star, Edit3, Upload, Mic, MicOff, Square, Globe, Eye, EyeOff
+  Database, Loader2, Paperclip, Star, Edit3, Upload, Mic, MicOff, Square, Globe, Eye, EyeOff, Cloud, HardDrive
 } from 'lucide-react';
 import { SemanticGraph, DissonanceMeter, MarkdownRenderer, AuthScreen, ArtifactEditor } from '@cr/ui';
 import { clsx } from 'clsx';
@@ -16,7 +16,7 @@ function cn(...inputs: (string | undefined | null | false)[]) {
 
 export default function App() {
   const app = useREPL();
-  const { authStatus, auth } = useCognitivePlatform();
+  const { authStatus, auth, storage } = useCognitivePlatform();
 
   const voice = useVoiceToDSL(async (transcript) => {
     // Determine translation using Gemini
@@ -155,7 +155,18 @@ export default function App() {
                 <>
                   <div className="truncate text-xs font-medium">
                     {s.customName || s.preview}
-                    <div className="text-[10px] text-zinc-600 mt-0.5">{new Date(s.timestamp).toLocaleString()}</div>
+                    <div className="text-[10px] text-zinc-600 mt-0.5 flex items-center gap-1.5">
+                      {new Date(s.timestamp).toLocaleString()}
+                      {s.isCloud ? (
+                        <span className="inline-flex items-center gap-0.5 text-emerald-500/80" title="Synced to cloud">
+                          <Cloud className="w-3 h-3" />
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-0.5 text-zinc-500" title="Local only">
+                          <HardDrive className="w-3 h-3" />
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center gap-1 transition-all shrink-0">
                     <button onClick={(e) => app.startRenameSession(s.id, s.customName || s.preview, e)} className="p-1.5 text-zinc-500 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-md transition-colors" title="Rename">
@@ -208,6 +219,17 @@ export default function App() {
           </h1>
         </div>
         <div className="flex items-center gap-2">
+          {storage.type === 'cloud' && storage.isReady() ? (
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title="Connected to cloud storage">
+              <Cloud className="w-3 h-3" />
+              Synced
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium bg-zinc-800/50 text-zinc-500 border border-zinc-700/30" title="Using local storage">
+              <HardDrive className="w-3 h-3" />
+              Local
+            </div>
+          )}
           {!app.isViewMode && (
             <button onClick={app.handleDownloadHistory} disabled={app.messages.length === 0}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 disabled:opacity-30 disabled:cursor-not-allowed hover:text-white bg-zinc-800/30 hover:bg-zinc-800 rounded border border-zinc-800 transition-colors" title="Download Snapshot JSON">

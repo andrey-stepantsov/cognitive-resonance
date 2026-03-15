@@ -92,21 +92,16 @@ export class RoomSession {
   }
 
   async alarm() {
-    // This executes when the room has been empty for 10 seconds.
-    // Time to flush persistent chat data to Appwrite.
-    
+    // Room has been empty for 10 seconds — flush chat history.
     console.log("Room empty. Triggering alarm flush...");
     
     const chats = await this.state.storage.get<any[]>('chats');
     if (!chats || chats.length === 0) {
-      return; // Nothing to flush
+      return;
     }
 
-    // TODO: Actually POST `chats` to Appwrite using env.APPWRITE_WEBHOOK_SECRET
-    // For now, we simulate the structure we need to build for the Appwrite sync.
-    // E.g., fetch('https://appwrite.my-domain.com/...', { ... })
-
-    // Once successfully flushed, clean up DO storage to save space
+    // TODO: Persist chats to D1 if long-term storage is needed.
+    // For now, just clear DO transient storage.
     await this.state.storage.delete('chats');
     console.log("Successfully flushed chats and cleared storage.");
   }

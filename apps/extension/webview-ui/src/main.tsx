@@ -10,28 +10,29 @@ import './index.css';
 
 import { CognitivePlatformProvider } from '@cr/core';
 import { VSCodeStorageProvider } from './providers/VSCodeStorageProvider';
-// The extension uses the anonymous provider because auth isn't natively supported yet.
-import { AnonymousAuthProvider, initBackendEnvironment } from '@cr/backend';
+import { initBackendEnvironment, CloudflareStorageProvider } from '@cr/backend';
+import { ExtensionAuthProvider } from './providers/ExtensionAuthProvider';
 
-// Inject environment variables explicitly for Vite string replacement
+// Configure backend with Cloudflare Worker URL
 initBackendEnvironment({
-  endpoint: import.meta.env.VITE_APPWRITE_ENDPOINT,
-  project: import.meta.env.VITE_APPWRITE_PROJECT,
-  dbId: import.meta.env.VITE_APPWRITE_DB_ID,
-  collectionId: import.meta.env.VITE_APPWRITE_SESSIONS_COLLECTION_ID,
   gitRemoteUrl: import.meta.env.VITE_CLOUDFLARE_WORKER_URL,
 });
 
-const authProvider = new AnonymousAuthProvider();
-const storageProvider = new VSCodeStorageProvider();
+const authProvider = new ExtensionAuthProvider();
+const localStorageProvider = new VSCodeStorageProvider();
+const cloudStorage = new CloudflareStorageProvider();
+cloudStorage.configure(
+  import.meta.env.VITE_CLOUDFLARE_WORKER_URL || '',
+  import.meta.env.VITE_CR_API_KEY || ''
+);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <CognitivePlatformProvider
       localAuth={authProvider}
-      localStorage={storageProvider}
-      cloudAuth={authProvider} // Cloud mock disabled in VSCode version by default
-      cloudStorage={storageProvider}
+      localStorage={localStorageProvider}
+      cloudAuth={authProvider}
+      cloudStorage={cloudStorage}
     >
       <App />
     </CognitivePlatformProvider>

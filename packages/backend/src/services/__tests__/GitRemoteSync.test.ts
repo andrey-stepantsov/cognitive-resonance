@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { gitRemoteSync } from '../GitRemoteSync';
-import { authService } from '../AuthService';
 
 vi.mock('isomorphic-git', () => {
   return {
@@ -11,37 +10,25 @@ vi.mock('isomorphic-git', () => {
   };
 });
 
-vi.mock('../AuthService', () => {
-  return {
-    authService: {
-      getCurrentUser: vi.fn().mockResolvedValue({ $id: 'user-1' }),
-      getAccount: vi.fn().mockReturnValue({
-         createJWT: vi.fn().mockResolvedValue({ jwt: 'mock.jwt.token' })
-      })
-    }
-  };
-});
-
 describe('GitRemoteSync', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     gitRemoteSync.configure('http://localhost:8787/git');
   });
 
-  it('pushes the repository to the remote with JWT authorization', async () => {
+  it('pushes the repository to the remote with bearer token', async () => {
     const gitMock = await import('isomorphic-git');
     const mockFs = {};
     
     await gitRemoteSync.pushToRemote(mockFs, '/session-123', 'main');
     
-    expect(authService.getCurrentUser).toHaveBeenCalled();
     expect(gitMock.default.push).toHaveBeenCalledWith(
       expect.objectContaining({
         dir: '/session-123',
         remote: 'origin',
         url: 'http://localhost:8787/git/session-123',
         headers: {
-          'Authorization': 'Bearer mock.jwt.token'
+          'Authorization': 'Bearer cr-session-token'
         }
       })
     );
@@ -59,26 +46,25 @@ describe('GitRemoteSync', () => {
         remote: 'origin',
         url: 'http://localhost:8787/git/global-workspace',
         headers: {
-          'Authorization': 'Bearer mock.jwt.token'
+          'Authorization': 'Bearer cr-session-token'
         }
       })
     );
   });
 
-  it('pulls the repository from the remote with JWT authorization', async () => {
+  it('pulls the repository from the remote with bearer token', async () => {
     const gitMock = await import('isomorphic-git');
     const mockFs = {};
     
     await gitRemoteSync.pullFromRemote(mockFs, '/session-123', 'main');
     
-    expect(authService.getCurrentUser).toHaveBeenCalled();
     expect(gitMock.default.pull).toHaveBeenCalledWith(
       expect.objectContaining({
         dir: '/session-123',
         remote: 'origin',
         url: 'http://localhost:8787/git/session-123',
         headers: {
-          'Authorization': 'Bearer mock.jwt.token'
+          'Authorization': 'Bearer cr-session-token'
         }
       })
     );

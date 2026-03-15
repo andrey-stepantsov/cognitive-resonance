@@ -274,7 +274,7 @@ export function useREPL() {
 
              const currentBranch = await git.getCurrentBranch() || 'main';
              await gitRemoteSync.pushToRemote(git.fs, git.dir, currentBranch);
-             injectSystemMessage('Successfully pushed packfile to Cloudflare/Appwrite! 🎉');
+             injectSystemMessage('Successfully pushed packfile to Cloudflare! 🎉');
            } catch (err: any) {
              injectSystemMessage(`Failed to push to remote: ${err.message}`);
            }

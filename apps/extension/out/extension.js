@@ -3,11 +3,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = require("vscode");
-const genai_1 = require("@google/genai");
 const path = require("path");
 const fs = require("fs");
 const fuse_js_1 = require("fuse.js");
-const ai_utils_1 = require("./ai-utils");
 const diagnostics_1 = require("./diagnostics");
 function activate(context) {
     console.log('Cognitive Resonance extension is now active!');
@@ -70,8 +68,11 @@ function activate(context) {
         }
         catch (error) {
             console.error("Error reading history file:", error);
-            (0, diagnostics_1.appendDiagnostic)(storagePath, { level: 'error', context: 'viewHistory', message: (0, ai_utils_1.formatApiError)(error) });
-            vscode.window.showErrorMessage('Failed to read history file: ' + error.message);
+            const errorMessage = typeof error === 'object' && error !== null && 'message' in error
+                ? String(error.message)
+                : String(error);
+            (0, diagnostics_1.appendDiagnostic)(storagePath, { level: 'error', context: 'viewHistory', message: errorMessage });
+            vscode.window.showErrorMessage('Failed to read history file: ' + errorMessage);
         }
     });
     let loadSessionCommand = vscode.commands.registerCommand('cognitive-resonance.loadSession', async () => {
@@ -154,8 +155,11 @@ function activate(context) {
         }
         catch (error) {
             console.error('Error browsing gallery:', error);
-            (0, diagnostics_1.appendDiagnostic)(storagePath, { level: 'error', context: 'browseGallery', message: (0, ai_utils_1.formatApiError)(error) });
-            vscode.window.showErrorMessage('Gallery error: ' + (error.message || error));
+            const errorMessage = typeof error === 'object' && error !== null && 'message' in error
+                ? String(error.message)
+                : String(error);
+            (0, diagnostics_1.appendDiagnostic)(storagePath, { level: 'error', context: 'browseGallery', message: errorMessage });
+            vscode.window.showErrorMessage('Gallery error: ' + errorMessage);
         }
     });
     context.subscriptions.push(setApiKeyCommand, startSessionCommand, loadSessionCommand, viewHistoryCommand, exportDiagnosticsCommand, browseGalleryCommand);
@@ -172,7 +176,6 @@ function setupChatPanel(panel, context, apiKey) {
         fs.mkdirSync(sessionsPath, { recursive: true });
     }
     panel.webview.html = getWebviewContent(panel.webview, context.extensionPath);
-    const ai = new genai_1.GoogleGenAI({ apiKey });
     // Load saved gems from file
     const loadGemsConfig = () => {
         let config = { gems: [], defaultGemId: 'gem-general' };
@@ -224,88 +227,12 @@ function setupChatPanel(panel, context, apiKey) {
             console.error("Failed to read sessions dir", err);
         }
     };
-    // Fetch available models
-    const fetchModels = async () => {
-        try {
-            const modelsResponse = await ai.models.list();
-            const rawModels = [];
-            for await (const m of modelsResponse) {
-                rawModels.push(m);
-            }
-            const modelList = (0, ai_utils_1.filterModelList)(rawModels);
-            panel.webview.postMessage({ type: 'models_loaded', models: modelList });
-        }
-        catch (err) {
-            console.error("Failed to fetch Google Gen AI models", err);
-            (0, diagnostics_1.appendDiagnostic)(storagePath, { level: 'error', context: 'fetchModels', message: (0, ai_utils_1.formatApiError)(err) });
-        }
-    };
     // Handle messages from the webview
     panel.webview.onDidReceiveMessage(async (message) => {
         try {
             switch (message.type) {
                 case 'webview_ready':
-                    fetchModels();
-                    return;
-                case 'prompt':
-                    try {
-                        const baseInstruction = "You are an AI assistant. Along with your reply, you must analyze your own internal state. Calculate your 'dissonance score' (0-100) representing your uncertainty, conflicting information, or cognitive load. Also, extract a semantic graph of the concepts you are currently processing. FORMATTING: Always use fenced code blocks with language tags for code (e.g. ```python). For diagrams, always use ```mermaid fenced code blocks with proper newlines between nodes — never put mermaid syntax inline.";
-                        const customInstruction = message.systemPrompt ? `\n\nUSER CUSTOM SYSTEM INSTRUCTIONS:\n${message.systemPrompt}` : "";
-                        const finalInstruction = baseInstruction + customInstruction;
-                        // Build content history, injecting multimodal file parts on the last user turn
-                        const attachedFiles = message.attachedFiles || [];
-                        let fileDataParts = [];
-                        if (attachedFiles.length > 0) {
-                            for (const af of attachedFiles) {
-                                try {
-                                    const uploaded = await ai.files.upload({ file: af.localPath });
-                                    if (uploaded.uri && uploaded.mimeType) {
-                                        fileDataParts.push({ fileData: { fileUri: uploaded.uri, mimeType: uploaded.mimeType } });
-                                    }
-                                }
-                                catch (uploadErr) {
-                                    console.error(`Failed to upload file ${af.name}:`, uploadErr);
-                                    (0, diagnostics_1.appendDiagnostic)(storagePath, { level: 'error', context: 'fileUpload', message: (0, ai_utils_1.formatApiError)(uploadErr) });
-                                    // Continue with remaining files — don't abort the whole prompt
-                                }
-                            }
-                        }
-                        const contents = message.history.map((m, idx) => {
-                            const parts = [{ text: m.content }];
-                            // Attach file data parts to the last user message
-                            if (m.role === 'user' && idx === message.history.length - 1 && fileDataParts.length > 0) {
-                                parts.push(...fileDataParts);
-                            }
-                            return { role: m.role, parts };
-                        });
-                        const response = await ai.models.generateContent({
-                            model: message.model || "gemini-3.1-pro-preview",
-                            contents,
-                            config: {
-                                systemInstruction: finalInstruction,
-                                responseMimeType: "application/json",
-                                responseSchema: message.responseSchema
-                            }
-                        });
-                        const jsonStr = response.text;
-                        if (jsonStr) {
-                            try {
-                                const data = typeof jsonStr === "string" ? JSON.parse(jsonStr) : jsonStr;
-                                const tokenUsage = response.usageMetadata?.totalTokenCount;
-                                panel.webview.postMessage({ type: 'response', data, usageMetadata: { totalTokenCount: tokenUsage } });
-                            }
-                            catch (e) {
-                                console.error("Failed to parse JSON", jsonStr, e);
-                                throw new Error("Failed to parse model response as JSON: " + jsonStr);
-                            }
-                        }
-                    }
-                    catch (error) {
-                        console.error("Error generating response:", error);
-                        const errorMessage = (0, ai_utils_1.formatApiError)(error);
-                        (0, diagnostics_1.appendDiagnostic)(storagePath, { level: 'error', context: 'generateContent', message: errorMessage, detail: error.stack || error });
-                        panel.webview.postMessage({ type: 'error', error: errorMessage });
-                    }
+                    panel.webview.postMessage({ type: 'init_api_key', apiKey });
                     return;
                 case 'save_history':
                     try {
@@ -320,8 +247,10 @@ function setupChatPanel(panel, context, apiKey) {
                         }
                     }
                     catch (err) {
-                        console.error("Failed to save session history:", err);
-                        (0, diagnostics_1.appendDiagnostic)(storagePath, { level: 'error', context: 'saveHistory', message: (0, ai_utils_1.formatApiError)(err) });
+                        const errorMessage = typeof err === 'object' && err !== null && 'message' in err
+                            ? String(err.message)
+                            : String(err);
+                        (0, diagnostics_1.appendDiagnostic)(storagePath, { level: 'error', context: 'saveHistory', message: errorMessage });
                     }
                     return;
                 case 'save_active_session':
@@ -412,8 +341,10 @@ function setupChatPanel(panel, context, apiKey) {
                         await fs.promises.writeFile(gemsFilePath, JSON.stringify(configPayload, null, 2), 'utf8');
                     }
                     catch (err) {
-                        console.error("Failed to save gems config to global state:", err);
-                        (0, diagnostics_1.appendDiagnostic)(storagePath, { level: 'error', context: 'saveGemsConfig', message: (0, ai_utils_1.formatApiError)(err) });
+                        const errorMessage = typeof err === 'object' && err !== null && 'message' in err
+                            ? String(err.message)
+                            : String(err);
+                        (0, diagnostics_1.appendDiagnostic)(storagePath, { level: 'error', context: 'saveGemsConfig', message: errorMessage });
                     }
                     return;
                 case 'search_history':
@@ -487,51 +418,6 @@ function setupChatPanel(panel, context, apiKey) {
                         console.error("Failed to search history:", err);
                     }
                     return;
-                case 'request_file_selection':
-                    try {
-                        const fileUris = await vscode.window.showOpenDialog({
-                            canSelectMany: true,
-                            openLabel: 'Attach Files',
-                            filters: {
-                                'Images': ['png', 'jpg', 'jpeg', 'gif', 'webp'],
-                                'Documents': ['pdf', 'txt', 'md', 'csv', 'json']
-                            }
-                        });
-                        if (fileUris && fileUris.length > 0) {
-                            for (const uri of fileUris) {
-                                const filePath = uri.fsPath;
-                                const fileName = path.basename(filePath);
-                                const mimeType = (0, ai_utils_1.getMimeType)(filePath);
-                                let preview;
-                                // Generate Base64 thumbnail for images
-                                if (mimeType.startsWith('image/')) {
-                                    try {
-                                        const fileBuffer = await fs.promises.readFile(filePath);
-                                        const base64 = fileBuffer.toString('base64');
-                                        preview = `data:${mimeType};base64,${base64}`;
-                                    }
-                                    catch (readErr) {
-                                        console.error(`Failed to read image for preview: ${fileName}`, readErr);
-                                    }
-                                }
-                                panel.webview.postMessage({
-                                    type: 'file_attached',
-                                    file: {
-                                        id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                                        name: fileName,
-                                        mimeType,
-                                        localPath: filePath,
-                                        preview
-                                    }
-                                });
-                            }
-                        }
-                    }
-                    catch (err) {
-                        console.error("Failed to select files:", err);
-                        (0, diagnostics_1.appendDiagnostic)(storagePath, { level: 'error', context: 'fileSelection', message: (0, ai_utils_1.formatApiError)(err) });
-                    }
-                    return;
                 case 'save_artifact':
                     try {
                         const saveUri = await vscode.window.showSaveDialog({
@@ -545,18 +431,21 @@ function setupChatPanel(panel, context, apiKey) {
                         }
                     }
                     catch (err) {
-                        console.error("Failed to save artifact:", err);
-                        (0, diagnostics_1.appendDiagnostic)(storagePath, { level: 'error', context: 'saveArtifact', message: (0, ai_utils_1.formatApiError)(err) });
-                        vscode.window.showErrorMessage('Failed to save artifact: ' + err.message);
+                        const errorMessage = typeof err === 'object' && err !== null && 'message' in err
+                            ? String(err.message)
+                            : String(err);
+                        (0, diagnostics_1.appendDiagnostic)(storagePath, { level: 'error', context: 'saveArtifact', message: errorMessage });
+                        vscode.window.showErrorMessage('Failed to save artifact: ' + errorMessage);
                     }
                     return;
             }
         }
         catch (unexpectedError) {
-            // Safety net: prevent ANY unhandled throw from crashing the Extension Host
-            // (which would surface as the opaque "Could not process request from Extension Host" error)
+            // Safety net
             console.error("Unexpected error in message handler:", unexpectedError);
-            const errorMessage = (0, ai_utils_1.formatApiError)(unexpectedError);
+            const errorMessage = typeof unexpectedError === 'object' && unexpectedError !== null && 'message' in unexpectedError
+                ? String(unexpectedError.message)
+                : String(unexpectedError);
             (0, diagnostics_1.appendDiagnostic)(storagePath, { level: 'error', context: 'messageHandler', message: errorMessage, detail: unexpectedError.stack || unexpectedError });
             panel.webview.postMessage({ type: 'error', error: errorMessage });
         }

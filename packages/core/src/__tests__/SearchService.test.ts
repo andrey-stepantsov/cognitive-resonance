@@ -1,8 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
-import { searchHistory } from '../services/SearchService';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { searchHistory, cloudSearch, localFuseSearch } from '../services/SearchService';
 import type { IStorageProvider } from '../interfaces/IStorageProvider';
 
-describe('searchHistory', () => {
+describe('SearchService', () => {
   const mockSessions = [
     {
       id: 'session-1',
@@ -80,26 +80,188 @@ describe('searchHistory', () => {
     loadGemsConfig: vi.fn()
   };
 
-  it('filters sessions by nodes (fuzzy match on label/id)', async () => {
-    const results = await searchHistory('discussion', mockStorage);
-    expect(results).toHaveLength(1);
-    expect(results[0].sessionId).toBe('session-2'); // Should not return session-archived or session-no-nodes
+  // --- localFuseSearch (legacy fuse.js path) ---
+
+  describe('localFuseSearch', () => {
+    it('filters sessions by nodes (fuzzy match on label/id)', async () => {
+      const results = await localFuseSearch('discussion', mockStorage);
+      expect(results).toHaveLength(1);
+      expect(results[0].sessionId).toBe('session-2');
+    });
+
+    it('filters sessions by nodes', async () => {
+      const results = await localFuseSearch('auth', mockStorage);
+      expect(results).toHaveLength(1);
+      expect(results[0].sessionId).toBe('session-1');
+    });
+
+    it('returns empty array if no match', async () => {
+      const results = await localFuseSearch('xyz123', mockStorage);
+      expect(results).toHaveLength(0);
+    });
   });
 
-  it('filters sessions by nodes', async () => {
-    const results = await searchHistory('auth', mockStorage);
-    expect(results).toHaveLength(1);
-    expect(results[0].sessionId).toBe('session-1');
+  // --- searchHistory (top-level dispatcher) ---
+
+  describe('searchHistory', () => {
+    it('returns empty array if query is empty', async () => {
+      const results = await searchHistory('', mockStorage);
+      expect(results).toHaveLength(0);
+    });
+
+    it('returns empty array if query is whitespace', async () => {
+      const results = await searchHistory('   ', mockStorage);
+      expect(results).toHaveLength(0);
+    });
+
+    it('uses local Fuse.js when no cloudUrl/apiKey provided', async () => {
+      const results = await searchHistory('discussion', mockStorage);
+      expect(results).toHaveLength(1);
+      expect(results[0].sessionId).toBe('session-2');
+    });
+
+    it('uses local Fuse.js when only cloudUrl is provided (no apiKey)', async () => {
+      const results = await searchHistory('discussion', mockStorage, 'http://worker.test');
+      expect(results).toHaveLength(1);
+      expect(results[0].sessionId).toBe('session-2');
+    });
   });
 
-  it('returns empty array if query is empty', async () => {
-    const results = await searchHistory('', mockStorage);
-    expect(results).toHaveLength(0);
+  // --- cloudSearch ---
+
+  describe('cloudSearch', () => {
+    let originalFetch: typeof globalThis.fetch;
+
+    beforeEach(() => {
+      originalFetch = globalThis.fetch;
+    });
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+    });
+
+    it('calls /api/search with query and auth header', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          results: [
+            { sessionId: 'cloud-1', preview: 'Cloud Result', score: 0.95, timestamp: 5000 },
+          ],
+        }),
+      });
+      globalThis.fetch = mockFetch;
+
+      const results = await cloudSearch('test query', 'http://worker.test', 'my-api-key');
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://worker.test/api/search?q=test%20query');
+      expect(opts.headers.Authorization).toBe('Bearer my-api-key');
+
+      expect(results).toHaveLength(1);
+      expect(results[0].sessionId).toBe('cloud-1');
+      expect(results[0].sessionPreview).toBe('Cloud Result');
+      expect(results[0].score).toBe(0.95);
+      expect(results[0].timestamp).toBe(5000);
+      expect(results[0].turnIndex).toBe(0);
+      expect(results[0].matchedConcepts).toEqual([]);
+    });
+
+    it('strips trailing slash from cloudUrl', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ results: [] }),
+      });
+      globalThis.fetch = mockFetch;
+
+      await cloudSearch('test', 'http://worker.test/', 'key');
+      const url = mockFetch.mock.calls[0][0];
+      expect(url).toBe('http://worker.test/api/search?q=test');
+    });
+
+    it('returns empty array when response is not ok', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+      });
+
+      const results = await cloudSearch('query', 'http://worker.test', 'key');
+      expect(results).toEqual([]);
+    });
+
+    it('returns empty array when response has no results', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ results: null }),
+      });
+
+      const results = await cloudSearch('query', 'http://worker.test', 'key');
+      expect(results).toEqual([]);
+    });
+
+    it('handles missing fields in result items gracefully', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          results: [{ sessionId: 'x' }], // missing preview, timestamp, score
+        }),
+      });
+
+      const results = await cloudSearch('query', 'http://worker.test', 'key');
+      expect(results).toHaveLength(1);
+      expect(results[0].sessionPreview).toBe('');
+      expect(results[0].timestamp).toBe(0);
+      expect(results[0].score).toBeUndefined();
+    });
   });
 
-  it('returns empty array if no match', async () => {
-    const results = await searchHistory('xyz123', mockStorage);
-    expect(results).toHaveLength(0);
+  // --- searchHistory with cloud path ---
+
+  describe('searchHistory (cloud + fallback)', () => {
+    let originalFetch: typeof globalThis.fetch;
+
+    beforeEach(() => {
+      originalFetch = globalThis.fetch;
+    });
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+    });
+
+    it('uses cloud search when cloudUrl and apiKey are provided', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          results: [
+            { sessionId: 'cloud-1', preview: 'Cloud Hit', score: 0.9, timestamp: 9000 },
+          ],
+        }),
+      });
+
+      const results = await searchHistory('test', mockStorage, 'http://worker.test', 'my-key');
+      expect(results).toHaveLength(1);
+      expect(results[0].sessionId).toBe('cloud-1');
+    });
+
+    it('falls back to local fuse.js when cloud search returns empty', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ results: [] }),
+      });
+
+      const results = await searchHistory('auth', mockStorage, 'http://worker.test', 'my-key');
+      // Should fall through to local fuse.js and find session-1
+      expect(results).toHaveLength(1);
+      expect(results[0].sessionId).toBe('session-1');
+    });
+
+    it('falls back to local fuse.js when cloud search throws', async () => {
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
+
+      const results = await searchHistory('auth', mockStorage, 'http://worker.test', 'my-key');
+      // Should catch the error and fall through to local search
+      expect(results).toHaveLength(1);
+      expect(results[0].sessionId).toBe('session-1');
+    });
   });
 });
-

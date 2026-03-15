@@ -13,6 +13,11 @@ index_name = "cr-sessions-index"
 binding = "GIT_PACKS_BUCKET"
 bucket_name = "cr-git-repos"
 
+[[d1_databases]]
+binding = "DB"
+database_name = "cr-sessions"
+database_id = "b8e08687-2036-4f95-8374-4cd8934fcacf"
+
 [durable_objects]
 bindings = [
   { name = "ROOM_SESSION", class_name = "RoomSession" }
@@ -20,4 +25,4 @@ bindings = [
 
 [[migrations]]
 tag = "v1"
-new_classes = ["RoomSession"]
+new_sqlite_classes = ["RoomSession"]

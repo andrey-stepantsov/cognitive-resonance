@@ -1,4 +1,5 @@
 import type { IStorageProvider, SessionRecord, GemsConfig } from '@cr/core';
+import { saveApiKey } from '@cr/backend';
 
 // Ensure vscode API is available
 // @ts-ignore
@@ -49,6 +50,8 @@ export class VSCodeStorageProvider implements IStorageProvider {
          pending.resolve(message.sessionId);
          this.pendingRequests.delete(message.sessionId);
        }
+    } else if (message.type === 'init_api_key') {
+       saveApiKey(message.apiKey);
     }
   }
 

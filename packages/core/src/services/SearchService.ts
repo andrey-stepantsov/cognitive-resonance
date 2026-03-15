@@ -1,6 +1,7 @@
 /**
- * SearchService — Client-side fuzzy search across sessions.
- * Replaces the extension host's Fuse.js search (which ran in Node).
+ * SearchService — Semantic search across sessions.
+ * Prefers cloud search via Cloudflare Vectorize when configured,
+ * falls back to client-side Fuse.js fuzzy search.
  */
 
 import Fuse from 'fuse.js';
@@ -13,11 +14,74 @@ export interface SearchResult {
   turnIndex: number;
   contextSnippet: string;
   matchedConcepts: string[];
+  score?: number;
 }
 
-export async function searchHistory(query: string, storage: IStorageProvider): Promise<SearchResult[]> {
+/**
+ * Search session history.
+ * @param query - Search query string
+ * @param storage - Storage provider for local fallback
+ * @param cloudUrl - Optional Worker URL for cloud semantic search
+ * @param apiKey - Optional API key for cloud search authentication
+ */
+export async function searchHistory(
+  query: string,
+  storage: IStorageProvider,
+  cloudUrl?: string,
+  apiKey?: string,
+): Promise<SearchResult[]> {
   if (!query || query.trim() === '') return [];
 
+  // Cloud path: use Vectorize semantic search when configured
+  if (cloudUrl && apiKey) {
+    try {
+      const results = await cloudSearch(query, cloudUrl, apiKey);
+      if (results.length > 0) return results;
+    } catch {
+      // Fall through to local search
+    }
+  }
+
+  // Local fallback: Fuse.js fuzzy search
+  return localFuseSearch(query, storage);
+}
+
+/**
+ * Queries the Worker's /api/search endpoint for semantic results.
+ */
+export async function cloudSearch(
+  query: string,
+  cloudUrl: string,
+  apiKey: string,
+): Promise<SearchResult[]> {
+  const url = `${cloudUrl.replace(/\/$/, '')}/api/search?q=${encodeURIComponent(query)}`;
+  const res = await fetch(url, {
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+  });
+
+  if (!res.ok) return [];
+
+  const { results } = await res.json() as { results: any[] };
+  if (!results?.length) return [];
+
+  return results.map((r: any) => ({
+    sessionId: r.sessionId,
+    sessionPreview: r.preview || '',
+    timestamp: r.timestamp || 0,
+    turnIndex: 0,
+    contextSnippet: r.preview || '',
+    matchedConcepts: [],
+    score: r.score,
+  }));
+}
+
+/**
+ * Falls back to client-side Fuse.js fuzzy search across local sessions.
+ */
+export async function localFuseSearch(
+  query: string,
+  storage: IStorageProvider,
+): Promise<SearchResult[]> {
   const sessions = await storage.loadAllSessions();
   const searchableItems: any[] = [];
 

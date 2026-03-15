@@ -1,6 +1,5 @@
 import git from 'isomorphic-git';
 import http from 'isomorphic-git/http/web';
-import { authService } from './AuthService';
 
 export class GitRemoteSync {
   private remoteUrl: string;
@@ -10,24 +9,19 @@ export class GitRemoteSync {
   }
 
   configure(url: string) {
-    if (url) this.remoteUrl = url;
+    if (url) {
+      // Ensure the URL always ends with /git for the Cloudflare Worker routing
+      const cleanUrl = url.replace(/\/$/, '');
+      this.remoteUrl = cleanUrl.endsWith('/git') ? cleanUrl : `${cleanUrl}/git`;
+    }
   }
 
   /**
    * Pushes a local isomorphic-git virtual repository to the Cloudflare remote.
-   * Injects the Appwrite JWT for authentication.
+   * Uses a static bearer token (no auth backend required).
    */
   async pushToRemote(fs: any, dir: string, branch: string = 'main'): Promise<void> {
     try {
-      const user = await authService.getCurrentUser();
-      let token = '';
-      
-      if (user) {
-        // We generate a JWT to pass to Cloudflare for validation
-        const jwtResponse = await authService.getAccount().createJWT();
-        token = jwtResponse.jwt;
-      }
-
       console.log(`[GitRemoteSync] Pushing ${dir} to ${this.remoteUrl}`);
 
       const pushResult = await git.push({
@@ -38,7 +32,7 @@ export class GitRemoteSync {
         url: `${this.remoteUrl}${dir}`, // e.g. /git/session-123
         ref: branch,
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': 'Bearer cr-session-token'
         }
       });
 
@@ -55,14 +49,6 @@ export class GitRemoteSync {
    */
   async pullFromRemote(fs: any, dir: string, branch: string = 'main'): Promise<void> {
     try {
-      const user = await authService.getCurrentUser();
-      let token = '';
-      
-      if (user) {
-        const jwtResponse = await authService.getAccount().createJWT();
-        token = jwtResponse.jwt;
-      }
-
       console.log(`[GitRemoteSync] Pulling ${dir} from ${this.remoteUrl}`);
 
       await git.pull({
@@ -78,7 +64,7 @@ export class GitRemoteSync {
           email: 'system@cr.local'
         },
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': 'Bearer cr-session-token'
         }
       });
 
