@@ -21,7 +21,7 @@ export class CloudflareStorageProvider implements IStorageProvider {
   }
 
   /**
-   * Configure dynamic token source (e.g. from AppwriteAuthProvider.getToken()).
+   * Configure dynamic token source (e.g. from CloudflareAuthProvider.getToken()).
    * When set, this takes priority over the static apiKey.
    */
   configureAuth(tokenGetter: () => string | null) {

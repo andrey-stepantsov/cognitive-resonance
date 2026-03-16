@@ -32,6 +32,11 @@ export interface IAuthProvider {
   getUser(): UserProfile | undefined;
 
   /**
+   * Returns the current authentication token (e.g. JWT) if supported by the provider.
+   */
+  getToken?(): string | null;
+
+  /**
    * Initiates the login flow.
    */
   login(): Promise<void>;

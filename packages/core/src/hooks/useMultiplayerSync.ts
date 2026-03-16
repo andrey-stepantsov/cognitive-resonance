@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 export interface MultiplayerMessage {
-  type: 'chat' | 'cursor' | 'rtc' | 'ping';
+  type: 'chat' | 'cursor' | 'rtc' | 'ping' | 'presence';
   payload?: any;
   timestamp?: number;
   senderId?: string;
@@ -10,10 +10,12 @@ export interface MultiplayerMessage {
 export interface UseMultiplayerSyncOptions {
   workerUrl: string; // e.g. "api.my-domain.workers.dev" or local "localhost:8787"
   sessionId: string;
+  token?: string;
 }
 
-export function useMultiplayerSync({ workerUrl, sessionId }: UseMultiplayerSyncOptions) {
+export function useMultiplayerSync({ workerUrl, sessionId, token }: UseMultiplayerSyncOptions) {
   const [isConnected, setIsConnected] = useState(false);
+  const [activeUsers, setActiveUsers] = useState<Record<string, { userId?: string; sessionId: string }>>({});
   const [messages, setMessages] = useState<MultiplayerMessage[]>([]);
   const [cursors, setCursors] = useState<Record<string, {x: number, y: number}>>({});
   
@@ -27,7 +29,10 @@ export function useMultiplayerSync({ workerUrl, sessionId }: UseMultiplayerSyncO
     const protocol = isLocal ? 'ws' : 'wss';
     // Strip trailing slashes and any existing http(s) protocol prefix
     const cleanWorkerUrl = workerUrl.replace(/\/$/, '').replace(/^https?:\/\//, '');
-    const wsUrl = `${protocol}://${cleanWorkerUrl}/room/${sessionId}`;
+    let wsUrl = `${protocol}://${cleanWorkerUrl}/room/${sessionId}`;
+    if (token) {
+      wsUrl += `?token=${encodeURIComponent(token)}`;
+    }
     
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
@@ -64,6 +69,23 @@ export function useMultiplayerSync({ workerUrl, sessionId }: UseMultiplayerSyncO
              // For now we just push it to messages array to make it observable
             setMessages(prev => [...prev, data]);
             break;
+          case 'presence':
+            if (data.payload.action === 'sync') {
+              const usersMap: Record<string, any> = {};
+              if (Array.isArray(data.payload.users)) {
+                data.payload.users.forEach((u: any) => { usersMap[u.sessionId] = u; });
+              }
+              setActiveUsers(usersMap);
+            } else if (data.payload.action === 'join') {
+              setActiveUsers(prev => ({ ...prev, [data.payload.sessionId]: { userId: data.payload.userId, sessionId: data.payload.sessionId } }));
+            } else if (data.payload.action === 'leave') {
+               setActiveUsers(prev => {
+                  const next = { ...prev };
+                  delete next[data.payload.sessionId];
+                  return next;
+               });
+            }
+            break;
         }
       } catch (err) {
         // ignore non-JSON messages
@@ -84,7 +106,7 @@ export function useMultiplayerSync({ workerUrl, sessionId }: UseMultiplayerSyncO
       // browser will fire onclose immediately after onerror usually
     };
 
-  }, [workerUrl, sessionId]);
+  }, [workerUrl, sessionId, token]);
 
   useEffect(() => {
     if (!sessionId || !workerUrl) return;
@@ -99,7 +121,7 @@ export function useMultiplayerSync({ workerUrl, sessionId }: UseMultiplayerSyncO
         wsRef.current.close();
       }
     };
-  }, [connect, sessionId, workerUrl]);
+  }, [connect, sessionId, workerUrl, token]);
 
   const sendMessage = useCallback((type: MultiplayerMessage['type'], payload?: any) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -129,6 +151,7 @@ export function useMultiplayerSync({ workerUrl, sessionId }: UseMultiplayerSyncO
 
   return {
     isConnected,
+    activeUsers,
     messages,
     cursors,
     sendCursor,

@@ -7,6 +7,8 @@ import { useCognitivePlatform } from '../providers/CognitivePlatformContext';
 import { initGemini, generateResponse, fetchModels } from '../services/GeminiService';
 import { searchHistory } from '../services/SearchService';
 import { GitContextManager } from '../services/GitContextManager';
+import { useMultiplayerSync } from './useMultiplayerSync';
+import { globalBackendConfig } from '@cr/backend';
 import Fuse from 'fuse.js';
 
 export const responseSchema = {
@@ -62,7 +64,7 @@ export const BUILT_IN_GEMS: GemProfile[] = [
 ];
 
 export interface Message {
-  role: 'user' | 'model'; content: string; internalState?: InternalState; modelTurnIndex?: number; isError?: boolean;
+  role: 'user' | 'model' | 'peer'; content: string; internalState?: InternalState; modelTurnIndex?: number; isError?: boolean; senderId?: string; senderName?: string;
 }
 
 export interface AttachedFile {
@@ -70,7 +72,7 @@ export interface AttachedFile {
 }
 
 export function useCognitiveResonance() {
-  const { storage } = useCognitivePlatform();
+  const { storage, auth, user } = useCognitivePlatform();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -143,6 +145,44 @@ export function useCognitiveResonance() {
       inputRef.current.focus();
     }
   }, [isLoading]);
+
+  const wsUrl = globalBackendConfig.gitRemoteUrl || (typeof window !== 'undefined' ? window.location.host : '');
+  const ws = useMultiplayerSync({
+    workerUrl: wsUrl,
+    sessionId: activeSessionId || '',
+    token: auth.getToken?.() || undefined
+  });
+
+  const lastProcessedMessageIdx = useRef(0);
+
+  useEffect(() => {
+    if (ws.messages.length > lastProcessedMessageIdx.current) {
+      const newMessages = ws.messages.slice(lastProcessedMessageIdx.current);
+      lastProcessedMessageIdx.current = ws.messages.length;
+
+      const incomingChats = newMessages
+        .filter(m => m.type === 'chat' && m.senderId !== 'me')
+        .map(m => ({
+          role: m.payload.role === 'model' ? 'model' : 'peer',
+          content: m.payload.content,
+          senderId: m.senderId,
+          senderName: m.payload.senderName,
+          ...(m.payload.internalState ? { internalState: m.payload.internalState } : {})
+        } as Message));
+
+      if (incomingChats.length > 0) {
+        setMessages(prev => {
+           let modelCount = prev.filter(m => m.role === 'model').length;
+           return [...prev, ...incomingChats.map(m => {
+              if (m.role === 'model') {
+                 return { ...m, modelTurnIndex: modelCount++ };
+              }
+              return m;
+           })];
+        });
+      }
+    }
+  }, [ws.messages]);
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
 
@@ -362,11 +402,16 @@ export function useCognitiveResonance() {
     setInput('');
     
     // Add the un-modified message to the visible UI history
-    const newMessages: Message[] = [...messages, { role: 'user', content: rawUserMessage }];
+    const userMsg: Message = { role: 'user', content: rawUserMessage, senderId: user?.id, senderName: user?.name };
+    const newMessages: Message[] = [...messages, userMsg];
     setMessages(newMessages);
     setIsLoading(true);
     setSelectedTurnIndex(null);
     abortControllerRef.current = new AbortController();
+
+    if (ws.isConnected && activeSessionId) {
+      ws.sendChatMessage(rawUserMessage, { role: 'user', senderName: user?.name });
+    }
 
     // Prompt Interception: Look for @ mentions
     let payloadMessageContent = rawUserMessage;
@@ -481,6 +526,9 @@ export function useCognitiveResonance() {
         const modelCount = prev.filter(m => m.role === 'model').length;
         return [...prev, { role: 'model', content: data.reply, internalState: newState, modelTurnIndex: modelCount }];
       });
+      if (ws.isConnected && activeSessionId) {
+        ws.sendChatMessage(data.reply, { role: 'model', internalState: newState });
+      }
     } catch (error: any) {
       if (error.name === 'AbortError') {
         setMessages(prev => [...prev, { role: 'model', content: '[Generation Interrupted]', isError: true }]);
@@ -671,6 +719,7 @@ export function useCognitiveResonance() {
     apiKey, showApiKeyModal, setShowApiKeyModal, apiKeyInput, setApiKeyInput,
     messagesEndRef, fileInputRef, importInputRef, inputRef,
     modelMessages, activeTurnIndex, activeState, isViewingHistory, historyData, filteredMarkers,
+    activeUsers: ws.activeUsers,
     handleSetApiKey, handleClearApiKey, handleSelectGem, handleSaveGem, handleDeleteGem, handleSetDefaultGem,
     handleSubmit, handleStopGeneration, handleDownloadHistory, handleLoadSession, handleSearchResultClick,
     handleDeleteSession, handleArchiveSession, startRenameSession, handleRenameSessionSubmit, startNewSession, ensureActiveSession, handleFileSelect, handleImportSession,

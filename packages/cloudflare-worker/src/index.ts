@@ -60,6 +60,15 @@ export function checkRateLimit(ip: string): boolean {
   return true; // Allowed
 }
 
+import {
+  verifyJwt,
+  signJwt,
+  hashPassword,
+  verifyPassword,
+  generateApiKey,
+} from './auth';
+
+import { handleAuthAPI } from './authRoutes';
 export { RoomSession } from './roomSession';
 
 import {
@@ -79,14 +88,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
-function jsonResponse(data: any, status = 200): Response {
+export function jsonResponse(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 }
 
-function corsResponse(body: string | null, status: number, extraHeaders?: Record<string, string>): Response {
+export function corsResponse(body: string | null, status: number, extraHeaders?: Record<string, string>): Response {
   return new Response(body, {
     status,
     headers: { ...corsHeaders, ...(extraHeaders || {}) },
@@ -94,79 +103,6 @@ function corsResponse(body: string | null, status: number, extraHeaders?: Record
 }
 
 // ─── Auth ────────────────────────────────────────────────────────
-
-/**
- * Base64url decode (RFC 7515).
- */
-function base64UrlDecode(str: string): Uint8Array {
-  const padded = str.replace(/-/g, '+').replace(/_/g, '/');
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-/**
- * Decode a JWT payload without verifying the signature.
- * Used to inspect the header for the algorithm.
- */
-function decodeJwtParts(token: string): { header: any; payload: any; signatureB64: string; headerB64: string; payloadB64: string } | null {
-  const parts = token.split('.');
-  if (parts.length !== 3) return null;
-  try {
-    const header = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[0])));
-    const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[1])));
-    return { header, payload, signatureB64: parts[2], headerB64: parts[0], payloadB64: parts[1] };
-  } catch {
-    return null;
-  }
-}
-
-// ─── HMAC-SHA256 verification (for JWT_SECRET mode) ──────────────
-
-/**
- * Verify a JWT signed with HMAC-SHA256 and return the payload.
- * Returns null if verification fails.
- */
-export async function verifyJwt(token: string, secret: string): Promise<{ userId: string } | null> {
-  try {
-    const decoded = decodeJwtParts(token);
-    if (!decoded) return null;
-
-    const { payload, signatureB64, headerB64, payloadB64 } = decoded;
-
-    // Import the secret as an HMAC key
-    const encoder = new TextEncoder();
-    const key = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(secret),
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['verify'],
-    );
-
-    // Verify the signature
-    const signatureInput = encoder.encode(`${headerB64}.${payloadB64}`);
-    const signature = base64UrlDecode(signatureB64);
-
-    const valid = await crypto.subtle.verify('HMAC', key, signature, signatureInput);
-    if (!valid) return null;
-
-    // Check expiration
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-      return null;
-    }
-
-    const userId = payload.sub || payload.userId || payload.user_id;
-    if (!userId) return null;
-
-    return { userId };
-  } catch {
-    return null;
-  }
-}
 
 // ─── Appwrite JWT verification via account.get() ────────────────
 
@@ -239,18 +175,32 @@ interface AuthResult {
  * 3. API key mode — validates API_KEY, returns 'default' as userId
  */
 export async function requireAuth(request: Request, env: Env): Promise<Response | AuthResult> {
-  const auth = request.headers.get('Authorization');
-  if (!auth || !auth.startsWith('Bearer ')) {
-    return jsonResponse({ error: 'Unauthorized' }, 401);
+  let token = '';
+
+  const authHeader = request.headers.get('Authorization');
+  const apiKeyHeader = request.headers.get('x-api-key');
+
+  if (apiKeyHeader) {
+    token = apiKeyHeader;
+  } else if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.slice(7);
+  } else {
+    // Check URL search params (e.g., for WebSockets)
+    const url = new URL(request.url);
+    const urlToken = url.searchParams.get('token');
+    if (urlToken) {
+      token = urlToken;
+    }
   }
 
-  const token = auth.slice(7);
+  if (!token) {
+    return jsonResponse({ error: 'Unauthorized' }, 401);
+  }
 
   // 1. Try Appwrite JWKS (RS256) if configured
   if (env.APPWRITE_ENDPOINT) {
     const result = await verifyAppwriteJwt(token, env.APPWRITE_ENDPOINT, env.APPWRITE_PROJECT_ID);
     if (result) return result;
-    // If Appwrite validation failed, fall through to other modes
   }
 
   // 2. Try HMAC if JWT_SECRET is configured
@@ -259,7 +209,21 @@ export async function requireAuth(request: Request, env: Env): Promise<Response 
     if (result) return result;
   }
 
-  // 3. Fallback: API key mode (backward compatible)
+  // 3. Try API Key against D1 api_keys table
+  if (token.startsWith('cr_')) {
+    const enc = new TextEncoder();
+    const hashBytes = await crypto.subtle.digest('SHA-256', enc.encode(token));
+    const keyHash = Array.from(new Uint8Array(hashBytes)).map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    const apiKeyRow = await env.DB.prepare('SELECT user_id FROM api_keys WHERE key_hash = ?').bind(keyHash).first();
+    if (apiKeyRow) {
+      // Intentionally not awaiting this to save time on the critical path
+      env.DB.prepare('UPDATE api_keys SET last_used_at = ? WHERE key_hash = ?').bind(Date.now(), keyHash).run().catch(() => {});
+      return { userId: apiKeyRow.user_id as string };
+    }
+  }
+
+  // 4. Fallback: API key mode (backward compatible)
   if (token === env.API_KEY) {
     return { userId: 'default' };
   }
@@ -268,7 +232,7 @@ export async function requireAuth(request: Request, env: Env): Promise<Response 
 }
 
 /** Type guard: is the auth result an error response? */
-function isAuthError(result: Response | AuthResult): result is Response {
+export function isAuthError(result: Response | AuthResult): result is Response {
   return result instanceof Response;
 }
 
@@ -289,6 +253,11 @@ export default {
     const clientIp = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
     if (!checkRateLimit(clientIp)) {
       return corsResponse('Rate limit exceeded. Try again later.', 429);
+    }
+
+    // --- Auth API ---
+    if (path.startsWith('/api/auth')) {
+      return handleAuthAPI(request, env);
     }
 
     // --- Session API (D1) — requires auth ---
@@ -331,9 +300,21 @@ export default {
         return corsResponse('Expected Upgrade: websocket', 426);
       }
 
+      const authResult = await requireAuth(request, env);
+      if (isAuthError(authResult)) return authResult;
+
       const id = env.ROOM_SESSION.idFromName(sessionId);
       const stub = env.ROOM_SESSION.get(id);
-      return stub.fetch(request);
+
+      // Pass the authenticated user ID to the Durable Object
+      const newHeaders = new Headers(request.headers);
+      newHeaders.set('X-User-Id', authResult.userId);
+      const modifiedRequest = new Request(request.url, {
+        method: request.method,
+        headers: newHeaders,
+      });
+
+      return stub.fetch(modifiedRequest);
     }
 
     // --- Git Smart HTTP ---

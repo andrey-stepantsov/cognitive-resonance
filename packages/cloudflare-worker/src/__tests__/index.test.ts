@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
-import worker, { generateSessionEmbeddings, verifyJwt, verifyAppwriteJwt, clearJwksCache, checkRateLimit, rateLimitStore } from '../index';
+import worker, { generateSessionEmbeddings, verifyAppwriteJwt, clearJwksCache, checkRateLimit, rateLimitStore } from '../index';
+import { verifyJwt } from '../auth';
 
 const TEST_API_KEY = 'test-api-key-abc123';
 
@@ -602,6 +603,40 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
     const request = new Request('http://localhost/room/session-1');
     const response = await worker.fetch(request, makeEnv(), makeCtx());
     expect(response.status).toBe(426);
+  });
+
+  it('returns 401 for room when unauthenticated', async () => {
+    const request = new Request('http://localhost/room/session-1', {
+      headers: { 'Upgrade': 'websocket' }, // Missing auth
+    });
+    const response = await worker.fetch(request, makeEnv(), makeCtx());
+    expect(response.status).toBe(401);
+  });
+
+  it('delegates to Durable Object when authenticated via query token', async () => {
+    const mockResponse = new Response(null, { status: 200 });
+    Object.defineProperty(mockResponse, 'status', { value: 101 });
+    const mockDO = {
+      fetch: vi.fn().mockResolvedValue(mockResponse),
+    };
+    const mockEnv = makeEnv({
+      ROOM_SESSION: {
+        idFromName: vi.fn().mockReturnValue('mock-id'),
+        get: vi.fn().mockReturnValue(mockDO),
+      },
+    });
+
+    const request = new Request('http://localhost/room/session-1?token=test-api-key-abc123', {
+      headers: { 'Upgrade': 'websocket' },
+    });
+    const response = await worker.fetch(request, mockEnv, makeCtx());
+    
+    expect(response.status).toBe(101);
+    expect(mockEnv.ROOM_SESSION.idFromName).toHaveBeenCalledWith('session-1');
+    expect(mockDO.fetch).toHaveBeenCalled();
+    const passedReq = mockDO.fetch.mock.calls[0][0] as Request;
+    // `token=test-api-key-abc123` uses API key mode -> userId='default'
+    expect(passedReq.headers.get('X-User-Id')).toBe('default');
   });
 
   // --- Session PUT triggers embeddings ---
@@ -1850,5 +1885,221 @@ describe('Git Smart HTTP — full round-trip', () => {
     expect(pulledShas).not.toContain(commit1Sha);
     expect(pulledShas).not.toContain(tree1Sha);
     expect(pulledShas).not.toContain(blob1Sha);
+  });
+});
+
+// --- Auth API Integration Tests ---
+describe('Auth API (Integration)', () => {
+  function makeAuthMockDB() {
+    const users: any[] = [];
+    const apiKeys: any[] = [];
+    
+    return {
+      prepare: (query: string) => ({
+        bind: (...args: any[]) => {
+          const exec = async () => {
+            if (query.startsWith('SELECT id, email')) {
+              return { results: [users.find(u => u.id === args[0])].filter(Boolean) };
+            }
+            if (query.startsWith('SELECT * FROM users WHERE email')) {
+              return { results: [users.find(u => u.email === args[0])].filter(Boolean) };
+            }
+            if (query.startsWith('SELECT user_id FROM api_keys')) {
+              const res = apiKeys.find(k => k.key_hash === args[0]);
+              return { results: [res].filter(Boolean) };
+            }
+            if (query.startsWith('SELECT key_hash, name, created_at')) {
+              return { results: apiKeys.filter(k => k.user_id === args[0]) };
+            }
+            if (query.startsWith('INSERT INTO users')) {
+              if (users.find(u => u.email === args[1])) {
+                throw new Error('D1_ERROR: UNIQUE constraint failed: users.email');
+              }
+              const user = { id: args[0], email: args[1], password_hash: args[2], name: args[3] };
+              users.push(user);
+              return { results: [user] };
+            }
+            if (query.startsWith('INSERT INTO api_keys')) {
+              const key = { key_hash: args[0], user_id: args[1], name: args[2], created_at: new Date().toISOString(), last_used_at: null };
+              apiKeys.push(key);
+              return { results: [key] };
+            }
+            if (query.startsWith('DELETE FROM api_keys')) {
+              const idx = apiKeys.findIndex(k => k.key_hash === args[0] && k.user_id === args[1]);
+              if (idx > -1) apiKeys.splice(idx, 1);
+              return { results: [] };
+            }
+            if (query.startsWith('UPDATE api_keys')) {
+              return { results: [] };
+            }
+            return { results: [] };
+          };
+          return {
+            first: async () => (await exec()).results[0] || null,
+            run: async () => await exec(),
+            all: async () => await exec(),
+          };
+        }
+      })
+    };
+  }
+
+  it('should sign up a new user, log them in, and manage API keys', async () => {
+    const mockDB = makeAuthMockDB();
+    const env = makeEnv({ DB: mockDB, JWT_SECRET: 'test_secret' });
+
+    // 1. Signup
+    const signupReq = new Request('http://localhost/api/auth/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'newuser@example.com', password: 'secure123', name: 'New User' })
+    });
+    const signupRes = await worker.fetch(signupReq, env, makeCtx());
+    expect(signupRes.status).toBe(200);
+    const signupData = await signupRes.json() as any;
+    expect(signupData.token).toBeDefined();
+    expect(signupData.user.email).toBe('newuser@example.com');
+
+    // 2. Duplicate signup should fail
+    const dupReq = new Request('http://localhost/api/auth/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'newuser@example.com', password: 'secure123', name: 'New User' })
+    });
+    const dupRes = await worker.fetch(dupReq, env, makeCtx());
+    expect(dupRes.status).toBe(409);
+
+    // 3. Login
+    const loginReq = new Request('http://localhost/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'newuser@example.com', password: 'secure123' })
+    });
+    const loginRes = await worker.fetch(loginReq, env, makeCtx());
+    expect(loginRes.status).toBe(200);
+    const loginData = await loginRes.json() as any;
+    expect(loginData.token).toBeDefined();
+    const token = loginData.token;
+
+    // 4. Bad login
+    const badReq = new Request('http://localhost/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'newuser@example.com', password: 'wrong' })
+    });
+    const badRes = await worker.fetch(badReq, env, makeCtx());
+    expect(badRes.status).toBe(401);
+
+    // 5. Get profile (/api/auth/me)
+    const meReq = new Request('http://localhost/api/auth/me', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const meRes = await worker.fetch(meReq, env, makeCtx());
+    expect(meRes.status).toBe(200);
+    const meData = await meRes.json() as any;
+    expect(meData.user.email).toBe('newuser@example.com');
+
+    // 6. Manage API Keys
+    const createKeyReq = new Request('http://localhost/api/auth/keys', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'My CLI Key' })
+    });
+    const createKeyRes = await worker.fetch(createKeyReq, env, makeCtx());
+    expect(createKeyRes.status).toBe(200);
+    const keyData = await createKeyRes.json() as any;
+    expect(keyData.apiKey).toBeDefined();
+    expect(keyData.apiKey.startsWith('cr_')).toBe(true);
+
+    const listKeyReq = new Request('http://localhost/api/auth/keys', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const listKeyRes = await worker.fetch(listKeyReq, env, makeCtx());
+    const listData = await listKeyRes.json() as any;
+    expect(listData.keys.length).toBe(1);
+    
+    const keyHash = listData.keys[0].key_hash;
+    
+    // Try to authenticate with the new API key
+    const authWithKeyReq = new Request('http://localhost/api/auth/me', {
+      headers: { 'x-api-key': keyData.apiKey }
+    });
+    const authWithKeyRes = await worker.fetch(authWithKeyReq, env, makeCtx());
+    expect(authWithKeyRes.status).toBe(200);
+
+    // Revoke key
+    const revokeReq = new Request(`http://localhost/api/auth/keys/${keyHash}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const revokeRes = await worker.fetch(revokeReq, env, makeCtx());
+    expect(revokeRes.status).toBe(200);
+    
+    // Auth with revoked key should fail
+    const revokedAuthReq = new Request('http://localhost/api/auth/me', {
+      headers: { 'x-api-key': keyData.apiKey }
+    });
+    const revokedAuthRes = await worker.fetch(revokedAuthReq, env, makeCtx());
+    expect(revokedAuthRes.status).toBe(401);
+  });
+
+  it('should handle missing fields in signup and login, and db errors', async () => {
+    const mockDB = makeAuthMockDB();
+    const env = makeEnv({ DB: mockDB, JWT_SECRET: 'test_secret' });
+
+    // Missing fields in signup
+    const signupReq = new Request('http://localhost/api/auth/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'only_email@example.com' })
+    });
+    const signupRes = await worker.fetch(signupReq, env, makeCtx());
+    expect(signupRes.status).toBe(400);
+
+    // Missing fields in login
+    const loginReq = new Request('http://localhost/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'only_email@example.com' })
+    });
+    const loginRes = await worker.fetch(loginReq, env, makeCtx());
+    expect(loginRes.status).toBe(400);
+
+    // Database error (simulated by deleting users table support in mock temporarily)
+    const errDB = {
+      prepare: () => ({
+        bind: () => ({
+          run: async () => { throw new Error('Generic DB Error'); }
+        })
+      })
+    };
+    const errEnv = makeEnv({ DB: errDB, JWT_SECRET: 'test_secret' });
+    const errSignupReq = new Request('http://localhost/api/auth/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'error@example.com', password: 'secure', name: 'Err' })
+    });
+    const errSignupRes = await worker.fetch(errSignupReq, errEnv, makeCtx());
+    expect(errSignupRes.status).toBe(500);
+
+    // Fallback Legacy user for /me
+    const legacyReq = new Request('http://localhost/api/auth/me', {
+      headers: { 'Authorization': `Bearer missingtoken` } // invalid token goes to API key logic
+    });
+    // With valid env.API_KEY we get userId 'default'. It's not in DB, so it should return legacy fallback.
+    const legacyRes = await worker.fetch(new Request('http://localhost/api/auth/me', {
+      headers: { 'x-api-key': TEST_API_KEY }
+    }), makeEnv({ DB: mockDB }), makeCtx());
+    expect(legacyRes.status).toBe(200);
+    const legacyData = await legacyRes.json() as any;
+    expect(legacyData.user.name).toBe('Legacy User');
+    
+    // 404 Not Found for auth API
+    const notFoundReq = new Request('http://localhost/api/auth/doesnotexist', { 
+      method: 'POST',
+      headers: { 'x-api-key': TEST_API_KEY }
+    });
+    const notFoundRes = await worker.fetch(notFoundReq, makeEnv({ DB: mockDB }), makeCtx());
+    expect(notFoundRes.status).toBe(404);
   });
 });

@@ -172,6 +172,10 @@ export function CognitivePlatformProvider({
     logout: async () => {
       if (activeAuth === cloudAuth) return activeAuth.logout();
     },
+    getToken: () => {
+      if (activeAuth.getToken) return activeAuth.getToken();
+      return null;
+    },
     init: async () => {}, // Already init
     getStatus: () => authStatus,
     getUser: () => user,

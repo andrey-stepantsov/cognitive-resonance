@@ -12,6 +12,7 @@ We are building a new multi-platform AI chat application from scratch. Instead o
 We are using NPM workspaces. The structure is:
 - **`apps/extension`**: The new VS Code webview extension.
 - **`apps/pwa`**: The new Vite/React PWA (injected with Capacitor for mobile deployments).
+- **`apps/cli`**: A robust, Node.js-based Command Line Interface supporting both interactive REPL and headless batch execution (scripting) modes.
 - **`packages/ui`**: Highly optimized React components (Markdown rendering, Mermaid diagram resilience, Semantic Graphs, Dissonance Meters). Must be responsive, native touch-aware, and respect mobile safe-areas.
 - **`packages/core`**: Core utilities, including semantic search, state management, AI APIs, and wrappers for Capacitor (to decouple UI from native mobile device APIs).
 - **`packages/backend`**: Integration with Cloudflare (D1 Storage, Workers) and Appwrite (JWT auth). Uses `CloudflareStorageProvider` and `GitRemoteSync`, both supporting dynamic JWT via `configureAuth(tokenGetter)` with static API key fallback.
@@ -55,9 +56,17 @@ Scale from asynchronous Git collaboration to live, sub-millisecond real-time pre
 2. Stream live messaging and WebRTC voice payloads directly through the Durable Object for extreme speed.
 3. When the live session ends, the Durable Object flushes the aggregated transcript back into D1 for permanent storage and vectorization.
 
+### Phase 4: CLI Interactive & Headless Scripting Support (Current)
+Implement a unified Command Line Interface (`apps/cli`) that mirrors the web/extension functionality with specialized focus on terminal environments.
+1. **Interactive REPL**: A persistent chat mode with commands supporting full workflow context.
+2. **Headless Execution Mode**: Designed specifically for shell scripting, testing pipelines, and CI automation. Supports reading from `stdin` via pipes (e.g., `cat log.txt | cr chat "investigate"`).
+3. **Structured Machine Output**: Configurable flags (e.g., `--format json`) to ensure CLI outputs are parsable by jq or other shell tools, discarding conversational filler.
+4. **Headless Authentication**: Non-interactive credential injection via `CR_API_KEY` mapped directly to the local config store or environment variables, bypassing interactive prompts.
+
 ## Tooling & Dependencies Decisions
 *   **Authentication:** Appwrite RS256 JWT (via JWKS) → HMAC fallback → API key (Bearer token).
 *   **Session Storage:** Cloudflare D1 (SQLite at the edge).
 *   **RAG / Vector Database:** Cloudflare Vectorize.
 *   **Version Control:** `isomorphic-git` client-side, Git Smart HTTP on Cloudflare Worker, loose objects in R2.
 *   **Multiplayer Collab:** Yjs over Cloudflare WebSockets (Durable Objects), with DO→D1 flush on room close.
+*   **CLI Framework:** Commander.js or Yargs, leveraging standard Node `process.stdin` streams.

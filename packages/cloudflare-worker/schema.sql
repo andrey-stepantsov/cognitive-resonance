@@ -27,3 +27,20 @@ CREATE TABLE IF NOT EXISTS room_chats (
 );
 
 CREATE INDEX IF NOT EXISTS idx_room_chats_room ON room_chats(room_id, timestamp);
+
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  name TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS api_keys (
+  key_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  last_used_at INTEGER,
+  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);

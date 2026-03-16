@@ -219,6 +219,15 @@ export default function App() {
           </h1>
         </div>
         <div className="flex items-center gap-2">
+          {Object.keys(app.activeUsers || {}).length > 0 && (
+            <div className="flex items-center -space-x-2 mr-2">
+               {Object.values(app.activeUsers).map(u => (
+                  <div key={u.sessionId} className="w-6 h-6 rounded-full bg-purple-600 border border-purple-800 flex items-center justify-center text-[10px] font-bold text-white uppercase shadow-sm" title={u.userId || 'Anonymous User'}>
+                     {(u.userId || 'A').charAt(0)}
+                  </div>
+               ))}
+            </div>
+          )}
           {storage.type === 'cloud' && storage.isReady() ? (
             <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title="Connected to cloud storage">
               <Cloud className="w-3 h-3" />
@@ -333,10 +342,15 @@ export default function App() {
                     </button>
                   </div>
                 ) : (
-                  <div className={cn("max-w-[85%] rounded-2xl px-5 py-3.5 text-sm leading-relaxed overflow-hidden break-words min-w-0",
-                    msg.role === 'user' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/20 rounded-br-sm" : "bg-zinc-800/80 text-zinc-200 border border-zinc-700/50 rounded-bl-sm prose prose-invert max-w-none prose-p:leading-relaxed prose-pre:m-0 w-full"
+                  <div className={cn("max-w-[85%] rounded-2xl px-5 py-3.5 text-sm leading-relaxed overflow-hidden break-words min-w-0 relative",
+                    msg.role === 'user' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/20 rounded-br-sm" : 
+                    msg.role === 'peer' ? "bg-purple-900/40 text-purple-100 border border-purple-800/40 shadow-lg shadow-purple-900/10 rounded-bl-sm" :
+                    "bg-zinc-800/80 text-zinc-200 border border-zinc-700/50 rounded-bl-sm prose prose-invert max-w-none prose-p:leading-relaxed prose-pre:m-0 w-full"
                   )}>
-                    {msg.role === 'model' && !msg.isError ? <MarkdownRenderer content={msg.content} /> : msg.content}
+                    {msg.role === 'peer' && msg.senderName && (
+                      <div className="text-[10px] font-semibold text-purple-400/80 mb-1 tracking-wider uppercase">{msg.senderName}</div>
+                    )}
+                    {(msg.role === 'model' || msg.role === 'peer') && !msg.isError ? <MarkdownRenderer content={msg.content} /> : msg.content}
                   </div>
                 )}
                 {msg.role === 'model' && msg.modelTurnIndex !== undefined && !msg.isError && (

@@ -60,6 +60,7 @@ function makeMockWebSocket() {
     close: vi.fn(),
     addEventListener: vi.fn(),
     serializeAttachment: vi.fn(),
+    deserializeAttachment: vi.fn(() => ({ id: crypto.randomUUID(), userId: 'test-user' })),
   } as unknown as WebSocket;
 }
 
@@ -175,6 +176,19 @@ describe('RoomSession', () => {
 
       expect(state.acceptWebSocket).toHaveBeenCalled();
     });
+
+    it('stores userId from X-User-Id header', async () => {
+      const request = new Request('http://localhost/room/test-room', {
+        headers: { 'Upgrade': 'websocket', 'X-User-Id': 'test-user-123' },
+      });
+
+      await room.fetch(request);
+      
+      const server = webSocketPairs[0].server;
+      expect(server.serializeAttachment).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'test-user-123' })
+      );
+    });
   });
 
   // ─── Chat Message Broadcast ───
@@ -182,14 +196,17 @@ describe('RoomSession', () => {
   describe('webSocketMessage', () => {
     it('persists chat messages to DO storage and broadcasts', async () => {
       // Connect two clients
-      const req = new Request('http://localhost/room/test', {
-        headers: { 'Upgrade': 'websocket' },
+      const req1 = new Request('http://localhost/room/test', {
+        headers: { 'Upgrade': 'websocket', 'X-User-Id': 'user-1-id' },
+      });
+      const req2 = new Request('http://localhost/room/test', {
+        headers: { 'Upgrade': 'websocket', 'X-User-Id': 'user-2-id' },
       });
 
-      await room.fetch(req);
+      await room.fetch(req1);
       const ws1Server = webSocketPairs[0].server;
 
-      await room.fetch(req);
+      await room.fetch(req2);
       const ws2Server = webSocketPairs[1].server;
 
       // ws1 sends a chat
@@ -198,12 +215,16 @@ describe('RoomSession', () => {
         payload: { message: 'hello' },
       });
 
+      // Clear calls from presence joins
+      vi.mocked((ws1Server as any).send).mockClear();
+
       await room.webSocketMessage(ws1Server, chatMsg);
 
       // Chat should be persisted
       const storedChats = storage._store.get('chats');
       expect(storedChats).toHaveLength(1);
       expect(storedChats[0].message).toBe('hello');
+      expect(storedChats[0].senderId).toBe('user-1-id');
       expect(storedChats[0].timestamp).toBeDefined();
 
       // Broadcast to ws2 but not ws1
@@ -226,6 +247,9 @@ describe('RoomSession', () => {
         type: 'cursor',
         payload: { x: 10, y: 20 },
       });
+
+      // Clear calls from presence joins
+      vi.mocked((ws1Server as any).send).mockClear();
 
       await room.webSocketMessage(ws1Server, cursorMsg);
 

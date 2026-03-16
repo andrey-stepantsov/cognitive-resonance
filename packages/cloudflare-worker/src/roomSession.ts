@@ -2,6 +2,7 @@ import { Env } from './index';
 
 interface Session {
   id: string;
+  userId?: string;
 }
 
 export class RoomSession {
@@ -17,8 +18,11 @@ export class RoomSession {
     // Ensure state bindings are available if Cloudflare restarts the isolate
     this.state.getWebSockets().forEach((ws) => {
       try {
-        const metadata = this.state.getWebSocketAutoResponse(ws) as any;
-        this.sessions.set(ws, { id: metadata?.id || crypto.randomUUID() });
+        const metadata = ws.deserializeAttachment() as any;
+        this.sessions.set(ws, { 
+          id: metadata?.id || crypto.randomUUID(),
+          userId: metadata?.userId 
+        });
       } catch (e) {
         this.sessions.set(ws, { id: crypto.randomUUID() });
       }
@@ -33,9 +37,10 @@ export class RoomSession {
 
     const { 0: client, 1: server } = new WebSocketPair();
     const sessionId = crypto.randomUUID();
+    const userId = request.headers.get('X-User-Id') || undefined;
 
     this.state.acceptWebSocket(server);
-    this.sessions.set(server, { id: sessionId });
+    this.sessions.set(server, { id: sessionId, userId });
 
     // Cancel any pending alarms (room empty flush) since a user joined
     await this.state.storage.deleteAlarm();
@@ -45,12 +50,29 @@ export class RoomSession {
     const roomId = url.pathname.split('/').filter(Boolean).pop() || 'unknown';
     await this.state.storage.put('roomId', roomId);
 
-    server.serializeAttachment({ id: sessionId });
+    server.serializeAttachment({ id: sessionId, userId });
+
+    const activeUsers = Array.from(this.sessions.values()).map(s => ({ userId: s.userId, sessionId: s.id }));
+    server.send(JSON.stringify({ type: 'presence', payload: { action: 'sync', users: activeUsers } }));
+
+    this.broadcast(JSON.stringify({ type: 'presence', payload: { action: 'join', userId, sessionId } }), server);
 
     return new Response(null, {
       status: 101,
       webSocket: client,
     });
+  }
+
+  private broadcast(message: string, excludeWs?: WebSocket) {
+    for (const [clientPs] of this.sessions) {
+      if (clientPs !== excludeWs) {
+        try {
+          clientPs.send(message);
+        } catch (e) {
+          this.sessions.delete(clientPs);
+        }
+      }
+    }
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
@@ -66,25 +88,22 @@ export class RoomSession {
       chats.push({
         ...data.payload,
         timestamp: Date.now(),
-        senderId: this.sessions.get(ws)?.id
+        senderId: this.sessions.get(ws)?.userId || this.sessions.get(ws)?.id || 'anonymous'
       });
       await this.state.storage.put('chats', chats);
     }
 
     // Broadcast to all *other* connected clients
-    for (const [clientPs] of this.sessions) {
-      if (clientPs !== ws) {
-        try {
-          clientPs.send(message);
-        } catch (e) {
-          this.sessions.delete(clientPs);
-        }
-      }
-    }
+    this.broadcast(message as string, ws);
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean) {
+    const session = this.sessions.get(ws);
     this.sessions.delete(ws);
+    
+    if (session) {
+      this.broadcast(JSON.stringify({ type: 'presence', payload: { action: 'leave', userId: session.userId, sessionId: session.id } }));
+    }
     // If the room is empty, schedule a background flush
     if (this.sessions.size === 0) {
       // 10 second delay for page reloads / fast reconnects

@@ -23,7 +23,7 @@ export class GitRemoteSync {
   }
 
   /**
-   * Configure dynamic token source (e.g. from AppwriteAuthProvider.getToken()).
+   * Configure dynamic token source (e.g. from CloudflareAuthProvider.getToken()).
    * When set, this takes priority over the static apiKey.
    */
   configureAuth(tokenGetter: () => string | null) {
@@ -37,7 +37,7 @@ export class GitRemoteSync {
 
   /**
    * Pushes a local isomorphic-git virtual repository to the Cloudflare remote.
-   * Uses the Appwrite JWT (or fallback API key) as a Bearer token.
+   * Uses the Cloudflare JWT (or fallback API key) as a Bearer token.
    */
   async pushToRemote(fs: any, dir: string, branch: string = 'main'): Promise<void> {
     const token = this.getAuthToken();

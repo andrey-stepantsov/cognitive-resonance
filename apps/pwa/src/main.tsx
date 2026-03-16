@@ -10,7 +10,7 @@ import App from './App.tsx';
 import { CognitivePlatformProvider } from '@cr/core';
 import { 
   AnonymousAuthProvider, 
-  AppwriteAuthProvider,
+  CloudflareAuthProvider,
   LocalIndexedDBProvider, 
   CloudflareStorageProvider,
   initBackendEnvironment,
@@ -26,10 +26,9 @@ initBackendEnvironment({
 const localAuth = new AnonymousAuthProvider();
 const localStorage = new LocalIndexedDBProvider();
 
-// Appwrite-backed cloud auth
-const cloudAuth = new AppwriteAuthProvider(
-  import.meta.env.VITE_APPWRITE_ENDPOINT || 'https://sfo.cloud.appwrite.io/v1',
-  import.meta.env.VITE_APPWRITE_PROJECT || 'cognitive-resonance',
+// Cloudflare-backed cloud auth
+const cloudAuth = new CloudflareAuthProvider(
+  import.meta.env.VITE_CLOUDFLARE_WORKER_URL || 'http://localhost:8787'
 );
 
 const cloudStorage = new CloudflareStorageProvider();
@@ -37,7 +36,7 @@ cloudStorage.configure(
   import.meta.env.VITE_CLOUDFLARE_WORKER_URL || '',
   import.meta.env.VITE_CR_API_KEY || ''
 );
-// Wire dynamic JWT from Appwrite into CF storage and git sync requests
+// Wire dynamic JWT from CloudflareAuth into CF storage and git sync requests
 cloudStorage.configureAuth(() => cloudAuth.getToken());
 gitRemoteSync.configureAuth(() => cloudAuth.getToken());
 
