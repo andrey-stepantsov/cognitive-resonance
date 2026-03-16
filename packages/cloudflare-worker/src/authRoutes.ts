@@ -27,7 +27,7 @@ export async function handleAuthAPI(request: Request, env: Env): Promise<Respons
       return jsonResponse({ error: 'Database error' }, 500);
     }
     
-    const jwt = await signJwt({ userId: id, email: body.email }, env.JWT_SECRET || 'default_secret');
+    const jwt = await signJwt({ userId: id, email: body.email }, env.JWT_SECRET!);
     return jsonResponse({ token: jwt, user: { id, email: body.email, name: body.name } });
   }
 
@@ -42,7 +42,7 @@ export async function handleAuthAPI(request: Request, env: Env): Promise<Respons
     const valid = await verifyPassword(body.password, user.password_hash as string);
     if (!valid) return jsonResponse({ error: 'Invalid credentials' }, 401);
     
-    const jwt = await signJwt({ userId: user.id, email: user.email }, env.JWT_SECRET || 'default_secret');
+    const jwt = await signJwt({ userId: user.id, email: user.email }, env.JWT_SECRET!);
     return jsonResponse({ token: jwt, user: { id: user.id, email: user.email, name: user.name } });
   }
 
@@ -82,6 +82,23 @@ export async function handleAuthAPI(request: Request, env: Env): Promise<Respons
     
     await env.DB.prepare('DELETE FROM api_keys WHERE key_hash = ? AND user_id = ?').bind(keyHashToRevoke, userId).run();
     return jsonResponse({ ok: true });
+  }
+
+  // --- Invite Generation ---
+  if (request.method === 'POST' && path === '/api/auth/invite') {
+    const body = await request.json() as { sessionId?: string };
+    if (!body.sessionId) {
+      return jsonResponse({ error: 'Missing sessionId' }, 400);
+    }
+    
+    // Create a 24-hour invite token containing the required sessionId and 'guest' role
+    const inviteToken = await signJwt(
+      { userId: `guest_${crypto.randomUUID().slice(0, 8)}`, sessionId: body.sessionId, role: 'guest' }, 
+      env.JWT_SECRET!, 
+      86400 // 24 hours
+    );
+    
+    return jsonResponse({ token: inviteToken });
   }
 
   return corsResponse('Not Found', 404);

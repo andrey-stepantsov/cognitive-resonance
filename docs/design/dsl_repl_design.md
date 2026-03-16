@@ -116,3 +116,19 @@ Adding a voice input layer becomes **trivial and highly robust** with this archi
 3. **Execution**: The translated DSL strings are fed directly into the `CommandParserService`, executing the commands exactly as if the power-user had typed them into the REPL.
 
 This means you never have to program custom "voice command handlers" for the UI. You simply rely on the LLM to translate speech into your strict DSL, and the App executes it reliably.
+
+---
+
+## 9. Multiplayer AI Orchestration & Interaction Model
+
+When multiple humans collaborate in a Cognitive Resonance session, the implicit "ping-pong" chat paradigm breaks down. To solve the "cocktail party problem" of AI orchestration, we enforce the **Explicit Mention Pattern**.
+
+### Interaction Rules
+1. **Free Human Chat:** Humans can chat normally within the session. These messages are synchronized via Yjs/Cloudflare Durable Objects. **These messages do NOT trigger an AI response.**
+2. **The Silent Observer:** The AI (Gem) constantly reads and synchronizes the entire conversational context, including all human-to-human interactions.
+3. **Explicit Waking:** The AI *only* generates a response when explicitly addressed via an `@mention` (e.g., `@SystemCoder, what do you think of this architecture?`).
+4. **Group Chat Awareness:** When the AI is invoked, it is supplied with a specific "Multi-Actor Environment" system prompt, ensuring it understands that the preceding messages come from different distinct human identifiers, allowing it to synthesize answers that resolve debates or combine ideas from multiple users.
+
+### Interface Requirements
+- **PWA UI (`@` Selector):** Typing `@` in the chat input will immediately pop up an autocomplete selector. This selector will list both **Active Human Peers** (to tag a colleague) and **Available AI Gems** (to query a specific model). Selecting a Gem inserts the token and primes the system to route the send event to the LLM.
+- **CLI REPL Interaction:** In the terminal, typing `@` will trigger the autocomplete engine (similar to how `/` triggers the DSL autocomplete). Because the CLI lacks a floating GUI, the interface will temporarily yield to an inline, multi-row `<select>` interface (using a library like `enquirer` or heavily customized `readline` logic) allowing arrow-key selection of the target AI before returning the cursor to the prompt text.

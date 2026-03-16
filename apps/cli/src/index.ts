@@ -3,6 +3,11 @@ import * as readline from 'readline';
 import { initGemini, generateResponse } from '@cr/core/src/services/GeminiService';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import * as fs from 'fs';
+import * as crypto from 'crypto';
+
+// Path to store the CLI authentication token
+const TOKEN_FILE_PATH = path.resolve(process.cwd(), '.cr-cli-token');
 
 // Load env vars, searching upwards if needed
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -108,6 +113,43 @@ program
 
 import { parseCommand, CommandAction } from '@cr/core/src/services/CommandParser';
 
+/** Read token from disk */
+function getCliToken(): string | null {
+  try {
+    if (fs.existsSync(TOKEN_FILE_PATH)) {
+      return fs.readFileSync(TOKEN_FILE_PATH, 'utf-8').trim();
+    }
+  } catch (e) {
+    // Ignore read errors
+  }
+  return null;
+}
+
+/** Save token to disk */
+function saveCliToken(token: string) {
+  try {
+    fs.writeFileSync(TOKEN_FILE_PATH, token, { mode: 0o600 });
+  } catch (e) {
+    console.error('[Error] Failed to save authentication token:', e);
+  }
+}
+
+/** Execute fetch to local/remote backend */
+async function backendFetch(endpoint: string, options: RequestInit = {}): Promise<Response> {
+  const backendUrl = process.env.VITE_CLOUDFLARE_WORKER_URL || 'http://localhost:8787';
+  const url = `${backendUrl.replace(/\/$/, '')}${endpoint}`;
+  
+  const headers = new Headers(options.headers);
+  headers.set('Content-Type', 'application/json');
+  
+  const token = getCliToken();
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  
+  return fetch(url, { ...options, headers });
+}
+
 // REPL Mode (default action when no arguments are provided)
 program.action(async () => {
   if (process.argv.length > 2) {
@@ -175,6 +217,82 @@ program.action(async () => {
             console.log(`[System] Current model: ${currentModel}`);
           }
           break;
+        case CommandAction.LOGIN: {
+          const email = command.args[0];
+          const password = command.args[1];
+          if (!email || !password) {
+            console.log('[System] Usage: /login <email> <password>');
+            break;
+          }
+          try {
+            process.stdout.write('[System] Logging in... ');
+            const res = await backendFetch('/api/auth/login', {
+              method: 'POST',
+              body: JSON.stringify({ email, password })
+            });
+            const data = await res.json() as any;
+            if (res.ok && data.token) {
+              saveCliToken(data.token);
+              console.log(`Success! Logged in as ${data.user.name || email}`);
+            } else {
+              console.log(`Failed. ${data.error || 'Invalid credentials'}`);
+            }
+          } catch (err: any) {
+            console.log(`Failed. Network error: ${err.message}`);
+          }
+          break;
+        }
+        case CommandAction.SIGNUP: {
+          const email = command.args[0];
+          const password = command.args[1];
+          const name = command.args.slice(2).join(' ') || email.split('@')[0];
+          if (!email || !password) {
+            console.log('[System] Usage: /signup <email> <password> [name]');
+            break;
+          }
+          try {
+            process.stdout.write('[System] Signing up... ');
+            const res = await backendFetch('/api/auth/signup', {
+              method: 'POST',
+              body: JSON.stringify({ email, password, name })
+            });
+            const data = await res.json() as any;
+            if (res.ok && data.token) {
+              saveCliToken(data.token);
+              console.log(`Success! Account created for ${email}`);
+            } else {
+              console.log(`Failed. ${data.error || 'Could not create account'}`);
+            }
+          } catch (err: any) {
+            console.log(`Failed. Network error: ${err.message}`);
+          }
+          break;
+        }
+        case CommandAction.INVITE: {
+          const sessionId = command.args[0];
+          if (!sessionId) {
+            console.log('[System] Usage: /invite <sessionId>');
+            break;
+          }
+          try {
+            process.stdout.write(`[System] Generating invite link for session ${sessionId}... `);
+            const res = await backendFetch('/api/auth/invite', {
+              method: 'POST',
+              body: JSON.stringify({ sessionId })
+            });
+            const data = await res.json() as any;
+            if (res.ok && data.token) {
+              const pwaUrl = process.env.VITE_PWA_URL || 'http://localhost:5173';
+              console.log(`\n\n🎉 Invite Link Generated Successfully!`);
+              console.log(`🔗 Share this URL: ${pwaUrl}/#${sessionId}?invite=${data.token}\n`);
+            } else {
+              console.log(`Failed. ${data.error || 'You must be logged in to generate invites.'}`);
+            }
+          } catch (err: any) {
+            console.log(`Failed. Network error: ${err.message}`);
+          }
+          break;
+        }
         case CommandAction.UNKNOWN:
         default:
           console.log(`[System] Unrecognized command: ${command.raw}`);

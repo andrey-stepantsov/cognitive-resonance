@@ -1,4 +1,4 @@
-
+import { useEffect } from 'react';
 import {
   Send, BrainCircuit, Activity, Network, Trash2, Check, X,
   AlertTriangle, Plus, Copy, FileText, Share2, Diamond,
@@ -32,6 +32,25 @@ export default function App() {
         app.setInput(translated);
     }
   });
+
+  useEffect(() => {
+    // Check for ?invite= in URL
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const inviteToken = urlParams.get('invite');
+      if (inviteToken && authStatus !== 'authenticated') {
+         // Auto-login logic. For now, since CloudflareAuthProvider handles local storage, 
+         // we just need to set the token. However, CloudflareAuthProvider doesn't expose a 'setToken' directly.
+         // A simple workaround is to just pass it directly to the socket, or store it in localStorage 
+         // so CloudflareAuthProvider picks it up.
+         localStorage.setItem('cr_auth_token', inviteToken);
+         // Reload to let the provider pick it up.
+         const newUrl = new URL(window.location.href);
+         newUrl.searchParams.delete('invite');
+         window.location.href = newUrl.toString();
+      }
+    }
+  }, [authStatus]);
 
   if (authStatus !== 'authenticated') {
     return (
@@ -158,7 +177,7 @@ export default function App() {
                     {s.customName || s.preview}
                     <div className="text-[10px] text-zinc-600 mt-0.5 flex items-center gap-1.5">
                       {new Date(s.timestamp).toLocaleString()}
-                      {s.isCloud ? (
+                      {(s as any).isCloud ? (
                         <span className="inline-flex items-center gap-0.5 text-emerald-500/80" title="Synced to cloud">
                           <Cloud className="w-3 h-3" />
                         </span>
@@ -222,7 +241,7 @@ export default function App() {
         <div className="flex items-center gap-2">
           {Object.keys(app.activeUsers || {}).length > 0 && (
             <div className="flex items-center -space-x-2 mr-2">
-               {Object.values(app.activeUsers).map(u => (
+               {Object.values(app.activeUsers || {}).map((u: any) => (
                   <div key={u.sessionId} className="w-6 h-6 rounded-full bg-purple-600 border border-purple-800 flex items-center justify-center text-[10px] font-bold text-white uppercase shadow-sm" title={u.userId || 'Anonymous User'}>
                      {(u.userId || 'A').charAt(0)}
                   </div>
@@ -261,6 +280,12 @@ export default function App() {
             <button onClick={app.handleDownloadHistory} disabled={app.messages.length === 0}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 disabled:opacity-30 disabled:cursor-not-allowed hover:text-white bg-zinc-800/30 hover:bg-zinc-800 rounded border border-zinc-800 transition-colors" title="Download Snapshot JSON">
               <Share2 className="w-3.5 h-3.5" /> Share
+            </button>
+          )}
+          {!app.isViewMode && user && (
+            <button onClick={app.handleGenerateInvite} disabled={app.messages.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 disabled:opacity-30 disabled:cursor-not-allowed rounded border border-indigo-500/20 transition-colors" title="Invite a guest to this room">
+              <Plus className="w-3.5 h-3.5" /> Invite
             </button>
           )}
           <button onClick={() => { clearApiKey(); app.setShowApiKeyModal(true); }}
@@ -357,8 +382,10 @@ export default function App() {
                     msg.role === 'peer' ? "bg-purple-900/40 text-purple-100 border border-purple-800/40 shadow-lg shadow-purple-900/10 rounded-bl-sm" :
                     "bg-zinc-800/80 text-zinc-200 border border-zinc-700/50 rounded-bl-sm prose prose-invert max-w-none prose-p:leading-relaxed prose-pre:m-0 w-full"
                   )}>
-                    {msg.role === 'peer' && msg.senderName && (
-                      <div className="text-[10px] font-semibold text-purple-400/80 mb-1 tracking-wider uppercase">{msg.senderName}</div>
+                    {(msg.role === 'peer' || msg.role === 'user') && msg.senderName && (
+                      <div className={cn("text-[10px] font-semibold mb-1 tracking-wider uppercase", 
+                        msg.role === 'user' ? "text-indigo-200/80 text-right" : "text-purple-400/80 text-left"
+                      )}>{msg.senderName}</div>
                     )}
                     {(msg.role === 'model' || msg.role === 'peer') && !msg.isError ? <MarkdownRenderer content={msg.content} /> : msg.content}
                   </div>
@@ -422,7 +449,7 @@ export default function App() {
               >
                 <div className="flex-1 overflow-y-auto p-3 sm:p-4 custom-scrollbar">
                   {/* Mention Search Results */}
-                  {app.mentionSearchQuery !== null && (
+                  {app.mentionSearchQuery !== undefined && (
                     <div className="flex flex-col gap-2">
                        <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1 px-1">Semantic Markers</div>
                        {app.mentionSuggestions.length === 0 ? (
@@ -447,7 +474,7 @@ export default function App() {
                   )}
 
                   {/* Slash Command Results */}
-                  {app.input.startsWith('/') && app.mentionSearchQuery === null && (
+                  {app.input.startsWith('/') && app.mentionSearchQuery === undefined && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                       {[
                         { cmd: '/session ls', desc: 'List recent sessions in the sidebar' },
@@ -560,7 +587,7 @@ export default function App() {
                 <ArtifactEditor
                   filename="VirtualContext.md"
                   initialContent={app.artifactContent}
-                  sessionId={app.activeSessionId}
+                  sessionId={app.activeSessionId || undefined}
                   onSave={async (filename, content, commitMessage, scope) => {
                     app.setArtifactContent(content);
                     const sessionId = app.ensureActiveSession();
@@ -569,11 +596,11 @@ export default function App() {
                     if (scope === 'global') {
                       await git.initGlobalRepo();
                       await git.stageGlobalFile(filename, content);
-                      await git.commitGlobalChange(commitMessage);
+                      await git.commitGlobalChange(commitMessage || 'Automated commit');
                     } else {
                       await git.initRepo();
                       await git.stageFile(filename, content);
-                      await git.commitChange(commitMessage);
+                      await git.commitChange(commitMessage || 'Automated commit');
                     }
 
                     app.executeCommand('/system on');

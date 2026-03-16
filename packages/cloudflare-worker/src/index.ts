@@ -66,6 +66,7 @@ import {
   hashPassword,
   verifyPassword,
   generateApiKey,
+  decodeJwtParts
 } from './auth';
 
 import { handleAuthAPI } from './authRoutes';
@@ -203,10 +204,22 @@ export async function requireAuth(request: Request, env: Env): Promise<Response 
     if (result) return result;
   }
 
-  // 2. Try HMAC if JWT_SECRET is configured
-  if (env.JWT_SECRET) {
-    const result = await verifyJwt(token, env.JWT_SECRET);
-    if (result) return result;
+  // 2. Try HMAC (local Cloudflare Auth)
+  const result = await verifyJwt(token, env.JWT_SECRET);
+  if (result) {
+    // Basic structural check if this is an invite token
+    // If it's a guest token, it MUST match the requested roomId if one is provided in the request
+    const decoded = decodeJwtParts(token);
+    if (decoded?.payload?.role === 'guest') {
+       const targetRoomId = decoded.payload.sessionId;
+       // We can extract the room ID from the request URL if it's a websocket connection
+       const url = new URL(request.url);
+       const urlRoomId = url.pathname.split('/')[2];
+       if (url.pathname.startsWith('/room/') && urlRoomId !== targetRoomId) {
+          return jsonResponse({ error: 'Invalid invite for this room' }, 403);
+       }
+    }
+    return result;
   }
 
   // 3. Try API Key against D1 api_keys table
@@ -299,7 +312,8 @@ export default {
       if (!upgradeHeader || upgradeHeader !== 'websocket') {
         return corsResponse('Expected Upgrade: websocket', 426);
       }
-
+      
+      // Pass the roomId to requireAuth via the request URL so it can validate guest tokens
       const authResult = await requireAuth(request, env);
       if (isAuthError(authResult)) return authResult;
 

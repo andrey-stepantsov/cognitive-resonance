@@ -10,6 +10,11 @@ export type CommandAction =
   | 'SESSION_RENAME'
   | 'SESSION_EXPORT'
 
+  // Auth & Invites
+  | 'LOGIN'
+  | 'SIGNUP'
+  | 'INVITE'
+
   // History
   | 'HISTORY'
 
@@ -60,6 +65,9 @@ export const CommandAction = {
   SESSION_DELETE: 'SESSION_DELETE' as CommandAction,
   SESSION_RENAME: 'SESSION_RENAME' as CommandAction,
   SESSION_EXPORT: 'SESSION_EXPORT' as CommandAction,
+  LOGIN: 'LOGIN' as CommandAction,
+  SIGNUP: 'SIGNUP' as CommandAction,
+  INVITE: 'INVITE' as CommandAction,
   HISTORY: 'HISTORY' as CommandAction,
   MODEL_USE: 'MODEL_USE' as CommandAction,
   GEM_USE: 'GEM_USE' as CommandAction,
@@ -118,6 +126,9 @@ export function parseCommand(input: string): CommandIntent | null {
   // Single namespace commands
   if (namespace === 'history') return { action: CommandAction.HISTORY, args: parts.slice(1), raw: input };
   if (namespace === 'clear') return { action: CommandAction.SESSION_CLEAR, args: parts.slice(1), raw: input };
+  if (namespace === 'login') return { action: CommandAction.LOGIN, args: parts.slice(1), raw: input };
+  if (namespace === 'signup') return { action: CommandAction.SIGNUP, args: parts.slice(1), raw: input };
+  if (namespace === 'invite') return { action: CommandAction.INVITE, args: parts.slice(1), raw: input };
   if (namespace === 'sync') return { action: CommandAction.GIT_SYNC, args: parts.slice(1), raw: input };
   if (namespace === 'push') return { action: CommandAction.GIT_PUSH, args: parts.slice(1), raw: input };
   if (namespace === 'pull') return { action: CommandAction.GIT_PULL, args: parts.slice(1), raw: input };

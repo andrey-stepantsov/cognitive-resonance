@@ -9,7 +9,6 @@ import './index.css';
 import App from './App.tsx';
 import { CognitivePlatformProvider } from '@cr/core';
 import { 
-  AnonymousAuthProvider, 
   CloudflareAuthProvider,
   LocalIndexedDBProvider, 
   CloudflareStorageProvider,
@@ -23,13 +22,15 @@ initBackendEnvironment({
 });
 
 // Initialize platform providers
-const localAuth = new AnonymousAuthProvider();
 const localStorage = new LocalIndexedDBProvider();
 
 // Cloudflare-backed cloud auth
 const cloudAuth = new CloudflareAuthProvider(
   import.meta.env.VITE_CLOUDFLARE_WORKER_URL || 'http://localhost:8787'
 );
+
+// For localAuth, we also use the CloudflareAuthProvider now to enforce security
+const localAuth = cloudAuth;
 
 const cloudStorage = new CloudflareStorageProvider();
 cloudStorage.configure(

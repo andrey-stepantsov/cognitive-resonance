@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Globe } from 'lucide-react';
 
 interface AuthScreenProps {
   onLoginOAuth?: (provider: string) => void;
@@ -8,7 +7,10 @@ interface AuthScreenProps {
   isDev?: boolean;
 }
 
-export function AuthScreen({ onLoginOAuth, onLoginEmail, onSignupEmail }: AuthScreenProps) {
+export function AuthScreen({ 
+  onLoginEmail, 
+  onSignupEmail 
+}: AuthScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState<'login' | 'signup'>('login');
@@ -23,7 +25,7 @@ export function AuthScreen({ onLoginOAuth, onLoginEmail, onSignupEmail }: AuthSc
   };
 
   return (
-    <div className="fixed inset-0 bg-[#0a0a0a] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-[#0a0a0a] flex items-center justify-center p-4 z-[9999]">
       <div className="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-8 relative overflow-hidden">
         
         {/* Decorative flair */}
@@ -72,21 +74,14 @@ export function AuthScreen({ onLoginOAuth, onLoginEmail, onSignupEmail }: AuthSc
 
         <div className="flex items-center gap-4 my-6">
           <div className="flex-1 h-px bg-zinc-800" />
-          <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Or</span>
+          <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Secure Access</span>
           <div className="flex-1 h-px bg-zinc-800" />
         </div>
-
-        <button 
-          onClick={() => onLoginOAuth?.('google')}
-          className="w-full py-3 flex items-center justify-center gap-3 bg-zinc-800 text-zinc-200 hover:bg-zinc-700 hover:text-white font-medium rounded-xl transition-colors border border-transparent shadow-sm"
-        >
-          <Globe className="w-5 h-5 text-indigo-400" />
-          Authenticate via Google
-        </button>
 
         <p className="text-xs text-center text-zinc-500 mt-6">
           {mode === 'login' ? "Don't have context established?" : "Already established context?"}{' '}
           <button 
+            type="button"
             onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}
             className="text-indigo-400 hover:text-indigo-300 font-medium underline"
           >

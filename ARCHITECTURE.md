@@ -70,3 +70,9 @@ Implement a unified Command Line Interface (`apps/cli`) that mirrors the web/ext
 *   **Version Control:** `isomorphic-git` client-side, Git Smart HTTP on Cloudflare Worker, loose objects in R2.
 *   **Multiplayer Collab:** Yjs over Cloudflare WebSockets (Durable Objects), with DO→D1 flush on room close.
 *   **CLI Framework:** Commander.js or Yargs, leveraging standard Node `process.stdin` streams.
+
+## Documentation
+Additional project documentation is available in the `docs/` directory:
+- [Collaboration Demo & Walkthrough](docs/collaboration_demo.md)
+- [CLI Interactions Catalog](docs/design/cli_interactions_catalog.md)
+- [DSL & REPL Design](docs/design/dsl_repl_design.md)

@@ -28,7 +28,7 @@ export function Intercom({ activeUsers, localSessionId, onSignal, sendSignal, me
     // Handle incoming signals
     const unsubscribe = onSignal(async (data: any) => {
       const parentPayload = data.payload || data;
-      const { targetUserId, signalData } = parentPayload;
+      const { signalData } = parentPayload;
       const senderId = data.senderId;
       if (!senderId || !signalData) return;
 
@@ -58,7 +58,7 @@ export function Intercom({ activeUsers, localSessionId, onSignal, sendSignal, me
     if (!isActive || !localSessionId) return;
 
     // Connect to new users we haven't connected to yet
-    for (const [peerId, user] of Object.entries(activeUsers)) {
+    for (const [peerId] of Object.entries(activeUsers)) {
       if (peerId === localSessionId) continue;
       
       if (!peersRef.current.has(peerId)) {

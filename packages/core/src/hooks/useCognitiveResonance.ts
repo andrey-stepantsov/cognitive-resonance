@@ -641,6 +641,38 @@ export function useCognitiveResonance() {
     if (activeSessionId === sessionId) { setActiveSessionId(null); setMessages([]); }
   };
 
+  const handleGenerateInvite = async () => {
+    if (!activeSessionId) return;
+    try {
+      const token = await auth.getToken?.();
+      if (!token) throw new Error("Not logged in");
+      
+      const isNode = typeof process !== 'undefined' && process.env;
+      const backendUrlRaw = isNode ? process.env.VITE_CLOUDFLARE_WORKER_URL : (import.meta as any).env?.VITE_CLOUDFLARE_WORKER_URL;
+      const backendUrl = (backendUrlRaw || 'http://localhost:8787').replace(/\/$/, '');
+      const res = await fetch(`${backendUrl}/api/auth/invite`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ sessionId: activeSessionId })
+      });
+      
+      const data = await res.json();
+      if (data.token) {
+         const inviteUrl = `${window.location.origin}/?invite=${data.token}#${activeSessionId}`;
+         await navigator.clipboard.writeText(inviteUrl);
+         alert(`Invite link copied to clipboard:\n${inviteUrl}`);
+      } else {
+         throw new Error(data.error || "Failed to generate invite");
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(`Could not generate invite: ${err.message}`);
+    }
+  };
+
   const handleArchiveSession = async (sessionId: string, archive: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
     if (storage.archiveSession) {
@@ -694,6 +726,47 @@ export function useCognitiveResonance() {
     e.target.value = '';
   };
 
+  // URL Hash Sync for sharing rooms
+  const activeSessionRef = useRef(activeSessionId);
+  useEffect(() => { activeSessionRef.current = activeSessionId; }, [activeSessionId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleHashChange = async () => {
+      const hash = window.location.hash.replace('#', '');
+      if (hash && hash !== activeSessionRef.current) {
+        const record = await storage.loadSession(hash);
+        if (record) {
+          setMessages(record.data.messages || []);
+          setActiveSessionId(record.id);
+          setIsViewMode(false);
+          if (record.data.config) {
+            setSelectedModel(record.data.config.model);
+            setSessionSystemPrompt(record.data.config.systemPrompt);
+            if (record.data.config.gemId) setActiveGemId(record.data.config.gemId);
+          }
+        } else {
+          setActiveSessionId(hash);
+          setMessages([]);
+        }
+      }
+    };
+    handleHashChange();
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [storage]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (activeSessionId) {
+      if (window.location.hash.replace('#', '') !== activeSessionId) {
+        window.location.hash = activeSessionId;
+      }
+    } else {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, [activeSessionId]);
+
   // Marker aggregation
   const allMarkersList = messages.filter(m => m.role === 'model' && m.internalState?.semanticNodes)
     .flatMap(m => m.internalState!.semanticNodes!);
@@ -726,5 +799,6 @@ export function useCognitiveResonance() {
     handleSetApiKey, handleClearApiKey, handleSelectGem, handleSaveGem, handleDeleteGem, handleSetDefaultGem,
     handleSubmit, handleStopGeneration, handleDownloadHistory, handleLoadSession, handleSearchResultClick,
     handleDeleteSession, handleArchiveSession, startRenameSession, handleRenameSessionSubmit, startNewSession, ensureActiveSession, handleFileSelect, handleImportSession,
+    handleGenerateInvite
   };
 }

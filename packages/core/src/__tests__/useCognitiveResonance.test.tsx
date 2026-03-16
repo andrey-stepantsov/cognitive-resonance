@@ -54,6 +54,7 @@ const mockStorage = {
   saveSession: vi.fn().mockResolvedValue('fake-session-id'),
   deleteSession: vi.fn().mockResolvedValue(true),
   renameSession: vi.fn().mockResolvedValue(true),
+  archiveSession: vi.fn().mockResolvedValue(true),
   saveGemsConfig: vi.fn()
 };
 
