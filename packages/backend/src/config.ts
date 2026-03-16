@@ -18,7 +18,7 @@ export function initBackendEnvironment(config: Partial<BackendConfig>) {
   Object.assign(globalBackendConfig, config);
 
   if (config.gitRemoteUrl) {
-    gitRemoteSync.configure(config.gitRemoteUrl);
+    gitRemoteSync.configure(config.gitRemoteUrl, config.apiKey);
     cloudflareStorage.configure(config.gitRemoteUrl, config.apiKey);
   }
 }

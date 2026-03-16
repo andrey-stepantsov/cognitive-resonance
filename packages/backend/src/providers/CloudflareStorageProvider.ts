@@ -8,6 +8,7 @@ export class CloudflareStorageProvider implements IStorageProvider {
   readonly type = 'cloud' as const;
   private workerUrl = '';
   private apiKey = '';
+  private tokenGetter?: () => string | null;
   private ready = false;
 
   configure(url: string, apiKey?: string) {
@@ -17,6 +18,14 @@ export class CloudflareStorageProvider implements IStorageProvider {
     if (apiKey) {
       this.apiKey = apiKey;
     }
+  }
+
+  /**
+   * Configure dynamic token source (e.g. from AppwriteAuthProvider.getToken()).
+   * When set, this takes priority over the static apiKey.
+   */
+  configureAuth(tokenGetter: () => string | null) {
+    this.tokenGetter = tokenGetter;
   }
 
   async init(): Promise<void> {
@@ -32,7 +41,8 @@ export class CloudflareStorageProvider implements IStorageProvider {
 
   private authHeaders(json = false): Record<string, string> {
     const h: Record<string, string> = {};
-    if (this.apiKey) h['Authorization'] = `Bearer ${this.apiKey}`;
+    const token = this.tokenGetter?.() || this.apiKey;
+    if (token) h['Authorization'] = `Bearer ${token}`;
     if (json) h['Content-Type'] = 'application/json';
     return h;
   }

@@ -26,3 +26,7 @@ bindings = [
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RoomSession"]
+
+[vars]
+APPWRITE_ENDPOINT = "https://sfo.cloud.appwrite.io/v1"
+APPWRITE_PROJECT_ID = "cognitive-resonance"

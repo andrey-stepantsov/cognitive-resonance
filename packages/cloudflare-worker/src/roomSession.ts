@@ -40,6 +40,11 @@ export class RoomSession {
     // Cancel any pending alarms (room empty flush) since a user joined
     await this.state.storage.deleteAlarm();
 
+    // Store room ID derived from the request URL path
+    const url = new URL(request.url);
+    const roomId = url.pathname.split('/').filter(Boolean).pop() || 'unknown';
+    await this.state.storage.put('roomId', roomId);
+
     server.serializeAttachment({ id: sessionId });
 
     return new Response(null, {
@@ -92,7 +97,7 @@ export class RoomSession {
   }
 
   async alarm() {
-    // Room has been empty for 10 seconds — flush chat history.
+    // Room has been empty for 10 seconds — flush chat history to D1.
     console.log("Room empty. Triggering alarm flush...");
     
     const chats = await this.state.storage.get<any[]>('chats');
@@ -100,9 +105,32 @@ export class RoomSession {
       return;
     }
 
-    // TODO: Persist chats to D1 if long-term storage is needed.
-    // For now, just clear DO transient storage.
-    await this.state.storage.delete('chats');
-    console.log("Successfully flushed chats and cleared storage.");
+    const roomId = await this.state.storage.get<string>('roomId') || 'unknown';
+
+    try {
+      // Batch INSERT chats into D1 room_chats table
+      const stmt = this.env.DB.prepare(
+        'INSERT INTO room_chats (room_id, sender_id, message, timestamp) VALUES (?, ?, ?, ?)'
+      );
+
+      const batch = chats.map((chat) =>
+        stmt.bind(
+          roomId,
+          chat.senderId || 'anonymous',
+          typeof chat.message === 'string' ? chat.message : JSON.stringify(chat),
+          chat.timestamp || Date.now()
+        )
+      );
+
+      await this.env.DB.batch(batch);
+
+      // Successfully written — clear DO storage
+      await this.state.storage.delete('chats');
+      console.log(`Successfully flushed ${chats.length} chats for room ${roomId} to D1.`);
+    } catch (err) {
+      // D1 write failed — re-schedule alarm for retry in 30 seconds
+      console.error(`Failed to flush chats to D1 for room ${roomId}:`, err);
+      await this.state.storage.setAlarm(Date.now() + 30000);
+    }
   }
 }

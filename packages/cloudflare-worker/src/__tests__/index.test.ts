@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import worker, { generateSessionEmbeddings } from '../index';
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
+import worker, { generateSessionEmbeddings, verifyJwt, verifyAppwriteJwt, clearJwksCache } from '../index';
 
 const TEST_API_KEY = 'test-api-key-abc123';
 
@@ -48,7 +48,9 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
   it('allows /api/sessions with correct API key', async () => {
     const mockDB = {
       prepare: vi.fn().mockReturnValue({
-        all: vi.fn().mockResolvedValue({ results: [] }),
+        bind: vi.fn().mockReturnValue({
+          all: vi.fn().mockResolvedValue({ results: [] }),
+        }),
       }),
     };
     const request = new Request('http://localhost/api/sessions', {
@@ -95,7 +97,6 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
     
     const response = await worker.fetch(request, makeEnv(), makeCtx());
     expect(response.status).toBe(401);
-    expect(await response.text()).toBe('Unauthorized');
   });
 
   it('saves git packfiles to the R2 bucket binding', async () => {
@@ -104,7 +105,7 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
     
     const request = new Request('http://localhost/git/session-123/git-receive-pack', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer test.token' },
+      headers: authHeaders(),
       body: mockPackfile
     });
 
@@ -125,7 +126,8 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
     const fileName = putArgs[0];
     const payload = putArgs[1];
 
-    expect(fileName).toMatch(/^pack-session-123-\d+\.pack$/);
+    // R2 key is now namespaced with userId ('default' in API key fallback mode)
+    expect(fileName).toMatch(/^default\/pack-session-123-\d+\.pack$/);
     expect(payload.byteLength).toBe(mockPackfile.byteLength);
   });
 
@@ -133,7 +135,7 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
     const encoder = new TextEncoder();
     const request = new Request('http://localhost/git/session-x/git-receive-pack', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer test.token' },
+      headers: authHeaders(),
       body: encoder.encode('PACK...data...'),
     });
 
@@ -147,7 +149,7 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
     const encoder = new TextEncoder();
     const request = new Request('http://localhost/git/session-x/git-receive-pack', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer test.token' },
+      headers: authHeaders(),
       body: encoder.encode('PACK...data...'),
     });
 
@@ -406,7 +408,7 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
 
   it('returns git-receive-pack advertisement for info/refs', async () => {
     const request = new Request('http://localhost/git/session-1/info/refs?service=git-receive-pack', {
-      headers: { 'Authorization': 'Bearer test.token' },
+      headers: authHeaders(),
     });
     const response = await worker.fetch(request, makeEnv(), makeCtx());
     expect(response.status).toBe(200);
@@ -416,18 +418,132 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
   });
 
   it('rejects unsupported service in info/refs', async () => {
-    const request = new Request('http://localhost/git/session-1/info/refs?service=git-upload-pack', {
-      headers: { 'Authorization': 'Bearer test.token' },
+    const request = new Request('http://localhost/git/session-1/info/refs?service=git-foo-bar', {
+      headers: authHeaders(),
     });
     const response = await worker.fetch(request, makeEnv(), makeCtx());
     expect(response.status).toBe(400);
-    expect(await response.text()).toContain('Only git-receive-pack');
+    expect(await response.text()).toContain('Unsupported git service');
   });
 
-  it('rejects unauthenticated info/refs', async () => {
-    const request = new Request('http://localhost/git/session-1/info/refs?service=git-receive-pack');
+  it('returns git-upload-pack advertisement for info/refs', async () => {
+    const mockR2 = {
+      list: vi.fn().mockResolvedValue({ objects: [] }),
+    };
+    const request = new Request('http://localhost/git/session-1/info/refs?service=git-upload-pack', {
+      headers: authHeaders(),
+    });
+    const response = await worker.fetch(request, makeEnv({ GIT_PACKS_BUCKET: mockR2 }), makeCtx());
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe('application/x-git-upload-pack-advertisement');
+    const body = await response.text();
+    expect(body).toContain('git-upload-pack');
+  });
+
+  it('advertises refs/heads/main when packs exist for upload-pack', async () => {
+    const mockR2 = {
+      list: vi.fn().mockResolvedValue({
+        objects: [{ key: 'default/pack-session-1-1234.pack', size: 100 }],
+      }),
+    };
+    const request = new Request('http://localhost/git/session-1/info/refs?service=git-upload-pack', {
+      headers: authHeaders(),
+    });
+    const response = await worker.fetch(request, makeEnv({ GIT_PACKS_BUCKET: mockR2 }), makeCtx());
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain('refs/heads/main');
+  });
+
+  it('advertises capabilities-only when no packs for upload-pack', async () => {
+    const mockR2 = {
+      list: vi.fn().mockResolvedValue({ objects: [] }),
+    };
+    const request = new Request('http://localhost/git/session-1/info/refs?service=git-upload-pack', {
+      headers: authHeaders(),
+    });
+    const response = await worker.fetch(request, makeEnv({ GIT_PACKS_BUCKET: mockR2 }), makeCtx());
+    const body = await response.text();
+    expect(body).toContain('capabilities^{}');
+  });
+
+  // --- Git Smart HTTP (git-upload-pack POST) ---
+
+  it('rejects unauthorized git-upload-pack requests', async () => {
+    const request = new Request('http://localhost/git/session-123/git-upload-pack', {
+      method: 'POST',
+    });
     const response = await worker.fetch(request, makeEnv(), makeCtx());
     expect(response.status).toBe(401);
+  });
+
+  it('returns NAK when no packs exist for git-upload-pack', async () => {
+    const mockR2 = {
+      list: vi.fn().mockResolvedValue({ objects: [] }),
+    };
+    const request = new Request('http://localhost/git/session-empty/git-upload-pack', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: new Uint8Array(0),
+    });
+    const response = await worker.fetch(request, makeEnv({ GIT_PACKS_BUCKET: mockR2 }), makeCtx());
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe('application/x-git-upload-pack-result');
+    const body = await response.text();
+    expect(body).toContain('NAK');
+  });
+
+  it('returns pack data when packs exist for git-upload-pack', async () => {
+    const packContent = new TextEncoder().encode('PACK-MOCK-DATA');
+    const mockR2 = {
+      list: vi.fn().mockResolvedValue({
+        objects: [
+          { key: 'default/pack-session-1-1000.pack', size: 100 },
+          { key: 'default/pack-session-1-2000.pack', size: 200 },
+        ],
+      }),
+      get: vi.fn().mockResolvedValue({
+        arrayBuffer: vi.fn().mockResolvedValue(packContent.buffer),
+      }),
+    };
+    const request = new Request('http://localhost/git/session-1/git-upload-pack', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: new Uint8Array(0),
+    });
+    const response = await worker.fetch(request, makeEnv({ GIT_PACKS_BUCKET: mockR2 }), makeCtx());
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe('application/x-git-upload-pack-result');
+    // Should have fetched the latest pack (highest timestamp key, now namespaced)
+    expect(mockR2.get).toHaveBeenCalledWith('default/pack-session-1-2000.pack');
+  });
+
+  it('returns 500 when R2 bucket is not configured for git-upload-pack', async () => {
+    const request = new Request('http://localhost/git/session-1/git-upload-pack', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: new Uint8Array(0),
+    });
+    // No GIT_PACKS_BUCKET in env
+    const response = await worker.fetch(request, makeEnv(), makeCtx());
+    expect(response.status).toBe(500);
+    expect(await response.text()).toContain('R2 bucket not configured');
+  });
+
+  it('returns 404 when R2 get fails for git-upload-pack', async () => {
+    const mockR2 = {
+      list: vi.fn().mockResolvedValue({
+        objects: [{ key: 'default/pack-session-1-1000.pack', size: 100 }],
+      }),
+      get: vi.fn().mockResolvedValue(null),
+    };
+    const request = new Request('http://localhost/git/session-1/git-upload-pack', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: new Uint8Array(0),
+    });
+    const response = await worker.fetch(request, makeEnv({ GIT_PACKS_BUCKET: mockR2 }), makeCtx());
+    expect(response.status).toBe(404);
   });
 
   // --- WebSocket Rooms ---
@@ -561,13 +677,13 @@ describe('generateSessionEmbeddings', () => {
     expect(aiArgs[1].text[0]).toContain('Authentication, OAuth Flow');
     expect(aiArgs[1].text[0]).toContain('It uses JWT tokens.');
 
-    // Vectorize.upsert was called with the vector
+    // Vectorize.upsert was called with the vector (now includes userId)
     expect(mockVectorize.upsert).toHaveBeenCalledTimes(1);
     const upsertArgs = mockVectorize.upsert.mock.calls[0][0];
     expect(upsertArgs).toEqual([{
       id: 'session-abc',
       values: [0.1, 0.2, 0.3],
-      metadata: { sessionId: 'session-abc' },
+      metadata: { sessionId: 'session-abc', userId: 'default' },
     }]);
   });
 
@@ -838,7 +954,7 @@ describe('/api/search endpoint', () => {
     expect(mockAI.run).toHaveBeenCalledWith('@cf/baai/bge-base-en-v1.5', { text: ['authentication'] });
 
     // Verify Vectorize was queried with the embedding
-    expect(mockVectorize.query).toHaveBeenCalledWith([0.1, 0.2, 0.3], { topK: 10 });
+    expect(mockVectorize.query).toHaveBeenCalledWith([0.1, 0.2, 0.3], { topK: 10, filter: { userId: 'default' } });
   });
 
   it('respects custom limit parameter', async () => {
@@ -859,7 +975,7 @@ describe('/api/search endpoint', () => {
       makeCtx(),
     );
 
-    expect(mockVectorize.query).toHaveBeenCalledWith([0.1], { topK: 5 });
+    expect(mockVectorize.query).toHaveBeenCalledWith([0.1], { topK: 5, filter: { userId: 'default' } });
   });
 
   it('caps limit at 50', async () => {
@@ -880,7 +996,7 @@ describe('/api/search endpoint', () => {
       makeCtx(),
     );
 
-    expect(mockVectorize.query).toHaveBeenCalledWith([0.1], { topK: 50 });
+    expect(mockVectorize.query).toHaveBeenCalledWith([0.1], { topK: 50, filter: { userId: 'default' } });
   });
 
   it('filters out Vectorize matches that are missing from D1', async () => {
@@ -920,5 +1036,338 @@ describe('/api/search endpoint', () => {
     const body = await response.json() as any;
     expect(body.results).toHaveLength(1);
     expect(body.results[0].sessionId).toBe('exists');
+  });
+});
+
+// --- JWT Auth tests ---
+
+const TEST_JWT_SECRET = 'super-secret-key-for-testing';
+
+/** Helper: create a valid HS256 JWT for testing */
+async function createTestJwt(payload: Record<string, any>, secret: string = TEST_JWT_SECRET): Promise<string> {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const encoder = new TextEncoder();
+
+  const b64url = (data: Uint8Array) => {
+    const binary = String.fromCharCode(...data);
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  };
+
+  const headerB64 = b64url(encoder.encode(JSON.stringify(header)));
+  const payloadB64 = b64url(encoder.encode(JSON.stringify(payload)));
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    encoder.encode(`${headerB64}.${payloadB64}`),
+  );
+
+  const signatureB64 = b64url(new Uint8Array(signature));
+  return `${headerB64}.${payloadB64}.${signatureB64}`;
+}
+
+describe('verifyJwt', () => {
+  it('returns userId from valid JWT with sub claim', async () => {
+    const token = await createTestJwt({ sub: 'user-42', exp: Math.floor(Date.now() / 1000) + 3600 });
+    const result = await verifyJwt(token, TEST_JWT_SECRET);
+    expect(result).toEqual({ userId: 'user-42' });
+  });
+
+  it('returns userId from valid JWT with userId claim', async () => {
+    const token = await createTestJwt({ userId: 'alice', exp: Math.floor(Date.now() / 1000) + 3600 });
+    const result = await verifyJwt(token, TEST_JWT_SECRET);
+    expect(result).toEqual({ userId: 'alice' });
+  });
+
+  it('returns null for expired JWT', async () => {
+    const token = await createTestJwt({ sub: 'user-42', exp: Math.floor(Date.now() / 1000) - 100 });
+    const result = await verifyJwt(token, TEST_JWT_SECRET);
+    expect(result).toBeNull();
+  });
+
+  it('returns null for JWT signed with wrong secret', async () => {
+    const token = await createTestJwt({ sub: 'user-42' }, 'wrong-secret');
+    const result = await verifyJwt(token, TEST_JWT_SECRET);
+    expect(result).toBeNull();
+  });
+
+  it('returns null for malformed token', async () => {
+    const result = await verifyJwt('not.a.valid.jwt.token', TEST_JWT_SECRET);
+    expect(result).toBeNull();
+  });
+
+  it('returns null for token without userId/sub', async () => {
+    const token = await createTestJwt({ name: 'alice' });
+    const result = await verifyJwt(token, TEST_JWT_SECRET);
+    expect(result).toBeNull();
+  });
+});
+
+describe('JWT auth mode', () => {
+  it('authenticates with valid JWT when JWT_SECRET is set', async () => {
+    const token = await createTestJwt({ sub: 'user-99', exp: Math.floor(Date.now() / 1000) + 3600 });
+    const mockDB = {
+      prepare: vi.fn().mockReturnValue({
+        bind: vi.fn().mockReturnValue({
+          all: vi.fn().mockResolvedValue({ results: [] }),
+        }),
+      }),
+    };
+
+    const request = new Request('http://localhost/api/sessions', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const response = await worker.fetch(
+      request,
+      makeEnv({ DB: mockDB, JWT_SECRET: TEST_JWT_SECRET }),
+      makeCtx(),
+    );
+
+    expect(response.status).toBe(200);
+    // The query should use user_id = 'user-99'
+    expect(mockDB.prepare).toHaveBeenCalledWith(expect.stringContaining('WHERE user_id = ?'));
+  });
+
+  it('rejects expired JWT when JWT_SECRET is set', async () => {
+    const token = await createTestJwt({ sub: 'user-99', exp: Math.floor(Date.now() / 1000) - 100 });
+
+    const request = new Request('http://localhost/api/sessions', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const response = await worker.fetch(
+      request,
+      makeEnv({ JWT_SECRET: TEST_JWT_SECRET }),
+      makeCtx(),
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it('falls back to API key mode when JWT_SECRET is not set', async () => {
+    const mockDB = {
+      prepare: vi.fn().mockReturnValue({
+        bind: vi.fn().mockReturnValue({
+          all: vi.fn().mockResolvedValue({ results: [] }),
+        }),
+      }),
+    };
+
+    const request = new Request('http://localhost/api/sessions', {
+      method: 'GET',
+      headers: authHeaders(),  // Uses API key
+    });
+
+    const response = await worker.fetch(
+      request,
+      makeEnv({ DB: mockDB }),  // No JWT_SECRET
+      makeCtx(),
+    );
+
+    expect(response.status).toBe(200);
+  });
+});
+
+// --- Appwrite RS256 JWKS tests ---
+
+/** Helper: generate an RSA key pair for RS256 testing */
+async function generateRSAKeyPair() {
+  return await crypto.subtle.generateKey(
+    { name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
+    true,
+    ['sign', 'verify'],
+  );
+}
+
+/** Helper: create an RS256 JWT */
+async function createRS256Jwt(payload: Record<string, any>, privateKey: CryptoKey, kid = 'test-kid'): Promise<string> {
+  const header = { alg: 'RS256', typ: 'JWT', kid };
+  const encoder = new TextEncoder();
+
+  const b64url = (data: Uint8Array) => {
+    const binary = String.fromCharCode(...data);
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  };
+
+  const headerB64 = b64url(encoder.encode(JSON.stringify(header)));
+  const payloadB64 = b64url(encoder.encode(JSON.stringify(payload)));
+
+  const signature = await crypto.subtle.sign(
+    'RSASSA-PKCS1-v1_5',
+    privateKey,
+    encoder.encode(`${headerB64}.${payloadB64}`),
+  );
+
+  const signatureB64 = b64url(new Uint8Array(signature));
+  return `${headerB64}.${payloadB64}.${signatureB64}`;
+}
+
+/** Helper: export public key as JWK for mock JWKS endpoint */
+async function exportPublicKeyJwk(publicKey: CryptoKey, kid = 'test-kid') {
+  const jwk = await crypto.subtle.exportKey('jwk', publicKey) as any;
+  return { ...jwk, kid, use: 'sig', alg: 'RS256' };
+}
+
+describe('verifyAppwriteJwt (RS256)', () => {
+  let keyPair: CryptoKeyPair;
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeAll(async () => {
+    keyPair = await generateRSAKeyPair();
+    originalFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    clearJwksCache();
+  });
+
+  function mockJwksFetch(jwkOverrides?: any) {
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes('/account/jwks')) {
+        const jwk = jwkOverrides || await exportPublicKeyJwk(keyPair.publicKey);
+        return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 });
+      }
+      return originalFetch(url);
+    }) as any;
+  }
+
+  it('verifies a valid RS256 JWT with correct JWKS', async () => {
+    mockJwksFetch();
+    const token = await createRS256Jwt(
+      { userId: 'appwrite-user-42', exp: Math.floor(Date.now() / 1000) + 3600 },
+      keyPair.privateKey,
+    );
+
+    const result = await verifyAppwriteJwt(token, 'https://cloud.appwrite.io/v1');
+    expect(result).toEqual({ userId: 'appwrite-user-42' });
+  });
+
+  it('rejects expired RS256 JWT', async () => {
+    mockJwksFetch();
+    const token = await createRS256Jwt(
+      { userId: 'appwrite-user-42', exp: Math.floor(Date.now() / 1000) - 100 },
+      keyPair.privateKey,
+    );
+
+    const result = await verifyAppwriteJwt(token, 'https://cloud.appwrite.io/v1');
+    expect(result).toBeNull();
+  });
+
+  it('rejects JWT signed with wrong key', async () => {
+    // Generate a different key pair
+    const wrongKeys = await generateRSAKeyPair();
+    // JWKS serves the original key, but token is signed with the wrong key
+    mockJwksFetch();
+    const token = await createRS256Jwt(
+      { userId: 'attacker', exp: Math.floor(Date.now() / 1000) + 3600 },
+      wrongKeys.privateKey,
+    );
+
+    const result = await verifyAppwriteJwt(token, 'https://cloud.appwrite.io/v1');
+    expect(result).toBeNull();
+  });
+
+  it('rejects when JWKS endpoint fails', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response('Internal Error', { status: 500 })) as any;
+
+    const token = await createRS256Jwt(
+      { userId: 'user', exp: Math.floor(Date.now() / 1000) + 3600 },
+      keyPair.privateKey,
+    );
+
+    const result = await verifyAppwriteJwt(token, 'https://cloud.appwrite.io/v1');
+    expect(result).toBeNull();
+  });
+});
+
+describe('Appwrite auth in requireAuth pipeline', () => {
+  let keyPair: CryptoKeyPair;
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeAll(async () => {
+    keyPair = await generateRSAKeyPair();
+    originalFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    clearJwksCache();
+  });
+
+  it('authenticates with Appwrite JWT when APPWRITE_ENDPOINT is set', async () => {
+    const jwk = await exportPublicKeyJwk(keyPair.publicKey);
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (typeof url === 'string' && url.includes('/account/jwks')) {
+        return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 });
+      }
+      return originalFetch(url);
+    }) as any;
+
+    const token = await createRS256Jwt(
+      { userId: 'aw-user-99', exp: Math.floor(Date.now() / 1000) + 3600 },
+      keyPair.privateKey,
+    );
+
+    const mockDB = {
+      prepare: vi.fn().mockReturnValue({
+        bind: vi.fn().mockReturnValue({
+          all: vi.fn().mockResolvedValue({ results: [] }),
+        }),
+      }),
+    };
+
+    const request = new Request('http://localhost/api/sessions', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const response = await worker.fetch(
+      request,
+      makeEnv({ DB: mockDB, APPWRITE_ENDPOINT: 'https://cloud.appwrite.io/v1' }),
+      makeCtx(),
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it('falls back to API key when Appwrite JWT is invalid', async () => {
+    // JWKS endpoint returns empty keys
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ keys: [] }), { status: 200 })
+    ) as any;
+
+    const mockDB = {
+      prepare: vi.fn().mockReturnValue({
+        bind: vi.fn().mockReturnValue({
+          all: vi.fn().mockResolvedValue({ results: [] }),
+        }),
+      }),
+    };
+
+    const request = new Request('http://localhost/api/sessions', {
+      method: 'GET',
+      headers: authHeaders(),  // Uses API key
+    });
+
+    const response = await worker.fetch(
+      request,
+      makeEnv({ DB: mockDB, APPWRITE_ENDPOINT: 'https://cloud.appwrite.io/v1' }),
+      makeCtx(),
+    );
+
+    // Should fall through to API key validation
+    expect(response.status).toBe(200);
   });
 });

@@ -3,24 +3,33 @@ import http from 'isomorphic-git/http/web';
 
 export class GitRemoteSync {
   private remoteUrl: string;
+  private apiKey: string;
 
   constructor() {
     this.remoteUrl = 'http://localhost:8787/git';
+    this.apiKey = '';
   }
 
-  configure(url: string) {
+  configure(url: string, apiKey?: string) {
     if (url) {
       // Ensure the URL always ends with /git for the Cloudflare Worker routing
       const cleanUrl = url.replace(/\/$/, '');
       this.remoteUrl = cleanUrl.endsWith('/git') ? cleanUrl : `${cleanUrl}/git`;
     }
+    if (apiKey) {
+      this.apiKey = apiKey;
+    }
   }
 
   /**
    * Pushes a local isomorphic-git virtual repository to the Cloudflare remote.
-   * Uses a static bearer token (no auth backend required).
+   * Uses the configured API key as a Bearer token.
    */
   async pushToRemote(fs: any, dir: string, branch: string = 'main'): Promise<void> {
+    if (!this.apiKey) {
+      throw new Error('[GitRemoteSync] API key not configured. Call configure(url, apiKey) first.');
+    }
+
     try {
       console.log(`[GitRemoteSync] Pushing ${dir} to ${this.remoteUrl}`);
 
@@ -32,7 +41,7 @@ export class GitRemoteSync {
         url: `${this.remoteUrl}${dir}`, // e.g. /git/session-123
         ref: branch,
         headers: {
-          'Authorization': 'Bearer cr-session-token'
+          'Authorization': `Bearer ${this.apiKey}`
         }
       });
 
@@ -48,6 +57,10 @@ export class GitRemoteSync {
    * Fetches/Pulls from the remote repository.
    */
   async pullFromRemote(fs: any, dir: string, branch: string = 'main'): Promise<void> {
+    if (!this.apiKey) {
+      throw new Error('[GitRemoteSync] API key not configured. Call configure(url, apiKey) first.');
+    }
+
     try {
       console.log(`[GitRemoteSync] Pulling ${dir} from ${this.remoteUrl}`);
 
@@ -64,7 +77,7 @@ export class GitRemoteSync {
           email: 'system@cr.local'
         },
         headers: {
-          'Authorization': 'Bearer cr-session-token'
+          'Authorization': `Bearer ${this.apiKey}`
         }
       });
 
