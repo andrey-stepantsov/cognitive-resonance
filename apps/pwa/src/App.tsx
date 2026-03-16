@@ -2,7 +2,7 @@
 import {
   Send, BrainCircuit, Activity, Network, Trash2, Check, X,
   AlertTriangle, Plus, Copy, FileText, Share2, Diamond,
-  Database, Loader2, Paperclip, Star, Edit3, Upload, Mic, MicOff, Square, Globe, Eye, EyeOff, Cloud, HardDrive
+  Database, Loader2, Paperclip, Star, Edit3, Upload, Mic, MicOff, Square, Globe, Eye, EyeOff, Cloud, HardDrive, LogOut
 } from 'lucide-react';
 import { SemanticGraph, DissonanceMeter, MarkdownRenderer, AuthScreen, ArtifactEditor } from '@cr/ui';
 import { clsx } from 'clsx';
@@ -16,7 +16,7 @@ function cn(...inputs: (string | undefined | null | false)[]) {
 
 export default function App() {
   const app = useREPL();
-  const { authStatus, auth, storage } = useCognitivePlatform();
+  const { authStatus, auth, storage, user } = useCognitivePlatform();
 
   const voice = useVoiceToDSL(async (transcript) => {
     // Determine translation using Gemini
@@ -228,6 +228,14 @@ export default function App() {
             <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium bg-zinc-800/50 text-zinc-500 border border-zinc-700/30" title="Using local storage">
               <HardDrive className="w-3 h-3" />
               Local
+            </div>
+          )}
+          {user && (
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-medium bg-zinc-800/50 text-zinc-400 border border-zinc-700/30">
+              <span className="max-w-[100px] truncate hidden sm:inline">{user.email || user.name}</span>
+              <button onClick={() => { auth.logout(); clearApiKey(); }} className="p-0.5 text-zinc-500 hover:text-red-400 transition-colors" title="Log out">
+                <LogOut className="w-3 h-3" />
+              </button>
             </div>
           )}
           {!app.isViewMode && (

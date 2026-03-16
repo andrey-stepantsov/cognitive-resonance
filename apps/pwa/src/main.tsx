@@ -13,7 +13,8 @@ import {
   AppwriteAuthProvider,
   LocalIndexedDBProvider, 
   CloudflareStorageProvider,
-  initBackendEnvironment
+  initBackendEnvironment,
+  gitRemoteSync
 } from '@cr/backend';
 
 // Configure backend with Cloudflare Worker URL
@@ -36,8 +37,9 @@ cloudStorage.configure(
   import.meta.env.VITE_CLOUDFLARE_WORKER_URL || '',
   import.meta.env.VITE_CR_API_KEY || ''
 );
-// Wire dynamic JWT from Appwrite into CF storage requests
+// Wire dynamic JWT from Appwrite into CF storage and git sync requests
 cloudStorage.configureAuth(() => cloudAuth.getToken());
+gitRemoteSync.configureAuth(() => cloudAuth.getToken());
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

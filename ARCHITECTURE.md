@@ -14,7 +14,7 @@ We are using NPM workspaces. The structure is:
 - **`apps/pwa`**: The new Vite/React PWA (injected with Capacitor for mobile deployments).
 - **`packages/ui`**: Highly optimized React components (Markdown rendering, Mermaid diagram resilience, Semantic Graphs, Dissonance Meters). Must be responsive, native touch-aware, and respect mobile safe-areas.
 - **`packages/core`**: Core utilities, including semantic search, state management, AI APIs, and wrappers for Capacitor (to decouple UI from native mobile device APIs).
-- **`packages/backend`**: Integration with Cloudflare (D1 Storage, Workers) to maintain and sync user state across all platforms. Uses `CloudflareStorageProvider` with API key authentication.
+- **`packages/backend`**: Integration with Cloudflare (D1 Storage, Workers) and Appwrite (JWT auth). Uses `CloudflareStorageProvider` and `GitRemoteSync`, both supporting dynamic JWT via `configureAuth(tokenGetter)` with static API key fallback.
 
 ## Current State
 The `legacy/` directory is populated. The `package.json` at the root is initialized with `apps/*` and `packages/*` as workspaces.
@@ -34,16 +34,20 @@ The backend is a **Cloudflare-only model** using Workers, D1, Vectorize, Durable
 
 ### Phase 1: Foundation (Identity, Chat, & Context) ✅
 Establish the underlying identity and AI memory systems so Gemini has persistent context across devices.
-1. Anonymous auth with API key protection on all endpoints.
-2. Store all chat sessions in **Cloudflare D1** (`cr-sessions` database).
-3. **Cloudflare Worker pipeline** automatically vectors saved chats into **Cloudflare Vectorize** for semantic search (RAG).
+1. **Appwrite RS256 JWT auth** with JWKS verification on the Worker, HMAC fallback, and API key fallback for development.
+2. Per-user data isolation — all D1 queries, R2 keys, and Vectorize operations are scoped by `userId`.
+3. Store all chat sessions in **Cloudflare D1** (`cr-sessions` database).
+4. **Cloudflare Worker pipeline** automatically vectors saved chats into **Cloudflare Vectorize** for semantic search (RAG).
+5. In-memory sliding-window rate limiting on the Worker.
 
-### Phase 2: Git-Backed Asynchronous Artifact Editing
+### Phase 2: Git-Backed Asynchronous Artifact Editing ✅
 Implement single-user (and async multi-user) artifact editing using Git as the backend engine.
-1. Integrate **Monaco / ProseMirror** editors into the clients for editing Markdown and Code.
-2. Embed **`isomorphic-git`** into the client apps (PWA, VS Code, Capacitor) to treat artifacts as local virtual repositories.
-3. Deploy a **Cloudflare Worker** as the Git HTTPS Remote. It intercepts client `git push` commands, validates the API key, and unpacks Git objects into **R2 Storage**.
-4. Feed raw `git diff` outputs directly into the Gemini prompt for high-precision AI code edits.
+1. Embed **`isomorphic-git`** into the client apps (PWA, VS Code, Capacitor) to treat artifacts as local virtual repositories.
+2. `GitRemoteSync` supports dynamic Appwrite JWT via `configureAuth()` (same pattern as `CloudflareStorageProvider`).
+3. **Pack Unpacking**: Worker parses incoming PACK v2 packfiles (via `packParser.ts`), resolves OFS/REF deltas, and stores individual loose objects in **R2 Storage** under `{userId}/objects/{sha[0:2]}/{sha[2:]}`.
+4. **Real Refs**: Refs stored in R2 as `{userId}/refs/heads/{branch}`. `git-info-refs` advertises real commit SHAs.
+5. **Graph Walk**: `git-upload-pack` performs BFS from wanted SHAs through commit→tree→blob references, stopping at the client's "have" boundary, building minimal packfiles for transfer.
+6. Feed raw `git diff` outputs directly into the Gemini prompt for high-precision AI code edits.
 
 ### Phase 3: The Multiplayer Edge (Real-Time Voice & Sync)
 Scale from asynchronous Git collaboration to live, sub-millisecond real-time presence, messaging, and voice.
@@ -52,8 +56,8 @@ Scale from asynchronous Git collaboration to live, sub-millisecond real-time pre
 3. When the live session ends, the Durable Object flushes the aggregated transcript back into D1 for permanent storage and vectorization.
 
 ## Tooling & Dependencies Decisions
-*   **Authentication:** Anonymous auth + API key (Bearer token) on Worker endpoints.
+*   **Authentication:** Appwrite RS256 JWT (via JWKS) → HMAC fallback → API key (Bearer token).
 *   **Session Storage:** Cloudflare D1 (SQLite at the edge).
 *   **RAG / Vector Database:** Cloudflare Vectorize.
-*   **Version Control:** `isomorphic-git` running client-side, hitting Cloudflare Worker Git remote.
-*   **Multiplayer Collab:** Yjs over Cloudflare WebSockets (Durable Objects).
+*   **Version Control:** `isomorphic-git` client-side, Git Smart HTTP on Cloudflare Worker, loose objects in R2.
+*   **Multiplayer Collab:** Yjs over Cloudflare WebSockets (Durable Objects), with DO→D1 flush on room close.

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
-import worker, { generateSessionEmbeddings, verifyJwt, verifyAppwriteJwt, clearJwksCache } from '../index';
+import worker, { generateSessionEmbeddings, verifyJwt, verifyAppwriteJwt, clearJwksCache, checkRateLimit, rateLimitStore } from '../index';
 
 const TEST_API_KEY = 'test-api-key-abc123';
 
@@ -99,36 +99,49 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
     expect(response.status).toBe(401);
   });
 
-  it('saves git packfiles to the R2 bucket binding', async () => {
-    const encoder = new TextEncoder();
-    const mockPackfile = encoder.encode('PACK...mock...data...');
-    
+  it('parses packfile and stores loose objects in R2 on receive-pack', async () => {
+    // Build a valid packfile with a known blob using the pack builder
+    const { buildPackfile, gitObjectSha } = await import('../packParser');
+    const blobData = new TextEncoder().encode('test content for receive-pack');
+    const blobSha = await gitObjectSha('blob', blobData);
+    const pack = await buildPackfile([{ sha: blobSha, type: 'blob', data: blobData }]);
+
+    // Build pkt-line command preceding the packfile
+    const oldSha = '0'.repeat(40);
+    const line = `${oldSha} ${blobSha} refs/heads/main\0report-status\n`;
+    const lenHex = (line.length + 4).toString(16).padStart(4, '0');
+    const pktLine = new TextEncoder().encode(`${lenHex}${line}0000`);
+
+    // Combine pkt-line + packfile
+    const combined = new Uint8Array(pktLine.length + pack.length);
+    combined.set(pktLine);
+    combined.set(pack, pktLine.length);
+
     const request = new Request('http://localhost/git/session-123/git-receive-pack', {
       method: 'POST',
       headers: authHeaders(),
-      body: mockPackfile
+      body: combined,
     });
 
     const mockR2Bucket = {
-      put: vi.fn().mockResolvedValue(true)
+      put: vi.fn().mockResolvedValue(true),
     };
 
     const response = await worker.fetch(request, makeEnv({ GIT_PACKS_BUCKET: mockR2Bucket }), makeCtx());
-    
+
     expect(response.status).toBe(200);
     const bodyText = await response.text();
     expect(bodyText).toContain('unpack ok');
     expect(bodyText).toContain('ok refs/heads/main');
 
-    expect(mockR2Bucket.put).toHaveBeenCalledTimes(1);
-    
-    const putArgs = mockR2Bucket.put.mock.calls[0];
-    const fileName = putArgs[0];
-    const payload = putArgs[1];
-
-    // R2 key is now namespaced with userId ('default' in API key fallback mode)
-    expect(fileName).toMatch(/^default\/pack-session-123-\d+\.pack$/);
-    expect(payload.byteLength).toBe(mockPackfile.byteLength);
+    // Should store loose object + ref
+    expect(mockR2Bucket.put).toHaveBeenCalled();
+    const putCalls = mockR2Bucket.put.mock.calls;
+    // At least one call should be for the object, one for the ref
+    const objectCall = putCalls.find((c: any[]) => c[0].includes('/objects/'));
+    const refCall = putCalls.find((c: any[]) => c[0].includes('/refs/'));
+    expect(objectCall).toBeTruthy();
+    expect(refCall).toBeTruthy();
   });
 
   it('handles git-receive-pack without R2 bucket', async () => {
@@ -145,20 +158,22 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
     expect(await response.text()).toContain('unpack ok');
   });
 
-  it('handles git-receive-pack when R2 put fails', async () => {
+  it('handles git-receive-pack with invalid packfile gracefully', async () => {
     const encoder = new TextEncoder();
     const request = new Request('http://localhost/git/session-x/git-receive-pack', {
       method: 'POST',
       headers: authHeaders(),
-      body: encoder.encode('PACK...data...'),
+      body: encoder.encode('INVALID-DATA'),
     });
 
     const mockR2Bucket = {
-      put: vi.fn().mockRejectedValue(new Error('R2 failure')),
+      put: vi.fn().mockResolvedValue(true),
     };
 
+    // Should still return 200 (error is handled gracefully)
     const response = await worker.fetch(request, makeEnv({ GIT_PACKS_BUCKET: mockR2Bucket }), makeCtx());
-    expect(response.status).toBe(200); // Still returns success per protocol
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('unpack ok');
   });
 
   // --- Fallback ---
@@ -426,9 +441,9 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
     expect(await response.text()).toContain('Unsupported git service');
   });
 
-  it('returns git-upload-pack advertisement for info/refs', async () => {
+  it('returns git-upload-pack advertisement for info/refs (no ref)', async () => {
     const mockR2 = {
-      list: vi.fn().mockResolvedValue({ objects: [] }),
+      get: vi.fn().mockResolvedValue(null),
     };
     const request = new Request('http://localhost/git/session-1/info/refs?service=git-upload-pack', {
       headers: authHeaders(),
@@ -440,10 +455,11 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
     expect(body).toContain('git-upload-pack');
   });
 
-  it('advertises refs/heads/main when packs exist for upload-pack', async () => {
+  it('advertises real SHA on refs/heads/main when ref exists', async () => {
+    const realSha = 'a'.repeat(40);
     const mockR2 = {
-      list: vi.fn().mockResolvedValue({
-        objects: [{ key: 'default/pack-session-1-1234.pack', size: 100 }],
+      get: vi.fn().mockResolvedValue({
+        text: vi.fn().mockResolvedValue(realSha),
       }),
     };
     const request = new Request('http://localhost/git/session-1/info/refs?service=git-upload-pack', {
@@ -452,12 +468,13 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
     const response = await worker.fetch(request, makeEnv({ GIT_PACKS_BUCKET: mockR2 }), makeCtx());
     expect(response.status).toBe(200);
     const body = await response.text();
+    expect(body).toContain(realSha);
     expect(body).toContain('refs/heads/main');
   });
 
-  it('advertises capabilities-only when no packs for upload-pack', async () => {
+  it('advertises capabilities-only when no ref exists for upload-pack', async () => {
     const mockR2 = {
-      list: vi.fn().mockResolvedValue({ objects: [] }),
+      get: vi.fn().mockResolvedValue(null),
     };
     const request = new Request('http://localhost/git/session-1/info/refs?service=git-upload-pack', {
       headers: authHeaders(),
@@ -477,9 +494,9 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
     expect(response.status).toBe(401);
   });
 
-  it('returns NAK when no packs exist for git-upload-pack', async () => {
+  it('returns NAK when no ref exists for git-upload-pack', async () => {
     const mockR2 = {
-      list: vi.fn().mockResolvedValue({ objects: [] }),
+      get: vi.fn().mockResolvedValue(null),
     };
     const request = new Request('http://localhost/git/session-empty/git-upload-pack', {
       method: 'POST',
@@ -493,29 +510,48 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
     expect(body).toContain('NAK');
   });
 
-  it('returns pack data when packs exist for git-upload-pack', async () => {
-    const packContent = new TextEncoder().encode('PACK-MOCK-DATA');
+  it('returns pack data from loose objects for git-upload-pack', async () => {
+    const blobData = new TextEncoder().encode('loose object data');
+    const { gitObjectSha } = await import('../packParser');
+    const blobSha = await gitObjectSha('blob', blobData);
+    const headSha = blobSha;
+
     const mockR2 = {
-      list: vi.fn().mockResolvedValue({
-        objects: [
-          { key: 'default/pack-session-1-1000.pack', size: 100 },
-          { key: 'default/pack-session-1-2000.pack', size: 200 },
-        ],
+      get: vi.fn().mockImplementation((key: string) => {
+        if (key.includes('/refs/')) {
+          return Promise.resolve({ text: () => Promise.resolve(headSha) });
+        }
+        if (key.includes('/objects/')) {
+          return Promise.resolve({
+            arrayBuffer: () => Promise.resolve(blobData.buffer),
+            customMetadata: { type: 'blob' },
+          });
+        }
+        return Promise.resolve(null);
       }),
-      get: vi.fn().mockResolvedValue({
-        arrayBuffer: vi.fn().mockResolvedValue(packContent.buffer),
+      list: vi.fn().mockResolvedValue({
+        objects: [{ key: `default/objects/${blobSha.slice(0, 2)}/${blobSha.slice(2)}` }],
+        truncated: false,
       }),
     };
+
+    // Build want line
+    const wantLine = `want ${headSha}\n`;
+    const wantLen = (wantLine.length + 4).toString(16).padStart(4, '0');
+    const doneLine = 'done\n';
+    const doneLen = (doneLine.length + 4).toString(16).padStart(4, '0');
+    const bodyData = new TextEncoder().encode(
+      `${wantLen}${wantLine}0000${doneLen}${doneLine}0000`
+    );
+
     const request = new Request('http://localhost/git/session-1/git-upload-pack', {
       method: 'POST',
       headers: authHeaders(),
-      body: new Uint8Array(0),
+      body: bodyData,
     });
     const response = await worker.fetch(request, makeEnv({ GIT_PACKS_BUCKET: mockR2 }), makeCtx());
     expect(response.status).toBe(200);
     expect(response.headers.get('Content-Type')).toBe('application/x-git-upload-pack-result');
-    // Should have fetched the latest pack (highest timestamp key, now namespaced)
-    expect(mockR2.get).toHaveBeenCalledWith('default/pack-session-1-2000.pack');
   });
 
   it('returns 500 when R2 bucket is not configured for git-upload-pack', async () => {
@@ -530,12 +566,16 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
     expect(await response.text()).toContain('R2 bucket not configured');
   });
 
-  it('returns 404 when R2 get fails for git-upload-pack', async () => {
+  it('returns NAK when ref exists but no loose objects match wants', async () => {
+    const headSha = 'f'.repeat(40);
     const mockR2 = {
-      list: vi.fn().mockResolvedValue({
-        objects: [{ key: 'default/pack-session-1-1000.pack', size: 100 }],
+      get: vi.fn().mockImplementation((key: string) => {
+        if (key.includes('/refs/')) {
+          return Promise.resolve({ text: () => Promise.resolve(headSha) });
+        }
+        return Promise.resolve(null);
       }),
-      get: vi.fn().mockResolvedValue(null),
+      list: vi.fn().mockResolvedValue({ objects: [], truncated: false }),
     };
     const request = new Request('http://localhost/git/session-1/git-upload-pack', {
       method: 'POST',
@@ -543,7 +583,9 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
       body: new Uint8Array(0),
     });
     const response = await worker.fetch(request, makeEnv({ GIT_PACKS_BUCKET: mockR2 }), makeCtx());
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain('NAK');
   });
 
   // --- WebSocket Rooms ---
@@ -1219,12 +1261,10 @@ async function exportPublicKeyJwk(publicKey: CryptoKey, kid = 'test-kid') {
   return { ...jwk, kid, use: 'sig', alg: 'RS256' };
 }
 
-describe('verifyAppwriteJwt (RS256)', () => {
-  let keyPair: CryptoKeyPair;
+describe('verifyAppwriteJwt (account.get())', () => {
   let originalFetch: typeof globalThis.fetch;
 
-  beforeAll(async () => {
-    keyPair = await generateRSAKeyPair();
+  beforeAll(() => {
     originalFetch = globalThis.fetch;
   });
 
@@ -1233,62 +1273,70 @@ describe('verifyAppwriteJwt (RS256)', () => {
     clearJwksCache();
   });
 
-  function mockJwksFetch(jwkOverrides?: any) {
-    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
-      if (url.includes('/account/jwks')) {
-        const jwk = jwkOverrides || await exportPublicKeyJwk(keyPair.publicKey);
-        return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 });
-      }
-      return originalFetch(url);
-    }) as any;
+  function mockAccountFetch(response: Response) {
+    globalThis.fetch = vi.fn().mockResolvedValue(response) as any;
   }
 
-  it('verifies a valid RS256 JWT with correct JWKS', async () => {
-    mockJwksFetch();
-    const token = await createRS256Jwt(
-      { userId: 'appwrite-user-42', exp: Math.floor(Date.now() / 1000) + 3600 },
-      keyPair.privateKey,
+  it('verifies a valid JWT by calling Appwrite account API', async () => {
+    mockAccountFetch(
+      new Response(JSON.stringify({ $id: 'appwrite-user-42', email: 'test@test.com' }), { status: 200 })
     );
-
-    const result = await verifyAppwriteJwt(token, 'https://cloud.appwrite.io/v1');
+    const result = await verifyAppwriteJwt('valid-jwt-token', 'https://cloud.appwrite.io/v1', 'test-project');
     expect(result).toEqual({ userId: 'appwrite-user-42' });
   });
 
-  it('rejects expired RS256 JWT', async () => {
-    mockJwksFetch();
-    const token = await createRS256Jwt(
-      { userId: 'appwrite-user-42', exp: Math.floor(Date.now() / 1000) - 100 },
-      keyPair.privateKey,
+  it('rejects when Appwrite returns 401', async () => {
+    mockAccountFetch(
+      new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401 })
     );
-
-    const result = await verifyAppwriteJwt(token, 'https://cloud.appwrite.io/v1');
+    const result = await verifyAppwriteJwt('invalid-token', 'https://cloud.appwrite.io/v1');
     expect(result).toBeNull();
   });
 
-  it('rejects JWT signed with wrong key', async () => {
-    // Generate a different key pair
-    const wrongKeys = await generateRSAKeyPair();
-    // JWKS serves the original key, but token is signed with the wrong key
-    mockJwksFetch();
-    const token = await createRS256Jwt(
-      { userId: 'attacker', exp: Math.floor(Date.now() / 1000) + 3600 },
-      wrongKeys.privateKey,
+  it('rejects when Appwrite returns no $id', async () => {
+    mockAccountFetch(
+      new Response(JSON.stringify({ email: 'test@test.com' }), { status: 200 })
     );
-
-    const result = await verifyAppwriteJwt(token, 'https://cloud.appwrite.io/v1');
+    const result = await verifyAppwriteJwt('weird-token', 'https://cloud.appwrite.io/v1');
     expect(result).toBeNull();
   });
 
-  it('rejects when JWKS endpoint fails', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response('Internal Error', { status: 500 })) as any;
-
-    const token = await createRS256Jwt(
-      { userId: 'user', exp: Math.floor(Date.now() / 1000) + 3600 },
-      keyPair.privateKey,
+  it('rejects when Appwrite endpoint fails', async () => {
+    mockAccountFetch(
+      new Response('Internal Error', { status: 500 })
     );
-
-    const result = await verifyAppwriteJwt(token, 'https://cloud.appwrite.io/v1');
+    const result = await verifyAppwriteJwt('token', 'https://cloud.appwrite.io/v1');
     expect(result).toBeNull();
+  });
+
+  it('caches verified tokens', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ $id: 'cached-user' }), { status: 200 })
+    );
+    globalThis.fetch = mockFetch as any;
+
+    // First call should hit Appwrite
+    const r1 = await verifyAppwriteJwt('cache-test-token', 'https://cloud.appwrite.io/v1');
+    expect(r1).toEqual({ userId: 'cached-user' });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    // Second call should use cache
+    const r2 = await verifyAppwriteJwt('cache-test-token', 'https://cloud.appwrite.io/v1');
+    expect(r2).toEqual({ userId: 'cached-user' });
+    expect(mockFetch).toHaveBeenCalledTimes(1); // Not called again
+  });
+
+  it('sends X-Appwrite-Project header when projectId provided', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ $id: 'user-with-project' }), { status: 200 })
+    );
+    globalThis.fetch = mockFetch as any;
+
+    await verifyAppwriteJwt('project-token', 'https://cloud.appwrite.io/v1', 'my-project');
+
+    const callArgs = mockFetch.mock.calls[0];
+    expect(callArgs[1].headers['X-Appwrite-Project']).toBe('my-project');
+    expect(callArgs[1].headers['X-Appwrite-JWT']).toBe('project-token');
   });
 });
 
@@ -1307,18 +1355,13 @@ describe('Appwrite auth in requireAuth pipeline', () => {
   });
 
   it('authenticates with Appwrite JWT when APPWRITE_ENDPOINT is set', async () => {
-    const jwk = await exportPublicKeyJwk(keyPair.publicKey);
+    // Mock the Appwrite account API to return a valid user
     globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
-      if (typeof url === 'string' && url.includes('/account/jwks')) {
-        return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 });
+      if (typeof url === 'string' && url.includes('/account')) {
+        return new Response(JSON.stringify({ $id: 'aw-user-99', email: 'test@example.com' }), { status: 200 });
       }
       return originalFetch(url);
     }) as any;
-
-    const token = await createRS256Jwt(
-      { userId: 'aw-user-99', exp: Math.floor(Date.now() / 1000) + 3600 },
-      keyPair.privateKey,
-    );
 
     const mockDB = {
       prepare: vi.fn().mockReturnValue({
@@ -1330,12 +1373,12 @@ describe('Appwrite auth in requireAuth pipeline', () => {
 
     const request = new Request('http://localhost/api/sessions', {
       method: 'GET',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: 'Bearer some-appwrite-jwt-token' },
     });
 
     const response = await worker.fetch(
       request,
-      makeEnv({ DB: mockDB, APPWRITE_ENDPOINT: 'https://cloud.appwrite.io/v1' }),
+      makeEnv({ DB: mockDB, APPWRITE_ENDPOINT: 'https://cloud.appwrite.io/v1', APPWRITE_PROJECT_ID: 'test-project' }),
       makeCtx(),
     );
 
@@ -1343,9 +1386,9 @@ describe('Appwrite auth in requireAuth pipeline', () => {
   });
 
   it('falls back to API key when Appwrite JWT is invalid', async () => {
-    // JWKS endpoint returns empty keys
+    // Mock Appwrite account API to reject the token
     globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ keys: [] }), { status: 200 })
+      new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401 })
     ) as any;
 
     const mockDB = {
@@ -1369,5 +1412,91 @@ describe('Appwrite auth in requireAuth pipeline', () => {
 
     // Should fall through to API key validation
     expect(response.status).toBe(200);
+  });
+});
+
+// --- Rate Limiting ---
+
+describe('checkRateLimit', () => {
+  afterEach(() => {
+    rateLimitStore.clear();
+  });
+
+  it('allows requests under the limit', () => {
+    for (let i = 0; i < 59; i++) {
+      expect(checkRateLimit('192.168.1.1')).toBe(true);
+    }
+  });
+
+  it('blocks requests over the limit', () => {
+    for (let i = 0; i < 60; i++) {
+      checkRateLimit('192.168.1.2');
+    }
+    expect(checkRateLimit('192.168.1.2')).toBe(false);
+  });
+
+  it('tracks IPs independently', () => {
+    for (let i = 0; i < 60; i++) {
+      checkRateLimit('10.0.0.1');
+    }
+    // 10.0.0.1 is blocked
+    expect(checkRateLimit('10.0.0.1')).toBe(false);
+    // 10.0.0.2 should still be allowed
+    expect(checkRateLimit('10.0.0.2')).toBe(true);
+  });
+
+  it('allows requests after the window expires', () => {
+    const realDateNow = Date.now;
+    let mockTime = 1000000;
+    Date.now = () => mockTime;
+
+    try {
+      for (let i = 0; i < 60; i++) {
+        checkRateLimit('192.168.1.3');
+      }
+      expect(checkRateLimit('192.168.1.3')).toBe(false);
+
+      // Advance time past the window (61 seconds)
+      mockTime += 61_000;
+      expect(checkRateLimit('192.168.1.3')).toBe(true);
+    } finally {
+      Date.now = realDateNow;
+    }
+  });
+});
+
+describe('Rate limiting integration', () => {
+  afterEach(() => {
+    rateLimitStore.clear();
+  });
+
+  it('returns 429 when rate limit is exceeded', async () => {
+    // Exhaust the rate limit for IP 1.2.3.4
+    for (let i = 0; i < 60; i++) {
+      checkRateLimit('1.2.3.4');
+    }
+
+    const request = new Request('http://localhost/api/sessions', {
+      method: 'GET',
+      headers: { ...authHeaders(), 'CF-Connecting-IP': '1.2.3.4' },
+    });
+    const response = await worker.fetch(request, makeEnv(), makeCtx());
+    expect(response.status).toBe(429);
+    expect(await response.text()).toContain('Rate limit exceeded');
+  });
+
+  it('does not rate-limit CORS preflight', async () => {
+    // Exhaust the limit for this IP
+    for (let i = 0; i < 60; i++) {
+      checkRateLimit('5.6.7.8');
+    }
+
+    const request = new Request('http://localhost/api/sessions', {
+      method: 'OPTIONS',
+      headers: { 'CF-Connecting-IP': '5.6.7.8' },
+    });
+    const response = await worker.fetch(request, makeEnv(), makeCtx());
+    // OPTIONS should always return 204, not 429
+    expect(response.status).toBe(204);
   });
 });

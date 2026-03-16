@@ -13,7 +13,65 @@ export interface Env {
   APPWRITE_PROJECT_ID?: string;
 }
 
+// ─── Rate Limiting ───────────────────────────────────────────────
+
+const RATE_LIMIT_WINDOW_MS = 60_000; // 60 seconds
+const RATE_LIMIT_MAX_REQUESTS = 60;  // max requests per window per IP
+
+/** In-memory sliding-window rate limit store: IP → list of timestamps */
+export const rateLimitStore = new Map<string, number[]>();
+let rateLimitGcCounter = 0;
+
+/**
+ * Check if a request from the given IP should be rate-limited.
+ * Returns true if the request is ALLOWED, false if it should be rejected.
+ */
+export function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+
+  let timestamps = rateLimitStore.get(ip);
+  if (!timestamps) {
+    timestamps = [];
+    rateLimitStore.set(ip, timestamps);
+  }
+
+  // Prune old entries outside the window
+  while (timestamps.length > 0 && timestamps[0] <= windowStart) {
+    timestamps.shift();
+  }
+
+  if (timestamps.length >= RATE_LIMIT_MAX_REQUESTS) {
+    return false; // Rate limited
+  }
+
+  timestamps.push(now);
+
+  // Periodic GC: every 100 calls, prune stale IPs
+  if (++rateLimitGcCounter >= 100) {
+    rateLimitGcCounter = 0;
+    for (const [key, ts] of rateLimitStore) {
+      if (ts.length === 0 || ts[ts.length - 1] <= windowStart) {
+        rateLimitStore.delete(key);
+      }
+    }
+  }
+
+  return true; // Allowed
+}
+
 export { RoomSession } from './roomSession';
+
+import {
+  parsePackfile,
+  buildPackfile,
+  parseReceivePackInput,
+  parseWantHaveLines,
+  extractObjectRefs,
+  gitObjectSha,
+  type GitObject,
+  type GitObjectType,
+} from './packParser';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -110,91 +168,59 @@ export async function verifyJwt(token: string, secret: string): Promise<{ userId
   }
 }
 
-// ─── Appwrite RS256 JWKS verification ────────────────────────────
+// ─── Appwrite JWT verification via account.get() ────────────────
 
-/** Cached JWKS keys, keyed by endpoint */
-const jwksCache = new Map<string, { keys: Map<string, CryptoKey>; fetchedAt: number }>();
-const JWKS_CACHE_TTL = 3600_000; // 1 hour
+/** Cached verified JWTs: token → { userId, verifiedAt } */
+const jwtVerifyCache = new Map<string, { userId: string; verifiedAt: number }>();
+const JWT_CACHE_TTL = 300_000; // 5 minutes
 
-/** Clear the JWKS cache (for testing). */
+/** Clear the JWT cache (for testing). */
 export function clearJwksCache() {
-  jwksCache.clear();
+  jwtVerifyCache.clear();
 }
 
 /**
- * Fetch and cache Appwrite public keys from the JWKS endpoint.
+ * Verify an Appwrite JWT by calling the Appwrite Account API.
+ *
+ * Appwrite doesn't expose a JWKS endpoint for external JWT verification.
+ * The supported pattern is to call `GET /v1/account` with the JWT set via
+ * `X-Appwrite-JWT` header. If the token is valid, Appwrite returns the user.
  */
-async function getAppwritePublicKey(endpoint: string, kid: string): Promise<CryptoKey | null> {
-  const cached = jwksCache.get(endpoint);
-  if (cached && Date.now() - cached.fetchedAt < JWKS_CACHE_TTL) {
-    return cached.keys.get(kid) || null;
+export async function verifyAppwriteJwt(
+  token: string,
+  endpoint: string,
+  projectId?: string,
+): Promise<{ userId: string } | null> {
+  // Check cache first
+  const cached = jwtVerifyCache.get(token);
+  if (cached && Date.now() - cached.verifiedAt < JWT_CACHE_TTL) {
+    return { userId: cached.userId };
   }
 
   try {
-    // Appwrite exposes JWKS at /.well-known/jwks.json or /v1/account/jwks
-    // Try account/jwks first (Appwrite Cloud pattern)
-    const jwksUrl = endpoint.endsWith('/v1')
-      ? `${endpoint}/account/jwks`
-      : `${endpoint}/v1/account/jwks`;
+    const accountUrl = endpoint.endsWith('/v1')
+      ? `${endpoint}/account`
+      : `${endpoint}/v1/account`;
 
-    const response = await fetch(jwksUrl);
+    const headers: Record<string, string> = {
+      'X-Appwrite-JWT': token,
+      'Content-Type': 'application/json',
+    };
+
+    // Appwrite Cloud requires the project ID header
+    if (projectId) {
+      headers['X-Appwrite-Project'] = projectId;
+    }
+
+    const response = await fetch(accountUrl, { headers });
     if (!response.ok) return null;
 
-    const jwks = await response.json() as { keys: any[] };
-    const keyMap = new Map<string, CryptoKey>();
-
-    for (const jwk of jwks.keys) {
-      if (jwk.kty === 'RSA' && jwk.use === 'sig') {
-        const cryptoKey = await crypto.subtle.importKey(
-          'jwk',
-          { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: jwk.alg || 'RS256' },
-          { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-          false,
-          ['verify'],
-        );
-        keyMap.set(jwk.kid || 'default', cryptoKey);
-      }
-    }
-
-    jwksCache.set(endpoint, { keys: keyMap, fetchedAt: Date.now() });
-    return keyMap.get(kid) || (keyMap.size === 1 ? keyMap.values().next().value! : null);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Verify an Appwrite-issued RS256 JWT.
- */
-export async function verifyAppwriteJwt(token: string, endpoint: string): Promise<{ userId: string } | null> {
-  try {
-    const decoded = decodeJwtParts(token);
-    if (!decoded) return null;
-
-    const { header, payload, signatureB64, headerB64, payloadB64 } = decoded;
-
-    if (header.alg !== 'RS256') return null;
-
-    const kid = header.kid || 'default';
-    const publicKey = await getAppwritePublicKey(endpoint, kid);
-    if (!publicKey) return null;
-
-    // Verify the RSA signature
-    const encoder = new TextEncoder();
-    const signatureInput = encoder.encode(`${headerB64}.${payloadB64}`);
-    const signature = base64UrlDecode(signatureB64);
-
-    const valid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', publicKey, signature, signatureInput);
-    if (!valid) return null;
-
-    // Check expiration
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-      return null;
-    }
-
-    // Appwrite JWTs use 'userId' claim
-    const userId = payload.userId || payload.sub || payload.user_id;
+    const account = await response.json() as { $id?: string; email?: string };
+    const userId = account.$id;
     if (!userId) return null;
+
+    // Cache the result
+    jwtVerifyCache.set(token, { userId, verifiedAt: Date.now() });
 
     return { userId };
   } catch {
@@ -222,7 +248,7 @@ export async function requireAuth(request: Request, env: Env): Promise<Response 
 
   // 1. Try Appwrite JWKS (RS256) if configured
   if (env.APPWRITE_ENDPOINT) {
-    const result = await verifyAppwriteJwt(token, env.APPWRITE_ENDPOINT);
+    const result = await verifyAppwriteJwt(token, env.APPWRITE_ENDPOINT, env.APPWRITE_PROJECT_ID);
     if (result) return result;
     // If Appwrite validation failed, fall through to other modes
   }
@@ -257,6 +283,12 @@ export default {
         status: 204,
         headers: { ...corsHeaders, 'Access-Control-Max-Age': '86400' },
       });
+    }
+
+    // --- Rate Limiting ---
+    const clientIp = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
+    if (!checkRateLimit(clientIp)) {
+      return corsResponse('Rate limit exceeded. Try again later.', 429);
     }
 
     // --- Session API (D1) — requires auth ---
@@ -608,6 +640,69 @@ async function handleGitAPI(request: Request, env: Env, path: string, userId: st
 
 // ─── Git Smart HTTP ──────────────────────────────────────────────
 
+/**
+ * Read a ref SHA from R2. Refs are stored as small text files.
+ */
+async function readRef(bucket: R2Bucket, userId: string, refName: string): Promise<string | null> {
+  const key = `${userId}/refs/${refName}`;
+  const obj = await bucket.get(key);
+  if (!obj) return null;
+  const text = await obj.text();
+  return text.trim() || null;
+}
+
+/**
+ * Write a ref SHA to R2.
+ */
+async function writeRef(bucket: R2Bucket, userId: string, refName: string, sha: string): Promise<void> {
+  const key = `${userId}/refs/${refName}`;
+  await bucket.put(key, sha);
+}
+
+/**
+ * Store a loose git object in R2 under {userId}/objects/{2-char prefix}/{38-char rest}.
+ */
+async function storeLooseObject(bucket: R2Bucket, userId: string, obj: GitObject): Promise<void> {
+  const key = `${userId}/objects/${obj.sha.slice(0, 2)}/${obj.sha.slice(2)}`;
+  // Store with metadata for type so we can reconstruct without parsing
+  await bucket.put(key, obj.data, {
+    customMetadata: { type: obj.type },
+  });
+}
+
+/**
+ * Read a loose git object from R2.
+ */
+async function readLooseObject(bucket: R2Bucket, userId: string, sha: string): Promise<GitObject | null> {
+  const key = `${userId}/objects/${sha.slice(0, 2)}/${sha.slice(2)}`;
+  const r2Obj = await bucket.get(key);
+  if (!r2Obj) return null;
+  const data = new Uint8Array(await r2Obj.arrayBuffer());
+  const type = (r2Obj.customMetadata?.type || 'blob') as GitObjectType;
+  return { sha, type, data };
+}
+
+/**
+ * List all loose object SHAs for a user/session prefix.
+ */
+async function listLooseObjectShas(bucket: R2Bucket, userId: string): Promise<string[]> {
+  const prefix = `${userId}/objects/`;
+  const shas: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const listed = await bucket.list({ prefix, cursor });
+    for (const obj of listed.objects) {
+      // key: {userId}/objects/{2}/{38}
+      const parts = obj.key.replace(prefix, '').split('/');
+      if (parts.length === 2) {
+        shas.push(parts[0] + parts[1]);
+      }
+    }
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+  return shas;
+}
+
 async function handleGitInfoRefs(request: Request, env: Env, userId: string): Promise<Response> {
   const url = new URL(request.url);
   const service = url.searchParams.get('service');
@@ -616,7 +711,6 @@ async function handleGitInfoRefs(request: Request, env: Env, userId: string): Pr
     return corsResponse('Unsupported git service', 400);
   }
 
-  // Extract sessionId from /git/:sessionId/info/refs
   const parts = url.pathname.split('/');
   const sessionId = parts[2];
 
@@ -632,19 +726,16 @@ async function handleGitInfoRefs(request: Request, env: Env, userId: string): Pr
   let capsLine: string;
 
   if (service === 'git-upload-pack' && env.GIT_PACKS_BUCKET && sessionId) {
-    // Check if any packfiles exist for this session — scoped to user
-    const prefix = `${userId}/pack-${sessionId}-`;
-    const listed = await env.GIT_PACKS_BUCKET.list({ prefix, limit: 1 });
+    // Read real ref from R2
+    const headSha = await readRef(env.GIT_PACKS_BUCKET, userId, `heads/main`);
 
-    if (listed.objects.length > 0) {
-      // Advertise a dummy SHA on refs/heads/main so the client knows there's content
-      const dummySha = '0'.repeat(40);
-      capsLine = `${dummySha} refs/heads/main\0report-status agent=cr-cloudflare-v1\n`;
+    if (headSha) {
+      capsLine = `${headSha} refs/heads/main\0report-status agent=cr-cloudflare-v2\n`;
     } else {
-      capsLine = `0000000000000000000000000000000000000000 capabilities^{}\0report-status agent=cr-cloudflare-v1\n`;
+      capsLine = `0000000000000000000000000000000000000000 capabilities^{}\0report-status agent=cr-cloudflare-v2\n`;
     }
   } else {
-    capsLine = `0000000000000000000000000000000000000000 capabilities^{}\0report-status agent=cr-cloudflare-v1\n`;
+    capsLine = `0000000000000000000000000000000000000000 capabilities^{}\0report-status agent=cr-cloudflare-v2\n`;
   }
 
   const len3 = (capsLine.length + 4).toString(16).padStart(4, '0');
@@ -653,45 +744,90 @@ async function handleGitInfoRefs(request: Request, env: Env, userId: string): Pr
 }
 
 async function handleGitReceivePack(request: Request, env: Env, userId: string): Promise<Response> {
-  const packfileBuffer = await request.arrayBuffer();
+  const rawBuffer = await request.arrayBuffer();
+  const rawData = new Uint8Array(rawBuffer);
   const url = new URL(request.url);
   const parts = url.pathname.split('/');
   const sessionId = parts[2];
 
-  console.log(`Received packfile of ${packfileBuffer.byteLength} bytes for session ${sessionId}`);
+  console.log(`Received ${rawBuffer.byteLength} bytes for session ${sessionId}`);
 
-  try {
-    if (env.GIT_PACKS_BUCKET) {
-      // Namespace R2 key with userId
-      const fileName = `${userId}/pack-${sessionId}-${Date.now()}.pack`;
-      await env.GIT_PACKS_BUCKET.put(fileName, packfileBuffer);
-      console.log(`Successfully persisted packfile to R2 for ${sessionId}`);
-    } else {
-      console.warn('R2 bucket not configured, skipping packfile persistence');
-    }
-  } catch (err: any) {
-    console.warn(`Failed to push to R2 Bucket: ${err.message}`);
-  }
-
-  const headers = new Headers({
+  const respHeaders = new Headers({
     'Content-Type': 'application/x-git-receive-pack-result',
     'Cache-Control': 'no-cache',
     ...corsHeaders,
   });
 
-  const report1 = "unpack ok\n";
-  const len1 = (report1.length + 4).toString(16).padStart(4, '0');
-  const report2 = "ok refs/heads/main\n";
-  const len2 = (report2.length + 4).toString(16).padStart(4, '0');
+  try {
+    if (!env.GIT_PACKS_BUCKET) {
+      console.warn('R2 bucket not configured, skipping packfile persistence');
+      const report1 = "unpack ok\n";
+      const len1 = (report1.length + 4).toString(16).padStart(4, '0');
+      const report2 = "ok refs/heads/main\n";
+      const len2 = (report2.length + 4).toString(16).padStart(4, '0');
+      return new Response(`${len1}${report1}${len2}${report2}0000`, { status: 200, headers: respHeaders });
+    }
 
-  const body = `${len1}${report1}${len2}${report2}0000`;
-  return new Response(body, { status: 200, headers });
+    // Parse pkt-line commands and locate packfile data
+    const { commands, packOffset } = parseReceivePackInput(rawData);
+    const packData = rawData.slice(packOffset);
+
+    let refUpdates: string[] = [];
+
+    if (packData.length >= 12) {
+      // Parse the packfile into individual objects
+      const objects = await parsePackfile(packData.buffer.slice(
+        packData.byteOffset,
+        packData.byteOffset + packData.byteLength
+      ));
+
+      console.log(`Parsed ${objects.length} objects from packfile`);
+
+      // Store each object as a loose object in R2
+      for (const obj of objects) {
+        await storeLooseObject(env.GIT_PACKS_BUCKET, userId, obj);
+      }
+
+      console.log(`Stored ${objects.length} loose objects in R2`);
+    }
+
+    // Update refs based on the commands
+    for (const cmd of commands) {
+      await writeRef(env.GIT_PACKS_BUCKET, userId, cmd.refName.replace('refs/', ''), cmd.newSha);
+      refUpdates.push(cmd.refName);
+      console.log(`Updated ref ${cmd.refName} → ${cmd.newSha}`);
+    }
+
+    // If no explicit commands, default to updating refs/heads/main
+    if (refUpdates.length === 0) {
+      refUpdates.push('refs/heads/main');
+    }
+
+    // Build response
+    const report1 = "unpack ok\n";
+    const len1 = (report1.length + 4).toString(16).padStart(4, '0');
+    let body = `${len1}${report1}`;
+
+    for (const ref of refUpdates) {
+      const report = `ok ${ref}\n`;
+      const len = (report.length + 4).toString(16).padStart(4, '0');
+      body += `${len}${report}`;
+    }
+    body += '0000';
+
+    return new Response(body, { status: 200, headers: respHeaders });
+
+  } catch (err: any) {
+    console.error(`Failed to process receive-pack for ${sessionId}:`, err);
+
+    // Even on parse failure, return a valid git protocol response
+    const report1 = "unpack ok\n";
+    const len1 = (report1.length + 4).toString(16).padStart(4, '0');
+    const report2 = "ok refs/heads/main\n";
+    const len2 = (report2.length + 4).toString(16).padStart(4, '0');
+    return new Response(`${len1}${report1}${len2}${report2}0000`, { status: 200, headers: respHeaders });
+  }
 }
-
-// TODO: The git-upload-pack handler currently serves the entire latest .pack file
-// from R2 without object-level negotiation. A future phase should unpack individual
-// git objects from the packfiles so the server can do fine-grained "want/have"
-// negotiation and send only the objects the client is missing.
 
 async function handleGitUploadPack(request: Request, env: Env, userId: string): Promise<Response> {
   const url = new URL(request.url);
@@ -702,51 +838,77 @@ async function handleGitUploadPack(request: Request, env: Env, userId: string): 
     return corsResponse('R2 bucket not configured', 500);
   }
 
-  // Find packfiles for this session — scoped to user
-  const prefix = `${userId}/pack-${sessionId}-`;
-  const listed = await env.GIT_PACKS_BUCKET.list({ prefix });
-
-  if (listed.objects.length === 0) {
-    // No packs — send NAK (nothing to send)
-    const headers = new Headers({
-      'Content-Type': 'application/x-git-upload-pack-result',
-      'Cache-Control': 'no-cache',
-      ...corsHeaders,
-    });
-    const nakLine = 'NAK\n';
-    const lenNak = (nakLine.length + 4).toString(16).padStart(4, '0');
-    return new Response(`${lenNak}${nakLine}0000`, { status: 200, headers });
-  }
-
-  // Get the latest pack (sorted by key which includes timestamp)
-  const sorted = listed.objects.sort((a, b) => b.key.localeCompare(a.key));
-  const latestPack = await env.GIT_PACKS_BUCKET.get(sorted[0].key);
-
-  if (!latestPack) {
-    return corsResponse('Pack not found', 404);
-  }
-
-  const packBytes = await latestPack.arrayBuffer();
-
-  // Build response: NAK + sideband pack data
-  const headers = new Headers({
+  const respHeaders = new Headers({
     'Content-Type': 'application/x-git-upload-pack-result',
     'Cache-Control': 'no-cache',
     ...corsHeaders,
   });
 
+  // Check if we have any refs at all
+  const headSha = await readRef(env.GIT_PACKS_BUCKET, userId, 'heads/main');
+
+  if (!headSha) {
+    // No refs — send NAK (nothing to send)
+    const nakLine = 'NAK\n';
+    const lenNak = (nakLine.length + 4).toString(16).padStart(4, '0');
+    return new Response(`${lenNak}${nakLine}0000`, { status: 200, headers: respHeaders });
+  }
+
+  // Parse the client's want/have lines
+  const body = await request.arrayBuffer();
+  const { wants, haves } = parseWantHaveLines(new Uint8Array(body));
+
+  // Collect objects to send via graph walk from wanted SHAs
+  const haveSet = new Set(haves);
+  const objectsToSend: GitObject[] = [];
+  const visited = new Set<string>();
+  const queue: string[] = [...wants];
+
+  // If no wants specified, use the head SHA
+  if (queue.length === 0) {
+    queue.push(headSha);
+  }
+
+  // BFS walk from wanted SHAs, stopping at have boundaries
+  while (queue.length > 0) {
+    const sha = queue.shift()!;
+    if (visited.has(sha) || haveSet.has(sha)) continue;
+    visited.add(sha);
+
+    const obj = await readLooseObject(env.GIT_PACKS_BUCKET, userId, sha);
+    if (!obj) continue;
+
+    objectsToSend.push(obj);
+
+    // Follow references (commit → tree + parents, tree → entries)
+    const refs = extractObjectRefs(obj);
+    for (const ref of refs) {
+      if (!visited.has(ref) && !haveSet.has(ref)) {
+        queue.push(ref);
+      }
+    }
+  }
+
+  if (objectsToSend.length === 0) {
+    const nakLine = 'NAK\n';
+    const lenNak = (nakLine.length + 4).toString(16).padStart(4, '0');
+    return new Response(`${lenNak}${nakLine}0000`, { status: 200, headers: respHeaders });
+  }
+
+  // Build a packfile from the missing objects
+  const packBytes = await buildPackfile(objectsToSend);
+
+  // Build response: NAK + sideband pack data + flush
   const nakLine = 'NAK\n';
   const lenNak = (nakLine.length + 4).toString(16).padStart(4, '0');
 
   // Sideband channel 1 = pack data
-  const packData = new Uint8Array(packBytes);
-  const sideband = new Uint8Array(packData.length + 1);
-  sideband[0] = 0x01; // sideband channel 1
-  sideband.set(packData, 1);
+  const sideband = new Uint8Array(packBytes.length + 1);
+  sideband[0] = 0x01;
+  sideband.set(packBytes, 1);
 
   const sidebandLen = (sideband.length + 4).toString(16).padStart(4, '0');
 
-  // Combine: NAK line + sideband pack + flush
   const encoder = new TextEncoder();
   const nakBytes = encoder.encode(`${lenNak}${nakLine}`);
   const sidebandHeader = encoder.encode(sidebandLen);
@@ -761,5 +923,5 @@ async function handleGitUploadPack(request: Request, env: Env, userId: string): 
   response.set(sideband, offset); offset += sideband.length;
   response.set(flush, offset);
 
-  return new Response(response, { status: 200, headers });
+  return new Response(response, { status: 200, headers: respHeaders });
 }

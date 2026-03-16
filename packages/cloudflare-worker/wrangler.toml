@@ -1,4 +1,5 @@
 name = "cr-vector-pipeline"
+account_id = "2ed04cdecb0cc177cb516d57fab348c9"
 main = "src/index.ts"
 compatibility_date = "2024-04-05"
 

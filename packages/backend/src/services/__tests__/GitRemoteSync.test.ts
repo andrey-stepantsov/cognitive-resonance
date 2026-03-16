@@ -73,23 +73,23 @@ describe('GitRemoteSync', () => {
     );
   });
 
-  it('throws when push is called without configured API key', async () => {
+  it('throws when push is called without any auth configured', async () => {
     const noKeySync = new GitRemoteSync();
     noKeySync.configure('http://localhost:8787/git');
     const mockFs = {};
     
     await expect(noKeySync.pushToRemote(mockFs, '/session-123')).rejects.toThrow(
-      'API key not configured'
+      'No auth configured'
     );
   });
 
-  it('throws when pull is called without configured API key', async () => {
+  it('throws when pull is called without any auth configured', async () => {
     const noKeySync = new GitRemoteSync();
     noKeySync.configure('http://localhost:8787/git');
     const mockFs = {};
     
     await expect(noKeySync.pullFromRemote(mockFs, '/session-123')).rejects.toThrow(
-      'API key not configured'
+      'No auth configured'
     );
   });
 
@@ -104,6 +104,67 @@ describe('GitRemoteSync', () => {
       expect.objectContaining({
         url: 'https://worker.example.com/git/test',
       })
+    );
+  });
+
+  // --- Dynamic token (configureAuth) ---
+
+  it('uses dynamic token from configureAuth over static apiKey', async () => {
+    const gitMock = await import('isomorphic-git');
+    sync.configureAuth(() => 'jwt-token-from-appwrite');
+    const mockFs = {};
+
+    await sync.pushToRemote(mockFs, '/session-123', 'main');
+
+    expect(gitMock.default.push).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headers: {
+          'Authorization': 'Bearer jwt-token-from-appwrite'
+        }
+      })
+    );
+  });
+
+  it('falls back to static apiKey when tokenGetter returns null', async () => {
+    const gitMock = await import('isomorphic-git');
+    sync.configureAuth(() => null);
+    const mockFs = {};
+
+    await sync.pushToRemote(mockFs, '/session-123', 'main');
+
+    expect(gitMock.default.push).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headers: {
+          'Authorization': 'Bearer my-real-api-key'
+        }
+      })
+    );
+  });
+
+  it('uses dynamic token for pull as well', async () => {
+    const gitMock = await import('isomorphic-git');
+    sync.configureAuth(() => 'pull-jwt');
+    const mockFs = {};
+
+    await sync.pullFromRemote(mockFs, '/session-123', 'main');
+
+    expect(gitMock.default.pull).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headers: {
+          'Authorization': 'Bearer pull-jwt'
+        }
+      })
+    );
+  });
+
+  it('throws when neither tokenGetter nor apiKey are set', async () => {
+    const noAuthSync = new GitRemoteSync();
+    noAuthSync.configure('http://localhost:8787/git');
+    noAuthSync.configureAuth(() => null);
+    const mockFs = {};
+
+    await expect(noAuthSync.pushToRemote(mockFs, '/session-123')).rejects.toThrow(
+      'No auth configured'
     );
   });
 
@@ -125,3 +186,4 @@ describe('GitRemoteSync', () => {
     });
   });
 });
+

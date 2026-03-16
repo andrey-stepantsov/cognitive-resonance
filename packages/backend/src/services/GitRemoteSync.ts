@@ -4,6 +4,7 @@ import http from 'isomorphic-git/http/web';
 export class GitRemoteSync {
   private remoteUrl: string;
   private apiKey: string;
+  private tokenGetter?: () => string | null;
 
   constructor() {
     this.remoteUrl = 'http://localhost:8787/git';
@@ -22,12 +23,26 @@ export class GitRemoteSync {
   }
 
   /**
+   * Configure dynamic token source (e.g. from AppwriteAuthProvider.getToken()).
+   * When set, this takes priority over the static apiKey.
+   */
+  configureAuth(tokenGetter: () => string | null) {
+    this.tokenGetter = tokenGetter;
+  }
+
+  /** Resolve the auth token: dynamic JWT takes priority over static apiKey. */
+  private getAuthToken(): string {
+    return this.tokenGetter?.() || this.apiKey;
+  }
+
+  /**
    * Pushes a local isomorphic-git virtual repository to the Cloudflare remote.
-   * Uses the configured API key as a Bearer token.
+   * Uses the Appwrite JWT (or fallback API key) as a Bearer token.
    */
   async pushToRemote(fs: any, dir: string, branch: string = 'main'): Promise<void> {
-    if (!this.apiKey) {
-      throw new Error('[GitRemoteSync] API key not configured. Call configure(url, apiKey) first.');
+    const token = this.getAuthToken();
+    if (!token) {
+      throw new Error('[GitRemoteSync] No auth configured. Call configure(url, apiKey) or configureAuth(tokenGetter) first.');
     }
 
     try {
@@ -41,7 +56,7 @@ export class GitRemoteSync {
         url: `${this.remoteUrl}${dir}`, // e.g. /git/session-123
         ref: branch,
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`
+          'Authorization': `Bearer ${token}`
         }
       });
 
@@ -57,8 +72,9 @@ export class GitRemoteSync {
    * Fetches/Pulls from the remote repository.
    */
   async pullFromRemote(fs: any, dir: string, branch: string = 'main'): Promise<void> {
-    if (!this.apiKey) {
-      throw new Error('[GitRemoteSync] API key not configured. Call configure(url, apiKey) first.');
+    const token = this.getAuthToken();
+    if (!token) {
+      throw new Error('[GitRemoteSync] No auth configured. Call configure(url, apiKey) or configureAuth(tokenGetter) first.');
     }
 
     try {
@@ -77,7 +93,7 @@ export class GitRemoteSync {
           email: 'system@cr.local'
         },
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`
+          'Authorization': `Bearer ${token}`
         }
       });
 

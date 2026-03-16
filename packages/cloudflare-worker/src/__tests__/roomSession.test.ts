@@ -401,4 +401,101 @@ describe('RoomSession', () => {
       // Socket should be removed — sending a message shouldn't broadcast to anyone
     });
   });
+
+  // ─── Edge Cases ───
+
+  describe('edge cases', () => {
+    it('schedules only one alarm when multiple clients disconnect sequentially', async () => {
+      const req = new Request('http://localhost/room/test', {
+        headers: { 'Upgrade': 'websocket' },
+      });
+
+      await room.fetch(req);
+      const ws1Server = webSocketPairs[0].server;
+
+      await room.fetch(req);
+      const ws2Server = webSocketPairs[1].server;
+
+      // First disconnect — room still has ws2
+      await room.webSocketClose(ws1Server, 1000, 'normal', true);
+      expect(storage.setAlarm).not.toHaveBeenCalled();
+
+      // Second disconnect — room empty
+      await room.webSocketClose(ws2Server, 1000, 'normal', true);
+      expect(storage.setAlarm).toHaveBeenCalledTimes(1);
+    });
+
+    it('accumulates multiple chat messages before flush', async () => {
+      const req = new Request('http://localhost/room/test', {
+        headers: { 'Upgrade': 'websocket' },
+      });
+
+      await room.fetch(req);
+      const wsServer = webSocketPairs[0].server;
+
+      // Send 3 chat messages
+      for (let i = 0; i < 3; i++) {
+        await room.webSocketMessage(wsServer, JSON.stringify({
+          type: 'chat',
+          payload: { message: `msg-${i}` },
+        }));
+      }
+
+      const storedChats = storage._store.get('chats');
+      expect(storedChats).toHaveLength(3);
+      expect(storedChats[0].message).toBe('msg-0');
+      expect(storedChats[2].message).toBe('msg-2');
+
+      // Flush all 3
+      storage._store.set('roomId', 'room-multi');
+      await room.alarm();
+      expect(env.DB.batch).toHaveBeenCalledTimes(1);
+      const batch = env.DB.batch.mock.calls[0][0];
+      expect(batch).toHaveLength(3);
+    });
+
+    it('cancels pending alarm when a new client reconnects', async () => {
+      const req = new Request('http://localhost/room/test', {
+        headers: { 'Upgrade': 'websocket' },
+      });
+
+      // Connect and disconnect — alarm is scheduled
+      await room.fetch(req);
+      const ws1Server = webSocketPairs[0].server;
+      await room.webSocketClose(ws1Server, 1000, 'normal', true);
+      expect(storage.setAlarm).toHaveBeenCalledTimes(1);
+
+      // New client connects — alarm should be cancelled
+      await room.fetch(req);
+      expect(storage.deleteAlarm).toHaveBeenCalled();
+    });
+
+    it('flushes non-string chat payloads as JSON', async () => {
+      // Directly set up chats with an object payload (not a string)
+      storage._store.set('chats', [
+        { message: { text: 'complex', image: 'url' }, senderId: 'u1', timestamp: 5000 },
+      ]);
+      storage._store.set('roomId', 'room-complex');
+
+      await room.alarm();
+
+      // DB.prepare should bind JSON.stringify'd message
+      expect(env.DB.batch).toHaveBeenCalledTimes(1);
+      expect(env.DB.prepare).toHaveBeenCalledWith(
+        'INSERT INTO room_chats (room_id, sender_id, message, timestamp) VALUES (?, ?, ?, ?)'
+      );
+    });
+
+    it('handles senderId missing from chat during flush', async () => {
+      storage._store.set('chats', [
+        { message: 'anonymous msg', timestamp: 1000 },  // no senderId
+      ]);
+      storage._store.set('roomId', 'room-anon');
+
+      await room.alarm();
+
+      // Should still succeed with 'anonymous' as fallback senderId
+      expect(env.DB.batch).toHaveBeenCalledTimes(1);
+    });
+  });
 });
