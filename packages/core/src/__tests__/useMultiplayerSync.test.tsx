@@ -130,25 +130,35 @@ describe('useMultiplayerSync', () => {
     expect(result.current.cursors).toEqual({ 'user-2': { x: 100, y: 200 } });
   });
 
-  it('receives and processes rtc signals', () => {
+  it('receives and processes webrtc-signals via onSignal callback', () => {
     const { result } = renderHook(() =>
       useMultiplayerSync({ workerUrl: 'api.example.com', sessionId: 'sess' })
     );
 
     const ws = MockWebSocket.instances[0];
+    const signalCallback = vi.fn();
+    
+    act(() => {
+      result.current.onSignal(signalCallback);
+    });
+
     act(() => {
       if (ws.onmessage) {
         ws.onmessage({
           data: JSON.stringify({
-            type: 'rtc',
-            payload: { sdp: 'fake-sdp' }
+            type: 'webrtc-signal',
+            payload: { signalData: { sdp: 'fake-sdp' }, targetUserId: 'user-1' },
+            senderId: 'user-2'
           }),
         });
       }
     });
 
-    expect(result.current.messages[0].type).toBe('rtc');
-    expect(result.current.messages[0].payload.sdp).toBe('fake-sdp');
+    expect(signalCallback).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'webrtc-signal',
+      payload: { signalData: { sdp: 'fake-sdp' }, targetUserId: 'user-1' },
+      senderId: 'user-2'
+    }));
   });
 
   it('sends outgoing chat message and optimistically updates UI', () => {
@@ -189,7 +199,7 @@ describe('useMultiplayerSync', () => {
     );
   });
 
-  it('sends outgoing rtc signals', () => {
+  it('sends outgoing webrtc-signals', () => {
     const { result } = renderHook(() =>
       useMultiplayerSync({ workerUrl: 'api.example.com', sessionId: 'sess' })
     );
@@ -198,11 +208,11 @@ describe('useMultiplayerSync', () => {
     ws.readyState = MockWebSocket.OPEN;
 
     act(() => {
-      result.current.sendRtcSignal({ candidate: 'fake-candidate' });
+      result.current.sendSignal('target-123', { candidate: 'fake-candidate' });
     });
 
     expect(ws.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: 'rtc', payload: { candidate: 'fake-candidate' } })
+      JSON.stringify({ type: 'webrtc-signal', payload: { targetUserId: 'target-123', signalData: { candidate: 'fake-candidate' } } })
     );
   });
 

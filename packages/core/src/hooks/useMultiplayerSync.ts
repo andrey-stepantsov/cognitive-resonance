@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 export interface MultiplayerMessage {
-  type: 'chat' | 'cursor' | 'rtc' | 'ping' | 'presence';
+  type: 'chat' | 'cursor' | 'rtc' | 'webrtc-signal' | 'ping' | 'presence';
   payload?: any;
   timestamp?: number;
   senderId?: string;
@@ -16,12 +16,14 @@ export interface UseMultiplayerSyncOptions {
 export function useMultiplayerSync({ workerUrl, sessionId, token }: UseMultiplayerSyncOptions) {
   const [isConnected, setIsConnected] = useState(false);
   const [activeUsers, setActiveUsers] = useState<Record<string, { userId?: string; sessionId: string }>>({});
+  const [localSessionId, setLocalSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MultiplayerMessage[]>([]);
   const [cursors, setCursors] = useState<Record<string, {x: number, y: number}>>({});
   
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const signalCallbacksRef = useRef<Set<(data: any) => void>>(new Set());
 
   const connect = useCallback(() => {
     // Determine wss:// vs ws://
@@ -69,6 +71,9 @@ export function useMultiplayerSync({ workerUrl, sessionId, token }: UseMultiplay
              // For now we just push it to messages array to make it observable
             setMessages(prev => [...prev, data]);
             break;
+          case 'webrtc-signal':
+            signalCallbacksRef.current.forEach(cb => cb(data));
+            break;
           case 'presence':
             if (data.payload.action === 'sync') {
               const usersMap: Record<string, any> = {};
@@ -76,6 +81,9 @@ export function useMultiplayerSync({ workerUrl, sessionId, token }: UseMultiplay
                 data.payload.users.forEach((u: any) => { usersMap[u.sessionId] = u; });
               }
               setActiveUsers(usersMap);
+              if (data.payload.yourSessionId) {
+                setLocalSessionId(data.payload.yourSessionId);
+              }
             } else if (data.payload.action === 'join') {
               setActiveUsers(prev => ({ ...prev, [data.payload.sessionId]: { userId: data.payload.userId, sessionId: data.payload.sessionId } }));
             } else if (data.payload.action === 'leave') {
@@ -145,17 +153,24 @@ export function useMultiplayerSync({ workerUrl, sessionId, token }: UseMultiplay
     }]);
   }, [sendMessage]);
 
-  const sendRtcSignal = useCallback((signal: any) => {
-    sendMessage('rtc', signal);
+  const sendSignal = useCallback((targetUserId: string, signalData: any) => {
+    sendMessage('webrtc-signal', { targetUserId, signalData });
   }, [sendMessage]);
+
+  const onSignal = useCallback((cb: (data: any) => void) => {
+    signalCallbacksRef.current.add(cb);
+    return () => { signalCallbacksRef.current.delete(cb); };
+  }, []);
 
   return {
     isConnected,
     activeUsers,
+    localSessionId,
     messages,
     cursors,
     sendCursor,
     sendChatMessage,
-    sendRtcSignal,
+    sendSignal,
+    onSignal,
   };
 }

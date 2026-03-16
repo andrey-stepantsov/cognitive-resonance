@@ -17,6 +17,9 @@ export interface UseVoiceToDSLResult {
   startListening: () => void;
   stopListening: () => void;
   reset: () => void;
+  mediaStream: MediaStream | null;
+  acquireMediaStream: () => Promise<MediaStream | null>;
+  releaseMediaStream: () => void;
 }
 
 export function useVoiceToDSL(
@@ -25,8 +28,28 @@ export function useVoiceToDSL(
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
 
   const recognitionRef = useRef<any>(null);
+
+  const acquireMediaStream = useCallback(async () => {
+    if (mediaStream) return mediaStream;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMediaStream(stream);
+      return stream;
+    } catch (err: any) {
+      setError(`Could not access microphone for media stream: ${err.message || err}`);
+      return null;
+    }
+  }, [mediaStream]);
+
+  const releaseMediaStream = useCallback(() => {
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(track => track.stop());
+      setMediaStream(null);
+    }
+  }, [mediaStream]);
 
   const initRecognition = useCallback(() => {
     if (recognitionRef.current) return recognitionRef.current;
@@ -181,6 +204,9 @@ export function useVoiceToDSL(
     error,
     startListening,
     stopListening,
-    reset
+    reset,
+    mediaStream,
+    acquireMediaStream,
+    releaseMediaStream
   };
 }

@@ -232,6 +232,57 @@ describe('RoomSession', () => {
       expect(ws1Server.send).not.toHaveBeenCalled();
     });
 
+    it('routes webrtc-signal targeted payloads only to the targetUserId', async () => {
+      const req1 = new Request('http://localhost/room/rtc', { headers: { 'Upgrade': 'websocket', 'X-User-Id': 'user-a' } });
+      const req2 = new Request('http://localhost/room/rtc', { headers: { 'Upgrade': 'websocket', 'X-User-Id': 'user-b' } });
+      const req3 = new Request('http://localhost/room/rtc', { headers: { 'Upgrade': 'websocket', 'X-User-Id': 'user-c' } });
+
+      await room.fetch(req1); const wsA = webSocketPairs[0].server;
+      await room.fetch(req2); const wsB = webSocketPairs[1].server;
+      await room.fetch(req3); const wsC = webSocketPairs[2].server;
+
+      vi.mocked((wsA as any).send).mockClear();
+      vi.mocked((wsB as any).send).mockClear();
+      vi.mocked((wsC as any).send).mockClear();
+
+      const signalMsg = JSON.stringify({
+        type: 'webrtc-signal',
+        payload: { targetUserId: 'user-b', signalData: { type: 'offer' } }
+      });
+
+      await room.webSocketMessage(wsA, signalMsg);
+
+      expect(wsB.send).toHaveBeenCalledTimes(1);
+      const bCall = JSON.parse((wsB.send as any).mock.calls[0][0]);
+      expect(bCall.type).toBe('webrtc-signal');
+      expect(bCall.senderId).toBe('user-a');
+      
+      expect(wsA.send).not.toHaveBeenCalled();
+      expect(wsC.send).not.toHaveBeenCalled();
+    });
+
+    it('falls back to broadcast if webrtc-signal has no targetUserId', async () => {
+      const req1 = new Request('http://localhost/room/rtc', { headers: { 'Upgrade': 'websocket', 'X-User-Id': 'user-a' } });
+      const req2 = new Request('http://localhost/room/rtc', { headers: { 'Upgrade': 'websocket', 'X-User-Id': 'user-b' } });
+
+      await room.fetch(req1); const wsA = webSocketPairs[0].server;
+      await room.fetch(req2); const wsB = webSocketPairs[1].server;
+
+      vi.mocked((wsA as any).send).mockClear();
+      vi.mocked((wsB as any).send).mockClear();
+
+      const signalMsg = JSON.stringify({
+        type: 'webrtc-signal',
+        payload: { signalData: { type: 'offer' } } // No target
+      });
+
+      await room.webSocketMessage(wsA, signalMsg);
+
+      expect(wsB.send).toHaveBeenCalledTimes(1);
+      const bCall = JSON.parse((wsB.send as any).mock.calls[0][0]);
+      expect(bCall.senderId).toBe('user-a');
+    });
+
     it('broadcasts non-chat messages without persisting', async () => {
       const req = new Request('http://localhost/room/test', {
         headers: { 'Upgrade': 'websocket' },

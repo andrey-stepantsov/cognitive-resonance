@@ -9,6 +9,7 @@ import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { useREPL, useVoiceToDSL, translateToDSL, useCognitivePlatform, GitContextManager } from '@cr/core';
 import { clearApiKey } from '@cr/backend';
+import { Intercom } from './components/Intercom';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
@@ -228,6 +229,15 @@ export default function App() {
                ))}
             </div>
           )}
+          <Intercom 
+            activeUsers={app.activeUsers} 
+            localSessionId={app.localSessionId} 
+            onSignal={app.onSignal} 
+            sendSignal={app.sendSignal} 
+            mediaStream={voice.mediaStream} 
+            acquireMediaStream={voice.acquireMediaStream} 
+            releaseMediaStream={voice.releaseMediaStream} 
+          />
           {storage.type === 'cloud' && storage.isReady() ? (
             <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title="Connected to cloud storage">
               <Cloud className="w-3 h-3" />

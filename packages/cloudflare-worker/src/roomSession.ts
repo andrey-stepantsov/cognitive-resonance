@@ -53,7 +53,7 @@ export class RoomSession {
     server.serializeAttachment({ id: sessionId, userId });
 
     const activeUsers = Array.from(this.sessions.values()).map(s => ({ userId: s.userId, sessionId: s.id }));
-    server.send(JSON.stringify({ type: 'presence', payload: { action: 'sync', users: activeUsers } }));
+    server.send(JSON.stringify({ type: 'presence', payload: { action: 'sync', users: activeUsers, yourSessionId: sessionId } }));
 
     this.broadcast(JSON.stringify({ type: 'presence', payload: { action: 'join', userId, sessionId } }), server);
 
@@ -79,6 +79,34 @@ export class RoomSession {
     if (typeof message !== 'string') return;
 
     const data = JSON.parse(message);
+    let broadcastMessage = message as string;
+
+    if (data.type === 'webrtc-signal') {
+      const senderSession = this.sessions.get(ws);
+      data.senderId = senderSession?.userId || senderSession?.id || 'anonymous';
+      const outgoingMessage = JSON.stringify(data);
+
+      const targetUserId = data.payload?.targetUserId;
+      if (targetUserId) {
+        let targetFound = false;
+        for (const [clientWs, session] of this.sessions.entries()) {
+          // Match either the authenticated userId or the anonymous session id
+          if (session.userId === targetUserId || session.id === targetUserId) {
+            targetFound = true;
+            try {
+              clientWs.send(outgoingMessage);
+            } catch (e) {
+              this.sessions.delete(clientWs);
+            }
+          }
+        }
+        if (targetFound) return;
+        return; // Don't broadcast targeted signals if target is disconnected
+      }
+      
+      // If we fall through (e.g. general broadcast offer), broadcast the injected message
+      broadcastMessage = outgoingMessage;
+    }
 
     // Keep cursors/RTC purely in memory, broadcast immediately
     // For chat messages, persist to storage first, then broadcast
@@ -94,7 +122,7 @@ export class RoomSession {
     }
 
     // Broadcast to all *other* connected clients
-    this.broadcast(message as string, ws);
+    this.broadcast(broadcastMessage, ws);
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean) {
