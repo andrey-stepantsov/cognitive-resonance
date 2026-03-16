@@ -730,17 +730,70 @@ async function handleGitInfoRefs(request: Request, env: Env, userId: string): Pr
     const headSha = await readRef(env.GIT_PACKS_BUCKET, userId, `heads/main`);
 
     if (headSha) {
-      capsLine = `${headSha} refs/heads/main\0report-status agent=cr-cloudflare-v2\n`;
+      capsLine = `${headSha} refs/heads/main\0report-status side-band-64k agent=cr-cloudflare-v2\n`;
     } else {
-      capsLine = `0000000000000000000000000000000000000000 capabilities^{}\0report-status agent=cr-cloudflare-v2\n`;
+      capsLine = `0000000000000000000000000000000000000000 capabilities^{}\0report-status side-band-64k agent=cr-cloudflare-v2\n`;
     }
   } else {
-    capsLine = `0000000000000000000000000000000000000000 capabilities^{}\0report-status agent=cr-cloudflare-v2\n`;
+    capsLine = `0000000000000000000000000000000000000000 capabilities^{}\0report-status side-band-64k agent=cr-cloudflare-v2\n`;
   }
 
   const len3 = (capsLine.length + 4).toString(16).padStart(4, '0');
   const body = `${len1}${str1}0000${len3}${capsLine}0000`;
   return new Response(body, { status: 200, headers });
+}
+
+/**
+ * Build a sideband-framed receive-pack response.
+ *
+ * isomorphic-git always passes the receive-pack response through GitSideBand.demux(),
+ * which expects sideband channel framing (channel 1 = data). Each pkt-line in the
+ * report-status is wrapped with a 0x01 channel prefix byte.
+ */
+function buildSidebandReceivePackResponse(refUpdates: string[]): Uint8Array {
+  const encoder = new TextEncoder();
+
+  // 1. Build the inner payload: a sequence of pkt-lines ending with a flush packet
+  const innerParts: Uint8Array[] = [];
+
+  const encodeInnerPktLine = (str: string) => {
+    // 4 hex chars + string length
+    const len = (str.length + 4).toString(16).padStart(4, '0');
+    return encoder.encode(`${len}${str}`);
+  };
+
+  innerParts.push(encodeInnerPktLine('unpack ok\n'));
+  for (const ref of refUpdates) {
+    innerParts.push(encodeInnerPktLine(`ok ${ref}\n`));
+  }
+  innerParts.push(encoder.encode('0000')); // Inner flush for report-status
+
+  const innerTotalLen = innerParts.reduce((sum, p) => sum + p.length, 0);
+  const innerPayload = new Uint8Array(innerTotalLen);
+  let innerOffset = 0;
+  for (const p of innerParts) {
+    innerPayload.set(p, innerOffset);
+    innerOffset += p.length;
+  }
+
+  // 2. Wrap the entire inner payload in a sideband channel 1 packet
+  // pktLen includes 4 (length itself) + 1 (channel byte) + innerPayload length
+  const pktLen = 4 + 1 + innerPayload.length;
+  const pktLenHex = pktLen.toString(16).padStart(4, '0');
+  
+  const outerPkt = new Uint8Array(pktLen);
+  outerPkt.set(encoder.encode(pktLenHex), 0);
+  outerPkt[4] = 0x01; // sideband channel 1
+  outerPkt.set(innerPayload, 5);
+
+  // 3. Add the final flush packet to end the sideband stream
+  const flushPkt = encoder.encode('0000');
+  
+  const result = new Uint8Array(outerPkt.length + flushPkt.length);
+  result.set(outerPkt, 0);
+  result.set(flushPkt, outerPkt.length);
+
+  return result;
 }
 
 async function handleGitReceivePack(request: Request, env: Env, userId: string): Promise<Response> {
@@ -761,11 +814,7 @@ async function handleGitReceivePack(request: Request, env: Env, userId: string):
   try {
     if (!env.GIT_PACKS_BUCKET) {
       console.warn('R2 bucket not configured, skipping packfile persistence');
-      const report1 = "unpack ok\n";
-      const len1 = (report1.length + 4).toString(16).padStart(4, '0');
-      const report2 = "ok refs/heads/main\n";
-      const len2 = (report2.length + 4).toString(16).padStart(4, '0');
-      return new Response(`${len1}${report1}${len2}${report2}0000`, { status: 200, headers: respHeaders });
+      return new Response(buildSidebandReceivePackResponse(['refs/heads/main']), { status: 200, headers: respHeaders });
     }
 
     // Parse pkt-line commands and locate packfile data
@@ -803,29 +852,13 @@ async function handleGitReceivePack(request: Request, env: Env, userId: string):
       refUpdates.push('refs/heads/main');
     }
 
-    // Build response
-    const report1 = "unpack ok\n";
-    const len1 = (report1.length + 4).toString(16).padStart(4, '0');
-    let body = `${len1}${report1}`;
-
-    for (const ref of refUpdates) {
-      const report = `ok ${ref}\n`;
-      const len = (report.length + 4).toString(16).padStart(4, '0');
-      body += `${len}${report}`;
-    }
-    body += '0000';
-
-    return new Response(body, { status: 200, headers: respHeaders });
+    return new Response(buildSidebandReceivePackResponse(refUpdates), { status: 200, headers: respHeaders });
 
   } catch (err: any) {
     console.error(`Failed to process receive-pack for ${sessionId}:`, err);
 
     // Even on parse failure, return a valid git protocol response
-    const report1 = "unpack ok\n";
-    const len1 = (report1.length + 4).toString(16).padStart(4, '0');
-    const report2 = "ok refs/heads/main\n";
-    const len2 = (report2.length + 4).toString(16).padStart(4, '0');
-    return new Response(`${len1}${report1}${len2}${report2}0000`, { status: 200, headers: respHeaders });
+    return new Response(buildSidebandReceivePackResponse(['refs/heads/main']), { status: 200, headers: respHeaders });
   }
 }
 

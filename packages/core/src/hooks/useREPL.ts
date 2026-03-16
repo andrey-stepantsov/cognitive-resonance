@@ -280,6 +280,21 @@ export function useREPL() {
            }
            break;
         }
+        case CommandAction.GIT_PULL: {
+           const sessionId = cr.ensureActiveSession();
+           injectSystemMessage('Pulling from Cloudflare Remote...');
+           try {
+             const git = new GitContextManager(sessionId);
+             await git.initRepo(); // Ensure it exists locally
+             
+             const currentBranch = await git.getCurrentBranch() || 'main';
+             await gitRemoteSync.pullFromRemote(git.fs, git.dir, currentBranch);
+             injectSystemMessage('Successfully pulled from Cloudflare! 📥');
+           } catch (err: any) {
+             injectSystemMessage(`Failed to pull from remote: ${err.message}`);
+           }
+           break;
+        }
         case CommandAction.GLOBAL_SYNC: {
            const sessionId = cr.ensureActiveSession();
            injectSystemMessage('Pushing global workspace repository to Cloudflare Remote...');

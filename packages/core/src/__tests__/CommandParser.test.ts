@@ -48,6 +48,8 @@ describe('CommandParser', () => {
   it('parses git commands', () => {
     expect(parseCommand('/git sync')).toEqual({ action: CommandAction.GIT_SYNC, args: [], raw: '/git sync' });
     expect(parseCommand('/git push origin')).toEqual({ action: CommandAction.GIT_PUSH, args: ['origin'], raw: '/git push origin' });
+    expect(parseCommand('/git pull origin main')).toEqual({ action: CommandAction.GIT_PULL, args: ['origin', 'main'], raw: '/git pull origin main' });
+    expect(parseCommand('/pull')).toEqual({ action: CommandAction.GIT_PULL, args: [], raw: '/pull' });
   });
 
   it('parses graph commands', () => {

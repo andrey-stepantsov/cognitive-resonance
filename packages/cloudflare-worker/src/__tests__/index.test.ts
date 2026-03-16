@@ -1500,3 +1500,355 @@ describe('Rate limiting integration', () => {
     expect(response.status).toBe(204);
   });
 });
+
+// ─── Git Smart HTTP — Full Round-Trip Integration ────────────────
+
+describe('Git Smart HTTP — full round-trip', () => {
+  /**
+   * Stateful in-memory R2 mock that persists data across put/get/list calls.
+   * This allows the push (receive-pack) to store objects, and the pull
+   * (upload-pack) to retrieve them in the same test.
+   */
+  function makeStatefulR2() {
+    const store = new Map<string, { data: Uint8Array; metadata: Record<string, string> }>();
+
+    return {
+      store, // exposed for assertions
+      put: vi.fn(async (key: string, data: any, options?: any) => {
+        let bytes: Uint8Array;
+        if (typeof data === 'string') {
+          bytes = new TextEncoder().encode(data);
+        } else if (data instanceof Uint8Array) {
+          bytes = data;
+        } else if (data instanceof ArrayBuffer) {
+          bytes = new Uint8Array(data);
+        } else {
+          // ReadableStream or other — just store as-is (won't happen in tests)
+          bytes = new Uint8Array(0);
+        }
+        store.set(key, {
+          data: bytes,
+          metadata: options?.customMetadata || {},
+        });
+      }),
+      get: vi.fn(async (key: string) => {
+        const entry = store.get(key);
+        if (!entry) return null;
+        return {
+          text: async () => new TextDecoder().decode(entry.data),
+          arrayBuffer: async () => entry.data.buffer.slice(
+            entry.data.byteOffset,
+            entry.data.byteOffset + entry.data.byteLength,
+          ),
+          customMetadata: entry.metadata,
+          httpEtag: '"mock"',
+          body: new ReadableStream({
+            start(controller) {
+              controller.enqueue(entry.data);
+              controller.close();
+            },
+          }),
+        };
+      }),
+      list: vi.fn(async (opts?: { prefix?: string; cursor?: string }) => {
+        const prefix = opts?.prefix || '';
+        const objects = Array.from(store.keys())
+          .filter(k => k.startsWith(prefix))
+          .map(key => ({ key, size: store.get(key)!.data.length }));
+        return { objects, truncated: false };
+      }),
+    };
+  }
+
+  it('push → info-refs → pull round-trip with blob + tree + commit', async () => {
+    const { buildPackfile, gitObjectSha, parsePackfile } = await import('../packParser');
+
+    // ── 1. Build a realistic commit graph ──
+
+    const blobContent = 'Hello from E2E round-trip test!\n';
+    const blobData = new TextEncoder().encode(blobContent);
+    const blobSha = await gitObjectSha('blob', blobData);
+
+    // Tree entry: "100644 hello.txt\0<20-byte raw SHA>"
+    const modeAndName = new TextEncoder().encode('100644 hello.txt\0');
+    const shaBytes = new Uint8Array(20);
+    for (let i = 0; i < 40; i += 2) {
+      shaBytes[i / 2] = parseInt(blobSha.substring(i, i + 2), 16);
+    }
+    const treeData = new Uint8Array(modeAndName.length + 20);
+    treeData.set(modeAndName);
+    treeData.set(shaBytes, modeAndName.length);
+    const treeSha = await gitObjectSha('tree', treeData);
+
+    const commitText = [
+      `tree ${treeSha}`,
+      `author Test User <test@example.com> 1700000000 +0000`,
+      `committer Test User <test@example.com> 1700000000 +0000`,
+      ``,
+      `E2E round-trip test commit`,
+      ``,
+    ].join('\n');
+    const commitData = new TextEncoder().encode(commitText);
+    const commitSha = await gitObjectSha('commit', commitData);
+
+    // ── 2. Build packfile ──
+
+    const pack = await buildPackfile([
+      { sha: blobSha, type: 'blob', data: blobData },
+      { sha: treeSha, type: 'tree', data: treeData },
+      { sha: commitSha, type: 'commit', data: commitData },
+    ]);
+
+    // ── 3. Push via git-receive-pack ──
+
+    const oldSha = '0'.repeat(40);
+    const cmdLine = `${oldSha} ${commitSha} refs/heads/main\0report-status\n`;
+    const cmdLen = (cmdLine.length + 4).toString(16).padStart(4, '0');
+    const pktLine = new TextEncoder().encode(`${cmdLen}${cmdLine}0000`);
+
+    const pushBody = new Uint8Array(pktLine.length + pack.length);
+    pushBody.set(pktLine);
+    pushBody.set(pack, pktLine.length);
+
+    const r2 = makeStatefulR2();
+    const env = makeEnv({ GIT_PACKS_BUCKET: r2 });
+
+    const pushReq = new Request('http://localhost/git/test-session/git-receive-pack', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: pushBody,
+    });
+    const pushResp = await worker.fetch(pushReq, env, makeCtx());
+
+    expect(pushResp.status).toBe(200);
+    const pushText = await pushResp.text();
+    expect(pushText).toContain('unpack ok');
+    expect(pushText).toContain('ok refs/heads/main');
+
+    // ── 4. Verify R2 state ──
+
+    // Should have 3 loose objects + 1 ref
+    const objectKeys = Array.from(r2.store.keys()).filter(k => k.includes('/objects/'));
+    const refKeys = Array.from(r2.store.keys()).filter(k => k.includes('/refs/'));
+    expect(objectKeys).toHaveLength(3);
+    expect(refKeys).toHaveLength(1);
+
+    // Verify ref points to our commit SHA
+    const refEntry = r2.store.get(refKeys[0])!;
+    expect(new TextDecoder().decode(refEntry.data)).toBe(commitSha);
+
+    // Verify loose object key format: {userId}/objects/{2-char prefix}/{38-char rest}
+    for (const key of objectKeys) {
+      expect(key).toMatch(/^default\/objects\/[0-9a-f]{2}\/[0-9a-f]{38}$/);
+    }
+
+    // Verify type metadata on stored objects
+    const blobKey = `default/objects/${blobSha.slice(0, 2)}/${blobSha.slice(2)}`;
+    const treeKey = `default/objects/${treeSha.slice(0, 2)}/${treeSha.slice(2)}`;
+    const commitKey = `default/objects/${commitSha.slice(0, 2)}/${commitSha.slice(2)}`;
+    expect(r2.store.get(blobKey)!.metadata.type).toBe('blob');
+    expect(r2.store.get(treeKey)!.metadata.type).toBe('tree');
+    expect(r2.store.get(commitKey)!.metadata.type).toBe('commit');
+
+    // ── 5. Verify info/refs advertises the commit SHA ──
+
+    const infoRefsReq = new Request(
+      'http://localhost/git/test-session/info/refs?service=git-upload-pack',
+      { headers: authHeaders() },
+    );
+    const infoRefsResp = await worker.fetch(infoRefsReq, env, makeCtx());
+    expect(infoRefsResp.status).toBe(200);
+    const infoBody = await infoRefsResp.text();
+    expect(infoBody).toContain(commitSha);
+    expect(infoBody).toContain('refs/heads/main');
+
+    // ── 6. Pull via git-upload-pack ──
+
+    const wantLine = `want ${commitSha}\n`;
+    const wantLen = (wantLine.length + 4).toString(16).padStart(4, '0');
+    const doneLine = 'done\n';
+    const doneLen = (doneLine.length + 4).toString(16).padStart(4, '0');
+    const pullBody = new TextEncoder().encode(
+      `${wantLen}${wantLine}0000${doneLen}${doneLine}0000`,
+    );
+
+    const pullReq = new Request('http://localhost/git/test-session/git-upload-pack', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: pullBody,
+    });
+    const pullResp = await worker.fetch(pullReq, env, makeCtx());
+
+    expect(pullResp.status).toBe(200);
+    expect(pullResp.headers.get('Content-Type')).toBe('application/x-git-upload-pack-result');
+
+    // ── 7. Parse the response and verify data integrity ──
+
+    const pullBytes = new Uint8Array(await pullResp.arrayBuffer());
+
+    // Response format: <NAK pkt-line> <sideband pkt-line with pack data> <flush>
+    // Find the NAK line
+    const pullText = new TextDecoder().decode(pullBytes);
+    expect(pullText).toContain('NAK');
+
+    // Extract sideband pack data: skip NAK pkt-line, read sideband length, skip channel byte
+    const nakLineStr = 'NAK\n';
+    const nakPktLen = (nakLineStr.length + 4).toString(16).padStart(4, '0');
+    const nakTotalLen = nakPktLen.length + nakLineStr.length;
+
+    // Read sideband pkt-line length (4 hex chars after NAK)
+    const sidebandLenHex = new TextDecoder().decode(pullBytes.slice(nakTotalLen, nakTotalLen + 4));
+    const sidebandLen = parseInt(sidebandLenHex, 16);
+    expect(sidebandLen).toBeGreaterThan(12); // at least pack header + channel byte
+
+    // Sideband data starts after the 4-byte length field
+    const sidebandStart = nakTotalLen + 4;
+    const sidebandData = pullBytes.slice(sidebandStart, sidebandStart + sidebandLen - 4);
+
+    // First byte is the channel (0x01 = pack data)
+    expect(sidebandData[0]).toBe(0x01);
+    const packData = sidebandData.slice(1);
+
+    // Verify it's a valid PACK
+    expect(String.fromCharCode(packData[0], packData[1], packData[2], packData[3])).toBe('PACK');
+
+    // Parse the packfile
+    const pulledObjects = await parsePackfile(packData.buffer.slice(
+      packData.byteOffset,
+      packData.byteOffset + packData.byteLength,
+    ));
+
+    // Should have all 3 objects
+    expect(pulledObjects).toHaveLength(3);
+
+    // Verify SHAs match
+    const pulledShas = pulledObjects.map(o => o.sha).sort();
+    expect(pulledShas).toEqual([blobSha, commitSha, treeSha].sort());
+
+    // Verify blob content round-tripped correctly
+    const pulledBlob = pulledObjects.find(o => o.sha === blobSha)!;
+    expect(pulledBlob.type).toBe('blob');
+    expect(new TextDecoder().decode(pulledBlob.data)).toBe(blobContent);
+
+    // Verify tree data round-tripped correctly
+    const pulledTree = pulledObjects.find(o => o.sha === treeSha)!;
+    expect(pulledTree.type).toBe('tree');
+    expect(Array.from(pulledTree.data)).toEqual(Array.from(treeData));
+
+    // Verify commit data round-tripped correctly
+    const pulledCommit = pulledObjects.find(o => o.sha === commitSha)!;
+    expect(pulledCommit.type).toBe('commit');
+    expect(new TextDecoder().decode(pulledCommit.data)).toBe(commitText);
+  });
+
+  it('pull stops at have-boundary (incremental fetch)', async () => {
+    const { buildPackfile, gitObjectSha } = await import('../packParser');
+
+    // Create two commits: parent → child
+    const blob1Data = new TextEncoder().encode('first version');
+    const blob1Sha = await gitObjectSha('blob', blob1Data);
+
+    const tree1Entry = new TextEncoder().encode('100644 file.txt\0');
+    const sha1Bytes = new Uint8Array(20);
+    for (let i = 0; i < 40; i += 2) sha1Bytes[i / 2] = parseInt(blob1Sha.substring(i, i + 2), 16);
+    const tree1Data = new Uint8Array(tree1Entry.length + 20);
+    tree1Data.set(tree1Entry);
+    tree1Data.set(sha1Bytes, tree1Entry.length);
+    const tree1Sha = await gitObjectSha('tree', tree1Data);
+
+    const commit1Text = `tree ${tree1Sha}\nauthor A <a@b> 1000 +0000\ncommitter A <a@b> 1000 +0000\n\nfirst\n`;
+    const commit1Data = new TextEncoder().encode(commit1Text);
+    const commit1Sha = await gitObjectSha('commit', commit1Data);
+
+    // Second commit (child of first)
+    const blob2Data = new TextEncoder().encode('second version');
+    const blob2Sha = await gitObjectSha('blob', blob2Data);
+
+    const tree2Entry = new TextEncoder().encode('100644 file.txt\0');
+    const sha2Bytes = new Uint8Array(20);
+    for (let i = 0; i < 40; i += 2) sha2Bytes[i / 2] = parseInt(blob2Sha.substring(i, i + 2), 16);
+    const tree2Data = new Uint8Array(tree2Entry.length + 20);
+    tree2Data.set(tree2Entry);
+    tree2Data.set(sha2Bytes, tree2Entry.length);
+    const tree2Sha = await gitObjectSha('tree', tree2Data);
+
+    const commit2Text = `tree ${tree2Sha}\nparent ${commit1Sha}\nauthor A <a@b> 2000 +0000\ncommitter A <a@b> 2000 +0000\n\nsecond\n`;
+    const commit2Data = new TextEncoder().encode(commit2Text);
+    const commit2Sha = await gitObjectSha('commit', commit2Data);
+
+    // Push both commits
+    const pack = await buildPackfile([
+      { sha: blob1Sha, type: 'blob', data: blob1Data },
+      { sha: tree1Sha, type: 'tree', data: tree1Data },
+      { sha: commit1Sha, type: 'commit', data: commit1Data },
+      { sha: blob2Sha, type: 'blob', data: blob2Data },
+      { sha: tree2Sha, type: 'tree', data: tree2Data },
+      { sha: commit2Sha, type: 'commit', data: commit2Data },
+    ]);
+
+    const cmdLine = `${'0'.repeat(40)} ${commit2Sha} refs/heads/main\0report-status\n`;
+    const cmdLen = (cmdLine.length + 4).toString(16).padStart(4, '0');
+    const pktLine = new TextEncoder().encode(`${cmdLen}${cmdLine}0000`);
+    const pushBody = new Uint8Array(pktLine.length + pack.length);
+    pushBody.set(pktLine);
+    pushBody.set(pack, pktLine.length);
+
+    const r2 = makeStatefulR2();
+    const env = makeEnv({ GIT_PACKS_BUCKET: r2 });
+
+    await worker.fetch(
+      new Request('http://localhost/git/s/git-receive-pack', {
+        method: 'POST', headers: authHeaders(), body: pushBody,
+      }),
+      env, makeCtx(),
+    );
+
+    // Now pull with "have commit1Sha" — should only get commit2 + tree2 + blob2
+    const wantLine = `want ${commit2Sha}\n`;
+    const wantLen = (wantLine.length + 4).toString(16).padStart(4, '0');
+    const haveLine = `have ${commit1Sha}\n`;
+    const haveLen = (haveLine.length + 4).toString(16).padStart(4, '0');
+    const doneLine = 'done\n';
+    const doneLen = (doneLine.length + 4).toString(16).padStart(4, '0');
+    const pullBody = new TextEncoder().encode(
+      `${wantLen}${wantLine}0000${haveLen}${haveLine}${doneLen}${doneLine}0000`,
+    );
+
+    const pullResp = await worker.fetch(
+      new Request('http://localhost/git/s/git-upload-pack', {
+        method: 'POST', headers: authHeaders(), body: pullBody,
+      }),
+      env, makeCtx(),
+    );
+
+    expect(pullResp.status).toBe(200);
+
+    // Parse response — extract pack from sideband
+    const pullBytes = new Uint8Array(await pullResp.arrayBuffer());
+    const nakStr = 'NAK\n';
+    const nakPktLen = (nakStr.length + 4).toString(16).padStart(4, '0');
+    const nakTotal = nakPktLen.length + nakStr.length;
+
+    const sidebandLenHex = new TextDecoder().decode(pullBytes.slice(nakTotal, nakTotal + 4));
+    const sidebandLen = parseInt(sidebandLenHex, 16);
+    const sideband = pullBytes.slice(nakTotal + 4, nakTotal + 4 + sidebandLen - 4);
+    const packData = sideband.slice(1); // skip channel byte
+
+    const { parsePackfile } = await import('../packParser');
+    const objects = await parsePackfile(packData.buffer.slice(
+      packData.byteOffset,
+      packData.byteOffset + packData.byteLength,
+    ));
+
+    // BFS stops at commit1Sha (the "have" boundary), so we should get:
+    // commit2 (wanted) + tree2 (referenced by commit2) + blob2 (referenced by tree2)
+    // But NOT commit1, tree1, or blob1
+    const pulledShas = objects.map(o => o.sha);
+    expect(pulledShas).toContain(commit2Sha);
+    expect(pulledShas).toContain(tree2Sha);
+    expect(pulledShas).toContain(blob2Sha);
+    expect(pulledShas).not.toContain(commit1Sha);
+    expect(pulledShas).not.toContain(tree1Sha);
+    expect(pulledShas).not.toContain(blob1Sha);
+  });
+});

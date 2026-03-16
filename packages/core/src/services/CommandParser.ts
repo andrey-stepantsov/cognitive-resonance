@@ -25,6 +25,7 @@ export type CommandAction =
   // Git
   | 'GIT_SYNC'
   | 'GIT_PUSH'
+  | 'GIT_PULL'
 
   // Key Control
   | 'KEY_SET'
@@ -67,6 +68,7 @@ export const CommandAction = {
   CONTEXT_DROP: 'CONTEXT_DROP' as CommandAction,
   GIT_SYNC: 'GIT_SYNC' as CommandAction,
   GIT_PUSH: 'GIT_PUSH' as CommandAction,
+  GIT_PULL: 'GIT_PULL' as CommandAction,
   KEY_SET: 'KEY_SET' as CommandAction,
   KEY_CLEAR: 'KEY_CLEAR' as CommandAction,
   GRAPH_LS: 'GRAPH_LS' as CommandAction,
@@ -118,6 +120,7 @@ export function parseCommand(input: string): CommandIntent | null {
   if (namespace === 'clear') return { action: CommandAction.SESSION_CLEAR, args: parts.slice(1), raw: input };
   if (namespace === 'sync') return { action: CommandAction.GIT_SYNC, args: parts.slice(1), raw: input };
   if (namespace === 'push') return { action: CommandAction.GIT_PUSH, args: parts.slice(1), raw: input };
+  if (namespace === 'pull') return { action: CommandAction.GIT_PULL, args: parts.slice(1), raw: input };
   if (namespace === 'attach') return { action: CommandAction.ATTACH, args: parts.slice(1), raw: input };
   if (namespace === 'search') return { action: CommandAction.SEARCH, args: parts.slice(1), raw: input };
   if (namespace === 'system') return { action: CommandAction.SYSTEM, args: parts.slice(1), raw: input };
@@ -150,6 +153,7 @@ export function parseCommand(input: string): CommandIntent | null {
   if (namespace === 'git') {
     if (verb === 'sync') return { action: CommandAction.GIT_SYNC, args, raw: input };
     if (verb === 'push') return { action: CommandAction.GIT_PUSH, args, raw: input };
+    if (verb === 'pull') return { action: CommandAction.GIT_PULL, args, raw: input };
   }
 
   if (namespace === 'key') {

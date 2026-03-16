@@ -143,24 +143,88 @@ function readTypeAndSize(data: Uint8Array, offset: number): [number, number, num
 }
 
 /**
+ * Try to inflate a buffer, returning the result or null on failure.
+ * Must handle all rejection paths to avoid unhandled promise rejections
+ * during binary search (where we deliberately feed truncated data).
+ */
+async function tryInflate(compressed: Uint8Array): Promise<Uint8Array | null> {
+  try {
+    const ds = new DecompressionStream('deflate');
+    const writer = ds.writable.getWriter();
+    const reader = ds.readable.getReader();
+
+    // Write data and close — suppress writer errors (they'll surface on the reader)
+    const writePromise = writer.write(compressed)
+      .then(() => writer.close())
+      .catch(() => { /* expected for truncated data */ });
+
+    const chunks: Uint8Array[] = [];
+    let totalLen = 0;
+
+    try {
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        totalLen += value.length;
+      }
+    } catch {
+      // Reader error — truncated or corrupt data
+      await writePromise; // ensure writer promise settles
+      return null;
+    }
+
+    await writePromise; // ensure writer promise settles
+
+    const result = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Inflate the zlib-compressed data starting at offset in the buffer.
  * Returns [decompressed data, number of compressed bytes consumed].
  *
- * Since zlib streams are self-terminating, feeding extra trailing bytes
- * to DecompressionStream is safe — the decompressor stops at the stream end.
- * To determine compressed size, we re-deflate and measure the output.
+ * Uses binary search to find the exact compressed data boundary:
+ * we know the full remaining buffer inflates successfully; we find the
+ * minimum slice length that still produces the expected output size.
+ * This avoids the fragile re-deflate approach which breaks when the
+ * sender (e.g. isomorphic-git) uses different compression settings.
  */
 async function inflateWithConsumed(data: Uint8Array, offset: number, expectedSize: number): Promise<[Uint8Array, number]> {
-  // Feed the entire remaining buffer to the decompressor
   const remaining = data.slice(offset);
+
+  // First, inflate with the full remaining buffer to get the result
   const inflated = await inflate(remaining);
   const result = inflated.slice(0, expectedSize);
 
-  // Determine how many compressed bytes were consumed:
-  // Re-deflate the result and use that size as the compressed frame size.
-  // This works because deflate is deterministic for the same input.
-  const recompressed = await deflate(result);
-  return [result, recompressed.length];
+  // Binary search for the minimum input slice that inflates successfully.
+  // lo = minimum possible compressed size (zlib header is at least 2 bytes)
+  // hi = remaining.length (we know this works)
+  let lo = 2;
+  let hi = remaining.length;
+
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    const slice = remaining.slice(0, mid);
+    const trial = await tryInflate(slice);
+
+    if (trial !== null && trial.length >= expectedSize) {
+      hi = mid; // this size works, try smaller
+    } else {
+      lo = mid + 1; // too small, try larger
+    }
+  }
+
+  return [result, lo];
 }
 
 /**
