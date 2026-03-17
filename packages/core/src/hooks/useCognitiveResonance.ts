@@ -82,6 +82,9 @@ export function useCognitiveResonance() {
 
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [activeSessionRecord, setActiveSessionRecord] = useState<SessionRecord | null>(null);
+  const isReadOnly = Boolean(activeSessionRecord?.userId && user && activeSessionRecord.userId !== user.id);
+
   const [isHistorySidebarOpen, setIsHistorySidebarOpenRaw] = useState(false);
   const setIsHistorySidebarOpen = (open: boolean) => {
     if (open) storage.loadAllSessions().then(setSessions);
@@ -768,6 +771,7 @@ export function useCognitiveResonance() {
   const handleLoadSession = async (sessionId: string) => {
     const record = await storage.loadSession(sessionId);
     if (record) {
+      setActiveSessionRecord(record);
       setMessages(record.data.messages || []);
       setActiveSessionId(record.id);
       setIsViewMode(false);
@@ -839,6 +843,24 @@ export function useCognitiveResonance() {
     }
   };
 
+  const handleCloneSession = async (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if ((storage as any).forkSession) {
+      try {
+        const newId = await (storage as any).forkSession(sessionId);
+        if (newId) {
+          storage.loadAllSessions().then(setSessions);
+          handleLoadSession(newId);
+        }
+      } catch (err: any) {
+        console.error('Failed to clone session:', err);
+        alert(`Could not clone session: ${err.message}`);
+      }
+    } else {
+      alert('Clone is not supported by your current storage provider.');
+    }
+  };
+
   const startRenameSession = (sessionId: string, currentName: string, e: React.MouseEvent) => {
     e.stopPropagation(); setEditingSessionId(sessionId); setEditSessionName(currentName);
   };
@@ -854,8 +876,15 @@ export function useCognitiveResonance() {
   };
 
   const startNewSession = () => {
-    setActiveSessionId(null); setMessages([]); setIsViewMode(false);
-    setIsHistorySidebarOpen(false); handleSelectGem(defaultGemId);
+    setActiveSessionId(null);
+    setActiveSessionRecord(null);
+    setMessages([]);
+    setIsViewMode(false);
+    setIsHistorySidebarOpen(false);
+    setSelectedTurnIndex(null);
+    setTargetTurnIndex(null);
+    setIsDissonancePanelOpen(false);
+    handleSelectGem(defaultGemId);
   };
 
   const ensureActiveSession = () => {
@@ -932,7 +961,7 @@ export function useCognitiveResonance() {
 
   return {
     messages, setMessages, input, setInput, isLoading, selectedTurnIndex, setSelectedTurnIndex,
-    sessions, activeSessionId, isHistorySidebarOpen, setIsHistorySidebarOpen,
+    sessions, activeSessionId, activeSessionRecord, isReadOnly, isHistorySidebarOpen, setIsHistorySidebarOpen,
     historySearchQuery, setHistorySearchQuery, activeSidebarTab, setActiveSidebarTab,
     searchResults, targetTurnIndex, editingSessionId, setEditingSessionId, editSessionName, setEditSessionName,
     markerViewMode, setMarkerViewMode, artifactContent, setArtifactContent, markerSearchQuery, setMarkerSearchQuery,
@@ -953,7 +982,7 @@ export function useCognitiveResonance() {
     onSignal: ws.onSignal,
     handleSetApiKey, handleClearApiKey, handleSelectGem, handleSaveGem, handleDeleteGem, handleSetDefaultGem,
     handleSubmit, handleStopGeneration, handleDownloadHistory, handleLoadSession, handleSearchResultClick,
-    handleDeleteSession, handleArchiveSession, startRenameSession, handleRenameSessionSubmit, startNewSession, ensureActiveSession, handleFileSelect, handleImportSession,
+    handleDeleteSession, handleArchiveSession, handleCloneSession, startRenameSession, handleRenameSessionSubmit, startNewSession, ensureActiveSession, handleFileSelect, handleImportSession,
     handleGenerateInvite
   };
 }

@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Send, BrainCircuit, Activity, Network, Trash2, Check, X,
-  AlertTriangle, Plus, Copy, FileText, Share2, Diamond,
+  AlertTriangle, Plus, Copy, FileText, Share2, Diamond, Archive, ArchiveRestore,
   Database, Loader2, Paperclip, Star, Edit3, Upload, Mic, MicOff, Square, Globe, Eye, EyeOff, Cloud, HardDrive, LogOut
 } from 'lucide-react';
 import { SemanticGraph, DissonanceMeter, MarkdownRenderer, AuthScreen, ArtifactEditor } from '@cr/ui';
@@ -18,6 +18,23 @@ function cn(...inputs: (string | undefined | null | false)[]) {
 export default function App() {
   const app = useREPL();
   const { authStatus, auth, storage, user } = useCognitivePlatform();
+
+  const [toasts, setToasts] = useState<{ id: string; message: string; onUndo?: () => void }[]>([]);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+
+  const showToast = (message: string, onUndo?: () => void) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts(prev => [...prev, { id, message, onUndo }]);
+    if (!onUndo) {
+      setTimeout(() => {
+        setToasts(prev => prev.filter(t => t.id !== id));
+      }, 5000);
+    }
+  };
+
+  const removeToast = (id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
 
   const voice = useVoiceToDSL(async (transcript) => {
     // Determine translation using Gemini
@@ -108,6 +125,41 @@ export default function App() {
   return (
     <div className="flex flex-col h-screen bg-[#111116] text-zinc-100 font-sans overflow-hidden">
       
+      {/* Toast Notifications */}
+      <div className="fixed bottom-6 right-6 z-[300] flex flex-col gap-2pointer-events-none">
+        {toasts.map(t => (
+          <div key={t.id} className="bg-zinc-800 text-zinc-200 px-4 py-3 rounded-xl shadow-xl border border-zinc-700/50 flex items-center justify-between gap-4 pointer-events-auto min-w-[280px] animate-in slide-in-from-bottom-5">
+            <span className="text-sm font-medium">{t.message}</span>
+            <div className="flex items-center gap-2">
+              {t.onUndo && (
+                <button onClick={() => { t.onUndo!(); removeToast(t.id); }} className="text-sm font-semibold text-indigo-400 hover:text-indigo-300">
+                  Undo
+                </button>
+              )}
+              <button onClick={() => removeToast(t.id)} className="p-1 text-zinc-500 hover:text-zinc-300">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {deletingSessionId && (
+        <div className="fixed inset-0 bg-black/60 z-[300] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-red-500/30 shadow-2xl rounded-2xl p-6 max-w-sm w-full">
+            <div className="flex items-center gap-3 text-red-400 mb-4">
+              <AlertTriangle className="w-6 h-6" />
+              <h3 className="text-lg font-semibold text-zinc-100">Delete Session</h3>
+            </div>
+            <p className="text-sm text-zinc-400 mb-6">Are you sure you want to permanently delete this session? This action cannot be undone.</p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setDeletingSessionId(null)} className="px-4 py-2 text-sm font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors">Cancel</button>
+              <button onClick={(e) => { app.handleDeleteSession(deletingSessionId, e as any); setDeletingSessionId(null); }} className="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors shadow-lg shadow-red-900/20">Delete Forever</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Session Sidebar Backdrop */}
       {app.isHistorySidebarOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40" onClick={() => app.setIsHistorySidebarOpen(false)} />
@@ -153,53 +205,106 @@ export default function App() {
         )}
 
         <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-1 mt-1">
-          {app.activeSidebarTab === 'history' && app.sessions.length === 0 && (
-            <div className="text-xs text-zinc-500 text-center mt-6">No previous sessions found</div>
-          )}
-          {app.activeSidebarTab === 'history' && app.sessions.map(s => (
-            <div key={s.id} onClick={() => { if (app.editingSessionId !== s.id) app.handleLoadSession(s.id); }}
-              className={cn("group relative px-3 py-2.5 rounded-lg transition-colors border border-transparent flex justify-between items-center",
-                app.editingSessionId !== s.id && "cursor-pointer",
-                app.activeSessionId === s.id ? "bg-zinc-800/80 border-zinc-700/50 text-indigo-300" : "hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-200"
-              )}>
-              {app.editingSessionId === s.id ? (
-                <div className="flex items-center gap-2 w-full" onClick={e => e.stopPropagation()}>
-                  <input type="text" value={app.editSessionName} onChange={(e) => app.setEditSessionName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') app.handleRenameSessionSubmit(s.id, e); if (e.key === 'Escape') {} }}
-                    autoFocus className="flex-1 bg-zinc-950 border border-indigo-500/50 rounded px-2 py-1 text-xs text-zinc-100 focus:outline-none" />
-                  <button onClick={(e) => app.handleRenameSessionSubmit(s.id, e)} className="text-indigo-400 hover:text-indigo-300">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="truncate text-xs font-medium">
-                    {s.customName || s.preview}
-                    <div className="text-[10px] text-zinc-600 mt-0.5 flex items-center gap-1.5">
-                      {new Date(s.timestamp).toLocaleString()}
-                      {(s as any).isCloud ? (
-                        <span className="inline-flex items-center gap-0.5 text-emerald-500/80" title="Synced to cloud">
-                          <Cloud className="w-3 h-3" />
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-0.5 text-zinc-500" title="Local only">
-                          <HardDrive className="w-3 h-3" />
-                        </span>
-                      )}
+          {app.activeSidebarTab === 'history' && (() => {
+            const activeSessions = app.sessions.filter(s => !(s as any).isArchived);
+            const archivedSessions = app.sessions.filter(s => (s as any).isArchived);
+
+            if (activeSessions.length === 0 && archivedSessions.length === 0) {
+              return <div className="text-xs text-zinc-500 text-center mt-6">No previous sessions found</div>;
+            }
+
+            const renderSession = (s: any) => (
+              <div key={s.id} onClick={() => { if (app.editingSessionId !== s.id) app.handleLoadSession(s.id); }}
+                className={cn("group relative px-3 py-2.5 rounded-lg transition-colors border border-transparent flex justify-between items-center mb-1",
+                  app.editingSessionId !== s.id && "cursor-pointer",
+                  app.activeSessionId === s.id ? "bg-zinc-800/80 border-zinc-700/50 text-indigo-300" : "hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-200"
+                )}>
+                {app.editingSessionId === s.id ? (
+                  <div className="flex items-center gap-2 w-full" onClick={e => e.stopPropagation()}>
+                    <input type="text" value={app.editSessionName} onChange={(e) => app.setEditSessionName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') app.handleRenameSessionSubmit(s.id, e); if (e.key === 'Escape') {} }}
+                      autoFocus className="flex-1 bg-zinc-950 border border-indigo-500/50 rounded px-2 py-1 text-xs text-zinc-100 focus:outline-none" />
+                    <button onClick={(e) => app.handleRenameSessionSubmit(s.id, e)} className="text-indigo-400 hover:text-indigo-300">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="truncate text-xs font-medium">
+                      {s.customName || s.preview}
+                      <div className="text-[10px] text-zinc-600 mt-0.5 flex items-center gap-1.5">
+                        {new Date(s.timestamp).toLocaleString()}
+                        {(s as any).isCloud ? (
+                          <span className="inline-flex items-center gap-0.5 text-emerald-500/80" title="Synced to cloud">
+                            <Cloud className="w-3 h-3" />
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-0.5 text-zinc-500" title="Local only">
+                            <HardDrive className="w-3 h-3" />
+                          </span>
+                        )}
+                        {(s as any).isArchived && (
+                          <span className="inline-flex items-center gap-0.5 text-amber-500/80" title="Archived Room">
+                            <Archive className="w-3 h-3" />
+                          </span>
+                        )}
+                      </div>
                     </div>
+                    <div className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center gap-1 transition-all shrink-0">
+                      <button onClick={(e) => {
+                        app.handleCloneSession(s.id, e);
+                        showToast('Session cloned successfully.');
+                      }} className="p-1.5 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-md transition-colors" title="Clone Session">
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                      {(s as any).isArchived ? (
+                        <button onClick={(e) => {
+                          e.stopPropagation();
+                          const mockEvt = { stopPropagation: () => {} } as any;
+                          app.handleArchiveSession(s.id, false, e);
+                          showToast('Session recovered.', () => app.handleArchiveSession(s.id, true, mockEvt));
+                        }} className="p-1.5 text-zinc-500 hover:text-amber-400 hover:bg-amber-500/10 rounded-md transition-colors" title="Recover from Archive">
+                          <ArchiveRestore className="w-3.5 h-3.5" />
+                        </button>
+                      ) : (
+                        <button onClick={(e) => {
+                          e.stopPropagation();
+                          const mockEvt = { stopPropagation: () => {} } as any;
+                          app.handleArchiveSession(s.id, true, e);
+                          showToast('Session archived.', () => app.handleArchiveSession(s.id, false, mockEvt));
+                        }} className="p-1.5 text-zinc-500 hover:text-amber-400 hover:bg-amber-500/10 rounded-md transition-colors" title="Archive Session">
+                          <Archive className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button onClick={(e) => app.startRenameSession(s.id, s.customName || s.preview, e)} className="p-1.5 text-zinc-500 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-md transition-colors" title="Rename">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); setDeletingSessionId(s.id); }} className="p-1.5 text-red-500/70 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors" title="Delete">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+
+            return (
+              <div className="flex flex-col gap-6 mt-2">
+                {activeSessions.length > 0 && (
+                  <div>
+                    <div className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2 px-1">Active Sessions</div>
+                    {activeSessions.map(renderSession)}
                   </div>
-                  <div className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center gap-1 transition-all shrink-0">
-                    <button onClick={(e) => app.startRenameSession(s.id, s.customName || s.preview, e)} className="p-1.5 text-zinc-500 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-md transition-colors" title="Rename">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                    </button>
-                    <button onClick={(e) => app.handleDeleteSession(s.id, e)} className="p-1.5 text-red-500/70 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors" title="Delete">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                    </button>
+                )}
+                {archivedSessions.length > 0 && (
+                  <div>
+                    <div className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2 px-1">Archived Sessions</div>
+                    {archivedSessions.map(renderSession)}
                   </div>
-                </>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            );
+          })()}
 
           {app.activeSidebarTab === 'search' && app.historySearchQuery.trim() === '' && (
             <div className="text-xs text-zinc-500 text-center mt-6 px-4 leading-relaxed">Type a concept to search your entire Cognitive Resonance history.</div>
@@ -570,49 +675,73 @@ export default function App() {
                 </div>
               </div>
 
-              <form onSubmit={app.handleSubmit} className="relative flex items-center">
-                <div className="flex items-center gap-1 shrink-0 px-2 lg:px-0">
+              {app.isReadOnly ? (
+                <div className="flex flex-col items-center justify-center p-4 bg-zinc-950/80 border border-amber-500/20 rounded-xl mb-2 gap-3 mt-4 mx-2 lg:mx-0">
+                  <div className="flex items-center gap-2 text-amber-500/80 text-sm font-medium">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                    Read-Only Session
+                  </div>
+                  <p className="text-xs text-zinc-400 text-center max-w-sm">
+                    You are viewing a shared session. To continue this conversation or run tools, you must clone it to your own workspace.
+                  </p>
                   <button
-                    type="button"
-                    onClick={() => app.setIsSearchEnabled(!app.isSearchEnabled)}
-                    disabled={app.isLoading}
-                    className={cn("p-2 transition-colors disabled:opacity-40 rounded-lg",
-                      app.isSearchEnabled ? "text-blue-400 bg-blue-500/10" : "text-zinc-400 hover:text-indigo-400"
-                    )}
-                    title={app.isSearchEnabled ? "Google Search Grounding: ON" : "Google Search Grounding: OFF"}
+                    onClick={(e) => {
+                      if (app.activeSessionId) {
+                         app.handleCloneSession(app.activeSessionId, e);
+                         showToast('Session cloned successfully. You are now the owner.');
+                      }
+                    }}
+                    className="flex items-center gap-2 px-6 py-2 bg-emerald-600/90 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors shadow-lg shadow-emerald-900/20"
                   >
-                    <Globe className={cn("w-4 h-4", app.isSearchEnabled ? "animate-pulse" : "")} />
-                  </button>
-                  <input type="file" ref={app.fileInputRef} onChange={app.handleFileSelect} multiple className="hidden" />
-                  <button type="button" onClick={() => app.fileInputRef.current?.click()} disabled={app.isLoading} className="p-2.5 text-zinc-400 hover:text-indigo-400 transition-colors disabled:opacity-40" title="Attach files">
-                    <Paperclip className="w-4 h-4" />
+                    <Copy className="w-4 h-4" />
+                    Clone to Continue
                   </button>
                 </div>
-                <div className="relative w-full group">
-                  <input type="text" ref={app.inputRef} value={app.input} onChange={app.handleInputChange} onKeyDown={app.handleKeyDown} placeholder={voice.isListening ? "Listening..." : "Send a message..."}
-                    disabled={!app.selectedModel || voice.isListening}
-                    className={cn(
-                      "w-full bg-zinc-950 border border-zinc-700/50 rounded-xl pl-4 pr-12 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all disabled:opacity-50",
-                      voice.isListening ? "border-indigo-500/50 focus:border-indigo-500/50 animate-pulse text-indigo-300" : "focus:border-indigo-500/50"
-                    )} />
-                  <button type="button" onClick={voice.isListening ? voice.stopListening : voice.startListening} disabled={app.isLoading}
-                    className={cn("absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors border",
-                      voice.isListening ? "text-red-400 bg-red-500/10 border-red-500/20" : "text-zinc-500 border-transparent hover:text-indigo-400 hover:bg-zinc-800"
-                    )} title={voice.isListening ? "Stop listening" : "Dictate command or message"}>
-                    {voice.isListening ? <MicOff className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
-                  </button>
-                </div>
-                {app.isLoading ? (
-                  <button type="button" onClick={app.handleStopGeneration} className="ml-2 p-2 bg-red-600/20 hover:bg-red-600/40 text-red-500 rounded-lg transition-colors shrink-0" title="Stop generation">
-                    <Square className="w-4 h-4 fill-current" />
-                  </button>
-                ) : (
-                  <button type="submit" disabled={!app.input.trim() || !app.selectedModel}
-                    className="ml-2 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors disabled:opacity-50 disabled:hover:bg-indigo-600 shrink-0">
-                    <Send className="w-4 h-4" />
-                  </button>
-                )}
-              </form>
+              ) : (
+                <form onSubmit={app.handleSubmit} className="relative flex items-center">
+                  <div className="flex items-center gap-1 shrink-0 px-2 lg:px-0">
+                    <button
+                      type="button"
+                      onClick={() => app.setIsSearchEnabled(!app.isSearchEnabled)}
+                      disabled={app.isLoading}
+                      className={cn("p-2 transition-colors disabled:opacity-40 rounded-lg",
+                        app.isSearchEnabled ? "text-blue-400 bg-blue-500/10" : "text-zinc-400 hover:text-indigo-400"
+                      )}
+                      title={app.isSearchEnabled ? "Google Search Grounding: ON" : "Google Search Grounding: OFF"}
+                    >
+                      <Globe className={cn("w-4 h-4", app.isSearchEnabled ? "animate-pulse" : "")} />
+                    </button>
+                    <input type="file" ref={app.fileInputRef} onChange={app.handleFileSelect} multiple className="hidden" />
+                    <button type="button" onClick={() => app.fileInputRef.current?.click()} disabled={app.isLoading} className="p-2.5 text-zinc-400 hover:text-indigo-400 transition-colors disabled:opacity-40" title="Attach files">
+                      <Paperclip className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="relative w-full group">
+                    <input type="text" ref={app.inputRef} value={app.input} onChange={app.handleInputChange} onKeyDown={app.handleKeyDown} placeholder={voice.isListening ? "Listening..." : "Send a message..."}
+                      disabled={!app.selectedModel || voice.isListening}
+                      className={cn(
+                        "w-full bg-zinc-950 border border-zinc-700/50 rounded-xl pl-4 pr-12 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all disabled:opacity-50",
+                        voice.isListening ? "border-indigo-500/50 focus:border-indigo-500/50 animate-pulse text-indigo-300" : "focus:border-indigo-500/50"
+                      )} />
+                    <button type="button" onClick={voice.isListening ? voice.stopListening : voice.startListening} disabled={app.isLoading}
+                      className={cn("absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors border",
+                        voice.isListening ? "text-red-400 bg-red-500/10 border-red-500/20" : "text-zinc-500 border-transparent hover:text-indigo-400 hover:bg-zinc-800"
+                      )} title={voice.isListening ? "Stop listening" : "Dictate command or message"}>
+                      {voice.isListening ? <MicOff className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {app.isLoading ? (
+                    <button type="button" onClick={app.handleStopGeneration} className="ml-2 p-2 bg-red-600/20 hover:bg-red-600/40 text-red-500 rounded-lg transition-colors shrink-0" title="Stop generation">
+                      <Square className="w-4 h-4 fill-current" />
+                    </button>
+                  ) : (
+                    <button type="submit" disabled={!app.input.trim() || !app.selectedModel}
+                      className="ml-2 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors disabled:opacity-50 disabled:hover:bg-indigo-600 shrink-0">
+                      <Send className="w-4 h-4" />
+                    </button>
+                  )}
+                </form>
+              )}
             </div>
           )}
         </div>

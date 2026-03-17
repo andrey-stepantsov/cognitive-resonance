@@ -34,7 +34,11 @@ export interface SessionRecord {
   customName?: string;
   config?: any;
   data: any;
+  parentId?: string;
+  forkedAt?: number;
+  isCloud?: boolean;
   isArchived?: boolean;
+  userId?: string;
 }
 
 // ── Sessions ──────────────────────────────────────────────────
@@ -108,6 +112,45 @@ export async function renameSession(sessionId: string, newName: string): Promise
     const tx = db.transaction(SESSIONS_STORE, 'readwrite');
     tx.objectStore(SESSIONS_STORE).put(record);
     tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function archiveSession(sessionId: string, archive: boolean): Promise<void> {
+  const record = await loadSession(sessionId);
+  if (!record) return;
+  record.isArchived = archive;
+  record.data.isArchived = archive;
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(SESSIONS_STORE, 'readwrite');
+    tx.objectStore(SESSIONS_STORE).put(record);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function forkSession(sessionId: string): Promise<string | undefined> {
+  const record = await loadSession(sessionId);
+  if (!record) return undefined;
+  const newId = `session-${Date.now()}`;
+  const newRecord: SessionRecord = {
+    ...record,
+    id: newId,
+    timestamp: Date.now(),
+    forkedAt: Date.now(),
+    parentId: sessionId,
+    data: {
+      ...record.data,
+      id: newId,
+      timestamp: Date.now(),
+    }
+  };
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(SESSIONS_STORE, 'readwrite');
+    tx.objectStore(SESSIONS_STORE).put(newRecord);
+    tx.oncomplete = () => resolve(newId);
     tx.onerror = () => reject(tx.error);
   });
 }

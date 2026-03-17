@@ -376,8 +376,8 @@ async function handleSessionsAPI(request: Request, env: Env, path: string, userI
   switch (request.method) {
     case 'GET': {
       if (sessionId) {
-        // Load one session — scoped to user
-        const row = await env.DB.prepare('SELECT * FROM sessions WHERE id = ? AND user_id = ?').bind(sessionId, userId).first();
+        // Load a specific session (allow any user to view for read-only sharing)
+        const row = await env.DB.prepare('SELECT * FROM sessions WHERE id = ?').bind(sessionId).first();
         if (!row) return jsonResponse({ error: 'Not found' }, 404);
         return jsonResponse(mapRow(row));
       } else {
@@ -506,6 +506,7 @@ function mapRow(row: any): any {
     parentId: row.parent_id,
     forkedAt: row.forked_at,
     isArchived: !!row.is_archived,
+    userId: row.user_id,
     isCloud: true,
   };
 }

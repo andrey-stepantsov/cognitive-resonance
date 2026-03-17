@@ -10,6 +10,7 @@ export interface SessionRecord {
   forkedAt?: number; // When the fork occurred
   isCloud?: boolean; // Useful for UI indicators
   isArchived?: boolean; // Indicates if the session is archived
+  userId?: string; // The ID of the user who owns this session
 }
 
 export interface GemsConfig {

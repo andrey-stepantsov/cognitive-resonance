@@ -123,6 +123,31 @@ export class LocalIndexedDBProvider implements IStorageProvider {
     });
   }
 
+  async forkSession(sessionId: string): Promise<string | undefined> {
+    const record = await this.loadSession(sessionId);
+    if (!record) return undefined;
+    const newId = `session-${Date.now()}`;
+    const newRecord: SessionRecord = {
+      ...record,
+      id: newId,
+      timestamp: Date.now(),
+      forkedAt: Date.now(),
+      parentId: sessionId,
+      data: {
+        ...record.data,
+        id: newId,
+        timestamp: Date.now(),
+      }
+    };
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(SESSIONS_STORE, 'readwrite');
+      tx.objectStore(SESSIONS_STORE).put(newRecord);
+      tx.oncomplete = () => resolve(newId);
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
   async clearAll(): Promise<void> {
     const db = await openDB();
     return new Promise((resolve, reject) => {

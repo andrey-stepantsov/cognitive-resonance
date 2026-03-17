@@ -231,6 +231,7 @@ export class CloudflareStorageProvider implements IStorageProvider {
       forkedAt: row.forkedAt,
       isCloud: true,
       isArchived: !!row.isArchived,
+      userId: row.userId,
     };
   }
 }

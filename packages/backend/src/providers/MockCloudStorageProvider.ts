@@ -131,6 +131,49 @@ export class MockCloudStorageProvider implements IStorageProvider {
     });
   }
 
+  async archiveSession(sessionId: string, archive: boolean): Promise<void> {
+    return simulateNetwork(async () => {
+      const record = await this.loadSession(sessionId);
+      if (!record) return;
+      record.isArchived = archive;
+      record.data.isArchived = archive;
+      const db = await openMockDB();
+      return new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(SESSIONS_STORE, 'readwrite');
+        tx.objectStore(SESSIONS_STORE).put(record);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    });
+  }
+
+  async forkSession(sessionId: string): Promise<string | undefined> {
+    return simulateNetwork(async () => {
+      const record = await this.loadSession(sessionId);
+      if (!record) return undefined;
+      const newId = `session-${Date.now()}`;
+      const newRecord: SessionRecord = {
+        ...record,
+        id: newId,
+        timestamp: Date.now(),
+        forkedAt: Date.now(),
+        parentId: sessionId,
+        data: {
+          ...record.data,
+          id: newId,
+          timestamp: Date.now(),
+        }
+      };
+      const db = await openMockDB();
+      return new Promise<string>((resolve, reject) => {
+        const tx = db.transaction(SESSIONS_STORE, 'readwrite');
+        tx.objectStore(SESSIONS_STORE).put(newRecord);
+        tx.oncomplete = () => resolve(newId);
+        tx.onerror = () => reject(tx.error);
+      });
+    });
+  }
+
   async clearAll(): Promise<void> {
     return simulateNetwork(async () => {
       const db = await openMockDB();

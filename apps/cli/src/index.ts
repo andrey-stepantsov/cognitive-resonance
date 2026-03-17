@@ -293,6 +293,116 @@ program.action(async () => {
           }
           break;
         }
+        case CommandAction.SESSION_ARCHIVE: {
+          const sessionId = command.args[0];
+          if (!sessionId) {
+            console.log('[System] Usage: /session archive <id>');
+            break;
+          }
+          try {
+            process.stdout.write(`[System] Archiving session ${sessionId}... `);
+            const res = await backendFetch(`/api/sessions/${sessionId}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ isArchived: true })
+            });
+            if (res.ok) {
+              console.log('Success! Session archived.');
+            } else {
+              const data = await res.json() as any;
+              console.log(`Failed. ${data.error || 'Server error'}`);
+            }
+          } catch (err: any) {
+            console.log(`Failed. Network error: ${err.message}`);
+          }
+          break;
+        }
+        case CommandAction.SESSION_RECOVER: {
+          const sessionId = command.args[0];
+          if (!sessionId) {
+            console.log('[System] Usage: /session recover <id>');
+            break;
+          }
+          try {
+            process.stdout.write(`[System] Recovering session ${sessionId}... `);
+            const res = await backendFetch(`/api/sessions/${sessionId}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ isArchived: false })
+            });
+            if (res.ok) {
+              console.log('Success! Session recovered.');
+            } else {
+              const data = await res.json() as any;
+              console.log(`Failed. ${data.error || 'Server error'}`);
+            }
+          } catch (err: any) {
+            console.log(`Failed. Network error: ${err.message}`);
+          }
+          break;
+        }
+        case CommandAction.SESSION_CLONE: {
+          const sessionId = command.args[0];
+          if (!sessionId) {
+            console.log('[System] Usage: /session clone <id>');
+            break;
+          }
+          try {
+            process.stdout.write(`[System] Cloning session ${sessionId}... `);
+            const res = await backendFetch(`/api/sessions/${sessionId}/fork`, {
+              method: 'POST',
+              body: JSON.stringify({})
+            });
+            const data = await res.json() as any;
+            if (res.ok) {
+              console.log(`Success! Cloned to new session ID: ${data.id}`);
+            } else {
+              console.log(`Failed. ${data.error || 'Server error'}`);
+            }
+          } catch (err: any) {
+            console.log(`Failed. Network error: ${err.message}`);
+          }
+          break;
+        }
+        case CommandAction.SESSION_DELETE: {
+          const sessionId = command.args[0];
+          if (!sessionId) {
+            console.log('[System] Usage: /session delete <id> [--force]');
+            break;
+          }
+          
+          const force = command.args.includes('--force') || command.args.includes('-f');
+
+          const executeDelete = async () => {
+            try {
+              process.stdout.write(`[System] Permanently deleting session ${sessionId}... `);
+              const res = await backendFetch(`/api/sessions/${sessionId}`, {
+                method: 'DELETE'
+              });
+              if (res.ok) {
+                console.log('Success! Session deleted.');
+              } else {
+                const data = await res.json() as any;
+                console.log(`Failed. ${data.error || 'Server error'}`);
+              }
+            } catch (err: any) {
+              console.log(`Failed. Network error: ${err.message}`);
+            }
+          };
+
+          if (force) {
+            await executeDelete();
+          } else {
+            rl.question(`[System] WARNING: Are you sure you want to permanently delete session ${sessionId}? This cannot be undone. [y/N] `, async (answer) => {
+              if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
+                await executeDelete();
+              } else {
+                console.log('[System] Deletion cancelled.');
+              }
+              rl.prompt();
+            });
+            return; // Exit early so we don't call rl.prompt() synchronously
+          }
+          break;
+        }
         case CommandAction.UNKNOWN:
         default:
           console.log(`[System] Unrecognized command: ${command.raw}`);

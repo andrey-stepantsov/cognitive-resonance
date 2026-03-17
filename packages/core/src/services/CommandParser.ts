@@ -6,6 +6,7 @@ export type CommandAction =
   | 'SESSION_LS'
   | 'SESSION_ARCHIVE'
   | 'SESSION_RECOVER'
+  | 'SESSION_CLONE'
   | 'SESSION_DELETE'
   | 'SESSION_RENAME'
   | 'SESSION_EXPORT'
@@ -62,6 +63,7 @@ export const CommandAction = {
   SESSION_LS: 'SESSION_LS' as CommandAction,
   SESSION_ARCHIVE: 'SESSION_ARCHIVE' as CommandAction,
   SESSION_RECOVER: 'SESSION_RECOVER' as CommandAction,
+  SESSION_CLONE: 'SESSION_CLONE' as CommandAction,
   SESSION_DELETE: 'SESSION_DELETE' as CommandAction,
   SESSION_RENAME: 'SESSION_RENAME' as CommandAction,
   SESSION_EXPORT: 'SESSION_EXPORT' as CommandAction,
@@ -143,6 +145,7 @@ export function parseCommand(input: string): CommandIntent | null {
     if (verb === 'ls') return { action: CommandAction.SESSION_LS, args, raw: input };
     if (verb === 'archive') return { action: CommandAction.SESSION_ARCHIVE, args, raw: input };
     if (verb === 'recover') return { action: CommandAction.SESSION_RECOVER, args, raw: input };
+    if (verb === 'clone') return { action: CommandAction.SESSION_CLONE, args, raw: input };
     if (verb === 'delete') return { action: CommandAction.SESSION_DELETE, args, raw: input };
     if (verb === 'rename') return { action: CommandAction.SESSION_RENAME, args, raw: input };
     if (verb === 'export') return { action: CommandAction.SESSION_EXPORT, args, raw: input };
