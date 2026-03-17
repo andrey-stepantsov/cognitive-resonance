@@ -17,11 +17,18 @@
   "dependencies": {
     "@cr/backend": "^1.0.0",
     "@cr/core": "^1.0.0",
+    "better-sqlite3": "^12.8.0",
     "commander": "^12.0.0",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "isomorphic-git": "^1.37.4",
+    "memfs": "^4.56.11"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.11.30",
+    "@vitest/coverage-v8": "^1.6.1",
+    "node-git-server": "^1.0.0",
+    "node-pty": "^1.1.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.3",
     "vitest": "^1.4.0"
