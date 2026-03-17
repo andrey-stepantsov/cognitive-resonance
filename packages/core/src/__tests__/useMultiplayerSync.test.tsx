@@ -267,4 +267,94 @@ describe('useMultiplayerSync', () => {
     // Should not have attempted reconnect
     expect(MockWebSocket.instances.length).toBe(1);
   });
+  it('receives and processes incoming rtc messages', () => {
+    const { result } = renderHook(() =>
+      useMultiplayerSync({ workerUrl: 'api.example.com', sessionId: 'sess' })
+    );
+
+    const ws = MockWebSocket.instances[0];
+    act(() => {
+      if (ws.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            type: 'rtc',
+            payload: { sdp: 'fake-sdp' },
+            senderId: 'user-3'
+          }),
+        });
+      }
+    });
+
+    expect(result.current.messages.length).toBe(1);
+    expect(result.current.messages[0].type).toBe('rtc');
+  });
+
+  it('handles presence sync action', () => {
+    const { result } = renderHook(() =>
+      useMultiplayerSync({ workerUrl: 'api.example.com', sessionId: 'sess' })
+    );
+
+    const ws = MockWebSocket.instances[0];
+    act(() => {
+      if (ws.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            type: 'presence',
+            payload: {
+              action: 'sync',
+              users: [{ sessionId: 's1', userId: 'u1' }, { sessionId: 's2', userId: 'u2' }],
+              yourSessionId: 'my-session-id'
+            }
+          }),
+        });
+      }
+    });
+
+    expect(result.current.localSessionId).toBe('my-session-id');
+    expect(result.current.activeUsers['s1']).toEqual({ sessionId: 's1', userId: 'u1' });
+    expect(result.current.activeUsers['s2']).toEqual({ sessionId: 's2', userId: 'u2' });
+  });
+
+  it('handles presence join and leave actions', () => {
+    const { result } = renderHook(() =>
+      useMultiplayerSync({ workerUrl: 'api.example.com', sessionId: 'sess' })
+    );
+
+    const ws = MockWebSocket.instances[0];
+    
+    // Join
+    act(() => {
+      if (ws.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            type: 'presence',
+            payload: {
+              action: 'join',
+              sessionId: 's3',
+              userId: 'u3'
+            }
+          }),
+        });
+      }
+    });
+
+    expect(result.current.activeUsers['s3']).toEqual({ sessionId: 's3', userId: 'u3' });
+
+    // Leave
+    act(() => {
+      if (ws.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            type: 'presence',
+            payload: {
+              action: 'leave',
+              sessionId: 's3'
+            }
+          }),
+        });
+      }
+    });
+
+    expect(result.current.activeUsers['s3']).toBeUndefined();
+  });
 });

@@ -14,6 +14,7 @@ vi.mock('../hooks/useCognitiveResonance', async (importOriginal) => {
 vi.mock('@cr/backend', () => ({
   gitRemoteSync: {
     pushToRemote: vi.fn(),
+    pullFromRemote: vi.fn(),
   }
 }));
 
@@ -299,21 +300,20 @@ describe('useREPL', () => {
     });
     rerender();
 
-    // First Ctrl+R
+    // First Ctrl+R should match the most recent one: /graph search [System]
     await act(async () => {
       mockCrOptions.input = 'gr';
       const event = { ctrlKey: true, key: 'r', preventDefault: vi.fn() } as unknown as React.KeyboardEvent<HTMLInputElement>;
       result.current.handleKeyDown(event);
     });
     rerender();
-
-    expect(mockCrOptions.setInput).toHaveBeenCalledWith('/graph search [System]');
     
-    // Simulate natural input mutation bounds 
-    mockCrOptions.input = '/graph search [System]';
+    expect(mockCrOptions.setInput).toHaveBeenCalledWith('/graph search [System]');
 
     // Second Ctrl+R
     await act(async () => {
+      // simulate the state update
+      mockCrOptions.input = '/graph search [System]';
       const event = { ctrlKey: true, key: 'r', preventDefault: vi.fn() } as unknown as React.KeyboardEvent<HTMLInputElement>;
       result.current.handleKeyDown(event);
     });
@@ -323,9 +323,12 @@ describe('useREPL', () => {
 
     // Third Ctrl+R with no older matches
     await act(async () => {
+      // simulate the state update from the second match
+      mockCrOptions.input = '/graph ls';
       const event = { ctrlKey: true, key: 'r', preventDefault: vi.fn() } as unknown as React.KeyboardEvent<HTMLInputElement>;
       result.current.handleKeyDown(event);
     });
+    rerender();
 
     expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({
       content: "[System]: Reverse search: no older items matching 'gr'"
@@ -643,13 +646,13 @@ describe('useREPL', () => {
         
         const { result } = setup();
         
-        const mockEvent = { key: ' ', preventDefault: vi.fn() };
+        const mockEvent = { key: ' ', preventDefault: vi.fn() } as unknown as React.KeyboardEvent<HTMLInputElement>;
         act(() => {
-          result.current.handleKeyDown(mockEvent as any);
+          result.current.handleKeyDown(mockEvent);
         });
     
         expect(mockEvent.preventDefault).toHaveBeenCalled();
-        expect(mockCrOptions.handleMentionSelect).toHaveBeenCalledWith('AuthNode');
+        expect(mockCrOptions.handleMentionSelect).toHaveBeenCalledWith('AuthNode', undefined, undefined);
     });
   });
 
@@ -753,6 +756,31 @@ describe('useREPL', () => {
       await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
       
       expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Failed to push to remote: Sync failed' }));
+    });
+
+    it('handles /git pull', async () => {
+      mockCrOptions.input = '/git pull';
+      const { result } = setup();
+      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+      
+      expect(mockCrOptions.ensureActiveSession).toHaveBeenCalled();
+      expect(mockGitContextManager.initRepo).toHaveBeenCalled();
+      expect(mockGitRemoteSync.pullFromRemote).toHaveBeenCalledWith(
+        mockGitContextManager.fs,
+        mockGitContextManager.dir,
+        'main'
+      );
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Successfully pulled from Cloudflare! 📥' }));
+    });
+
+    it('handles /git pull errors', async () => {
+      mockGitRemoteSync.pullFromRemote.mockRejectedValueOnce(new Error('Pull failed'));
+      
+      mockCrOptions.input = '/git pull';
+      const { result } = setup();
+      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
+      
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Failed to pull from remote: Pull failed' }));
     });
 
     it('handles /global sync', async () => {

@@ -5,6 +5,22 @@ import * as GeminiService from '../services/GeminiService';
 import * as CrBackend from '@cr/backend';
 import * as SearchService from '../services/SearchService';
 
+let mockActiveUsers: Record<string, any> = {};
+
+vi.mock('../hooks/useMultiplayerSync', () => ({
+  useMultiplayerSync: vi.fn(() => ({
+    isConnected: true,
+    get activeUsers() { return mockActiveUsers; },
+    localSessionId: 'local-1',
+    messages: [],
+    cursors: {},
+    sendCursor: vi.fn(),
+    sendChatMessage: vi.fn(),
+    sendSignal: vi.fn(),
+    onSignal: vi.fn(),
+  }))
+}));
+
 vi.mock('../services/SearchService', () => ({
   searchHistory: vi.fn(),
   searchGoogle: vi.fn()
@@ -58,7 +74,7 @@ const mockStorage = {
   saveGemsConfig: vi.fn()
 };
 
-const mockAuth = { getStatus: () => 'anonymous', getUser: () => undefined };
+const mockAuth = { getStatus: () => 'anonymous', getUser: () => undefined, getToken: vi.fn() };
 
 // Mock context directly
 vi.mock('../providers/CognitivePlatformContext', () => ({
@@ -73,6 +89,10 @@ vi.mock('../providers/CognitivePlatformContext', () => ({
 describe('useCognitiveResonance', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockActiveUsers = {};
+    if (typeof window !== 'undefined') {
+      window.location.hash = '';
+    }
     vi.mocked(GeminiService.fetchModels).mockResolvedValue([{ name: 'models/gemini-2.5-flash', displayName: 'Gemini 2.5 Flash' }]);
     vi.mocked(GeminiService.generateResponse).mockResolvedValue({
       reply: 'Mocked response',
@@ -396,6 +416,127 @@ describe('useCognitiveResonance', () => {
     expect(payloadPassed).toContain('(Weight: 5)');
   });
 
+  it('acts as silent observer in multi-actor room without explicit mention', async () => {
+    const { result } = renderHook(() => useCognitiveResonance());
+    
+    // Simulate multiple peers in room
+    mockActiveUsers = { 
+       'peer-1': { sessionId: 'peer-1', userId: 'Peer User' },
+       'peer-2': { sessionId: 'peer-2', userId: 'Another Guy' }
+    };
+
+    await waitFor(() => {
+       expect(result.current.availableModels.length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+       // Message without @gem mention
+       result.current.setInput('Hey guys, what do you think?');
+    });
+
+    await act(async () => {
+       await result.current.handleSubmit({ preventDefault: vi.fn() } as unknown as React.FormEvent);
+    });
+
+    // Should NOT have called generateResponse (silent observer)
+    expect(GeminiService.generateResponse).not.toHaveBeenCalled();
+    // But the message is still appended locally
+    expect(result.current.messages[0].content).toBe('Hey guys, what do you think?');
+    // And input is cleared
+    expect(result.current.input).toBe('');
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it('routes to specific gem and injects multi-actor context when explicitly mentioned in room', async () => {
+    let payloadPassed = '';
+    vi.mocked(GeminiService.generateResponse).mockImplementation(async (...args: any[]) => {
+      payloadPassed = args[1][args[1].length - 1].content;
+      return { reply: 'Mocked gem response', dissonanceScore: 0, dissonanceReason: '', semanticNodes: [], semanticEdges: [] };
+    });
+
+    // Mock storage to return our specific gem
+    mockStorage.loadGemsConfig.mockResolvedValueOnce({
+      gems: [
+        { id: 'gem-1', name: 'General Chat', model: 'gemini-2.5-flash', systemPrompt: '' },
+        { id: 'gem-architect', name: 'System Architect', model: 'gemini-2.5-flash', systemPrompt: 'Architect Prompt' }
+      ]
+    });
+
+    const { result } = renderHook(() => useCognitiveResonance());
+
+    // Simulate multiple peers in room
+    mockActiveUsers = { 
+       'peer-1': { sessionId: 'peer-1', userId: 'Peer User' },
+       'peer-2': { sessionId: 'peer-2', userId: 'Another Guy' }
+    };
+
+    await waitFor(() => {
+       expect(result.current.availableModels.length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+       result.current.setInput('What do you think, @you:SystemArchitect?');
+    });
+
+    await act(async () => {
+       await result.current.handleSubmit({ preventDefault: vi.fn() } as unknown as React.FormEvent);
+    });
+
+    // Should have called generateResponse with the specific gem's model and prompt
+    expect(GeminiService.generateResponse).toHaveBeenCalled();
+    const calls = vi.mocked(GeminiService.generateResponse).mock.calls;
+    expect(calls[0][0]).toBe('gemini-2.5-flash'); // actualModel
+    expect(calls[0][2]).toBe('Architect Prompt'); // actualSystemPrompt
+    
+    // Should have injected the multi-actor system directive
+    expect(payloadPassed).toContain('You are operating in a Multi-Actor Room');
+  });
+
+  it('populates mention suggestions accurately', async () => {
+    const { result } = renderHook(() => useCognitiveResonance());
+    
+    mockActiveUsers = { 'peer-1': { sessionId: 'peer-1', userId: 'Peer User' } };
+
+    // Set markers
+    act(() => {
+        result.current.setMessages([{
+          role: 'model',
+          content: 'Here is some state',
+          internalState: {
+            dissonanceScore: 0,
+            dissonanceReason: '',
+            semanticNodes: [{ id: 'node1', label: 'AuthSystem', weight: 5 }],
+            semanticEdges: []
+          }
+        }]);
+    });
+
+    act(() => {
+      result.current.handleInputChange({ target: { value: '@', selectionStart: 1 } } as any);
+    });
+
+    // We should see gems, peers, and markers
+    await waitFor(() => {
+      expect(result.current.mentionSuggestions.length).toBeGreaterThan(0);
+    });
+
+    const types = result.current.mentionSuggestions.map(m => m.type);
+    expect(types).not.toContain('gem');
+    expect(types).toContain('peer');
+    expect(types).toContain('semantic');
+    
+    // Test fuzzy match narrowing
+    act(() => {
+      result.current.handleInputChange({ target: { value: '@Auth', selectionStart: 5 } } as any);
+    });
+
+    await waitFor(() => {
+      const remainingTypes = result.current.mentionSuggestions.map(m => m.type);
+      expect(remainingTypes).toContain('semantic');
+      expect(remainingTypes).not.toContain('peer');
+    });
+  });
+
   it('handles mention selection', () => {
     const { result } = renderHook(() => useCognitiveResonance());
     
@@ -404,7 +545,7 @@ describe('useCognitiveResonance', () => {
     });
 
     act(() => {
-      result.current.handleMentionSelect('AuthSystem');
+      result.current.handleMentionSelect('AuthSystem', undefined, 'semantic');
     });
 
     expect(result.current.input).toBe('Hello @AuthSystem ');
@@ -498,6 +639,63 @@ describe('useCognitiveResonance', () => {
     else delete (navigator as any).share;
     if (orgNavigatorCanShare) Object.assign(navigator, { canShare: orgNavigatorCanShare });
     else delete (navigator as any).canShare;
+  });
+
+  it('handles invite generation successfully', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      json: vi.fn().mockResolvedValue({ token: 'mock-invite-token' })
+    });
+    const mockAlert = vi.fn();
+    global.alert = mockAlert;
+    
+    // Polyfill navigator.clipboard
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn() }
+    });
+
+    const { result } = renderHook(() => useCognitiveResonance());
+    
+    // No active session initially, should return early
+    await act(async () => {
+      await result.current.handleGenerateInvite();
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+
+    mockAuth.getToken.mockResolvedValue('fake-token');
+
+    // We can directly mock activeSessionId by loading one
+    await act(async () => {
+      await result.current.handleLoadSession('session-123');
+    });
+
+    await act(async () => {
+      await result.current.handleGenerateInvite();
+    });
+
+    expect(global.fetch).toHaveBeenCalled();
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('mock-invite-token'));
+    expect(mockAlert).toHaveBeenCalled();
+  });
+
+  it('handles invite generation failure', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      json: vi.fn().mockResolvedValue({ error: 'Token limit' })
+    });
+    const mockAlert = vi.fn();
+    global.alert = mockAlert;
+
+    mockAuth.getToken.mockResolvedValue('fake-token');
+
+    const { result } = renderHook(() => useCognitiveResonance());
+    await act(async () => {
+      await result.current.handleLoadSession('session-123');
+    });
+
+    await act(async () => {
+      await result.current.handleGenerateInvite();
+    });
+
+    expect(mockAlert).toHaveBeenCalledWith(expect.stringContaining('Token limit'));
   });
 
   it('calls downloadJSON if share throws a non-abort error', async () => {
@@ -774,18 +972,56 @@ describe('useCognitiveResonance', () => {
 
     act(() => {
       result.current.setHistorySearchQuery('search term');
+      result.current.setHistorySearchQuery('test query');
     });
 
     // Fast-forward debounce timeout
     await act(async () => {
       vi.advanceTimersByTime(400);
-      // Wait for promise resolution
-      await Promise.resolve();
+      // Simulate debounce completion
+    });
+    await act(async () => {
+      vi.runAllTimers();
     });
 
-    expect(SearchService.searchHistory).toHaveBeenCalledWith('search term', mockStorage);
-    expect(result.current.searchResults.length).toBe(1);
+    expect(SearchService.searchHistory).toHaveBeenCalledWith('test query', mockStorage);
+    expect(result.current.searchResults).toEqual([{ sessionId: 's1', turnIndex: 0 }]);
+
     vi.useRealTimers();
+  });
+
+  it('syncs state from URL hash correctly', async () => {
+    const { result } = renderHook(() => useCognitiveResonance());
+    
+    // Test with valid existing record
+    mockStorage.loadSession.mockResolvedValueOnce({
+      id: 'hash-session-1',
+      data: {
+        messages: [{ role: 'user', content: 'hash message' }],
+        config: { model: 'hash-model', systemPrompt: 'hash-prompt', gemId: 'hash-gem' }
+      }
+    });
+
+    await act(async () => {
+      window.location.hash = '#hash-session-1';
+      window.dispatchEvent(new Event('hashchange'));
+    });
+
+    expect(result.current.messages[0].content).toBe('hash message');
+    expect(result.current.selectedModel).toBe('hash-model');
+    expect(result.current.activeGemId).toBe('hash-gem');
+    expect(result.current.activeSessionId).toBe('hash-session-1');
+
+    // Test with missing record
+    mockStorage.loadSession.mockResolvedValueOnce(null);
+
+    await act(async () => {
+      window.location.hash = '#hash-session-2';
+      window.dispatchEvent(new Event('hashchange'));
+    });
+
+    expect(result.current.messages.length).toBe(0);
+    expect(result.current.activeSessionId).toBe('hash-session-2');
   });
 
   it('handles file selection', async () => {

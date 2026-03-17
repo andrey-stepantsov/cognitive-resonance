@@ -235,6 +235,54 @@ describe('CognitivePlatformContext', () => {
     });
   });
 
+  it('proxy auth methods correctly delegate to active auth provider', async () => {
+    mockCloudAuth.getToken = vi.fn().mockReturnValue('fake-token');
+    mockCloudAuth.getStatus.mockReturnValue(AuthStatus.AUTHENTICATED);
+    mockCloudAuth.getUser.mockReturnValue({ name: 'Test' });
+    
+    let proxyAuthRef: any;
+    
+    const TestAuthComponent = () => {
+      const { auth } = useCognitivePlatform();
+      proxyAuthRef = auth;
+      return null;
+    };
+    
+    render(
+      <CognitivePlatformProvider
+        localAuth={mockLocalAuth}
+        localStorage={mockLocalStorage}
+        cloudAuth={mockCloudAuth}
+        cloudStorage={mockCloudStorage}
+      >
+        <TestAuthComponent />
+      </CognitivePlatformProvider>
+    );
+    
+    // Wait for context to settle
+    await waitFor(() => {
+       if (!proxyAuthRef) throw new Error();
+    });
+
+    // We start as anonymous local auth unless we mock status change
+    // Let's force a status change to cloud auth to test cloudAuth delegation
+    await act(async () => {
+       if (cloudAuthChangeCb) cloudAuthChangeCb(AuthStatus.AUTHENTICATED, { name: 'Test' });
+    });
+
+    expect(proxyAuthRef.getToken()).toBe('fake-token');
+    expect(mockCloudAuth.getToken).toHaveBeenCalled();
+    
+    expect(proxyAuthRef.getStatus()).toBe(AuthStatus.AUTHENTICATED);
+    expect(proxyAuthRef.getUser()).toEqual({ name: 'Test' });
+    
+    const listener = vi.fn();
+    proxyAuthRef.onChange(listener);
+    expect(mockCloudAuth.onChange).toHaveBeenCalledWith(listener);
+    
+    await proxyAuthRef.init(); // Cover the empty init function
+  });
+
   it('throws error if hook is used outside provider', () => {
     // Suppress console error for this specific expected throw
     const originalError = console.error;

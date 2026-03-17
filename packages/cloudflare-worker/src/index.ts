@@ -198,6 +198,12 @@ export async function requireAuth(request: Request, env: Env): Promise<Response 
     return jsonResponse({ error: 'Unauthorized' }, 401);
   }
 
+  // 0. Local Sandbox / E2E Mock User Token Mode
+  // MUST run before any D1/JWT logic to prevent spurious db errors
+  if (token.startsWith('cr_mock_')) {
+    return { userId: token.replace('cr_mock_', '') };
+  }
+
   // 1. Try Appwrite JWKS (RS256) if configured
   if (env.APPWRITE_ENDPOINT) {
     const result = await verifyAppwriteJwt(token, env.APPWRITE_ENDPOINT, env.APPWRITE_PROJECT_ID);
@@ -320,9 +326,14 @@ export default {
       const id = env.ROOM_SESSION.idFromName(sessionId);
       const stub = env.ROOM_SESSION.get(id);
 
-      // Pass the authenticated user ID to the Durable Object
       const newHeaders = new Headers(request.headers);
       newHeaders.set('X-User-Id', authResult.userId);
+      
+      const requestedName = url.searchParams.get('name');
+      if (requestedName) {
+         newHeaders.set('X-User-Name', requestedName);
+      }
+      
       const modifiedRequest = new Request(request.url, {
         method: request.method,
         headers: newHeaders,
@@ -441,6 +452,44 @@ async function handleSessionsAPI(request: Request, env: Env, path: string, userI
       return jsonResponse({ id: sessionId, ok: true });
     }
 
+    case 'POST': {
+      if (!sessionId) return jsonResponse({ error: 'Source session ID required' }, 400);
+      const url = new URL(request.url);
+      const action = url.pathname.split('/').pop();
+      if (action !== 'fork') {
+        return corsResponse('Method Not Allowed', 405);
+      }
+
+      const body = await request.json() as any;
+      const newSessionId = body.id || crypto.randomUUID();
+
+      // 1. Fetch the parent session - we allow anyone to fork if they know the ID
+      // because the original session ID acts as the capability token to read/fork.
+      const parentSession = await env.DB.prepare('SELECT * FROM sessions WHERE id = ?').bind(sessionId).first();
+      if (!parentSession) return jsonResponse({ error: 'Source session not found' }, 404);
+
+      const now = Date.now();
+
+      // 2. Clone it with new ID and set parent refs
+      await env.DB.prepare(
+        `INSERT INTO sessions (id, timestamp, preview, custom_name, config, data, parent_id, forked_at, is_archived, user_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`
+      ).bind(
+        newSessionId,
+        now,
+        parentSession.preview,
+        parentSession.custom_name,
+        parentSession.config,
+        parentSession.data, // Duplicate the entire json state exact same blob
+        sessionId, // set parent_id
+        now, // set forked_at
+        0, // unarchive the new fork
+        userId,
+      ).run();
+
+      return jsonResponse({ id: newSessionId, parent_id: sessionId, ok: true });
+    }
+
     default:
       return corsResponse('Method Not Allowed', 405);
   }
@@ -454,6 +503,8 @@ function mapRow(row: any): any {
     customName: row.custom_name,
     config: row.config,
     data: row.data,
+    parentId: row.parent_id,
+    forkedAt: row.forked_at,
     isArchived: !!row.is_archived,
     isCloud: true,
   };

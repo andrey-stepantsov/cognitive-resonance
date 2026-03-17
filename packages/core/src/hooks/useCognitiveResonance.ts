@@ -97,6 +97,7 @@ export function useCognitiveResonance() {
   const [artifactContent, setArtifactContent] = useState('# Artifact context\n\nEdit this virtual file to persist changes into the local isomorphic-git repository.\nThe AI will automatically see your saved changes in its context window before every prompt.');
   const [markerSearchQuery, setMarkerSearchQuery] = useState('');
   const [mentionSearchQuery, setMentionSearchQuery] = useState<string | null>(null);
+  const [mentionContext, setMentionContext] = useState<'peer' | 'gem' | 'turn' | 'dsl' | 'semantic' | null>(null);
   const [mentionSuggestions, setMentionSuggestions] = useState<any[]>([]);
   const [cursorPosition, setCursorPosition] = useState<number | null>(null);
 
@@ -150,7 +151,8 @@ export function useCognitiveResonance() {
   const ws = useMultiplayerSync({
     workerUrl: wsUrl,
     sessionId: activeSessionId || '',
-    token: auth.getToken?.() || undefined
+    token: auth.getToken?.() || undefined,
+    userName: user?.name
   });
 
   const lastProcessedMessageIdx = useRef(0);
@@ -323,49 +325,102 @@ export function useCognitiveResonance() {
     const cursor = e.target.selectionStart || 0;
     setCursorPosition(cursor);
 
-    // Check if the word before the cursor starts with @
+    // Extract the word currently being typed (up to the cursor)
     const textBeforeCursor = val.slice(0, cursor);
     const words = textBeforeCursor.split(/\s/);
     const targetWord = words[words.length - 1];
 
-    if (targetWord && targetWord.startsWith('@')) {
-      // Allow valid semantic node characters (letters, numbers, underscores, dashes)
-      const query = targetWord.slice(1);
-      if (/^[a-zA-Z0-9_\-]*$/.test(query)) {
-        setMentionSearchQuery(query);
-      } else {
-        setMentionSearchQuery(null);
-      }
-    } else {
+    if (!targetWord || (!targetWord.startsWith('@') && !targetWord.startsWith('#') && !targetWord.startsWith('('))) {
       setMentionSearchQuery(null);
+      setMentionContext(null);
+      return;
+    }
+
+    // AST CLI Parser Regex for Autocomplete context
+    // Matches: @[peer]:[gem]#[turn](dsl)
+    // Or standalone: #[turn] or (dsl)
+    const astRegex = /^(?:@([a-zA-Z0-9_\-]*)(?::([a-zA-Z0-9_\-]*))?)?(?:#(\d*))?(?:\(([^)]*)\))?$/;
+    const match = targetWord.match(astRegex);
+
+    if (match) {
+       const [, peerRaw, gemRaw, turnRaw, dslRaw] = match;
+
+       if (dslRaw !== undefined || targetWord.startsWith('(')) {
+          setMentionContext('dsl');
+          setMentionSearchQuery(dslRaw || '');
+       } else if (turnRaw !== undefined || targetWord.startsWith('#')) {
+          setMentionContext('turn');
+          setMentionSearchQuery(turnRaw || '');
+       } else if (gemRaw !== undefined || targetWord.includes(':')) {
+          setMentionContext('gem');
+          setMentionSearchQuery(gemRaw || '');
+       } else if (peerRaw !== undefined || targetWord.startsWith('@')) {
+          setMentionContext('peer');
+          setMentionSearchQuery(peerRaw || '');
+       } else {
+          setMentionSearchQuery(null);
+          setMentionContext(null);
+       }
+    } else {
+       // Fallback for raw semantic markers if needed
+       setMentionSearchQuery(targetWord.slice(1));
+       setMentionContext('semantic');
     }
   };
 
-  // Perform fuzzy search whenever mentionSearchQuery or allMarkersList changes
+  // Perform fuzzy search whenever mentionSearchQuery or context changes
   useEffect(() => {
-    if (mentionSearchQuery === null) {
-      setMentionSuggestions([]);
+    if (mentionSearchQuery === null || mentionContext === null) {
+      setMentionSuggestions(prev => prev.length > 0 ? [] : prev);
       return;
     }
     
-    // allMarkersList already has ranked nodes from historyData aggregation below
-    const markers = Array.from(markerCounts.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
-    
+    let candidates: any[] = [];
+
+    if (mentionContext === 'gem') {
+       candidates = savedGems.map((g: any) => ({ name: g.name.replace(/\s+/g, ''), id: g.id, type: 'gem', description: g.model }));
+    } else if (mentionContext === 'peer') {
+       candidates = Object.values(ws.activeUsers || {}).map((u: any) => ({ name: (u.userName || u.userId || 'Peer').replace(/\s+/g, ''), id: u.sessionId, type: 'peer', description: 'Active User' }));
+       // Add local user as self-reference
+       if (user?.name) candidates.unshift({ name: user.name.replace(/\s+/g, ''), id: user.id || 'local', type: 'peer', description: 'Local Client' });
+       // Also include semantic markers in the @ context
+       const markers = Array.from(markerCounts.entries()).map(([name, count]) => ({ name, type: 'semantic', count, description: 'Semantic Marker' })).sort((a, b) => (b.count || 0) - (a.count || 0));
+       candidates.push(...markers);
+    } else if (mentionContext === 'turn') {
+       // Reverse order so latest turns show up top, limit to last 20 for autocomplete
+       const recentTurns = [...messages].reverse().slice(0, 20);
+       candidates = recentTurns.map((m, idx) => ({ 
+          name: `${messages.length - idx}`, 
+          type: 'turn', 
+          description: m.content,
+          raw: m.content 
+       }));
+    } else if (mentionContext === 'dsl') {
+       candidates = [
+          { name: 'get-context', type: 'dsl', description: '(get-context :from n :to m)', raw: '(get-context :from  :to )' },
+          { name: 'turn', type: 'dsl', description: '(turn n)', raw: '(turn )' },
+          { name: 'get-markers', type: 'dsl', description: '(get-markers target)', raw: '(get-markers )' },
+          { name: 'request', type: 'dsl', description: "(request 'actor :input)", raw: "(request ' :input )" },
+          { name: 'fork-chat', type: 'dsl', description: '(fork-chat :at-turn n)', raw: '(fork-chat :at-turn )' }
+       ];
+    } else if (mentionContext === 'semantic') {
+       candidates = Array.from(markerCounts.entries()).map(([name, count]) => ({ name, type: 'semantic', count, description: 'Semantic Marker' })).sort((a, b) => (b.count || 0) - (a.count || 0));
+    }
+
     if (!mentionSearchQuery) {
-       // If just '@', show top ranked
-       setMentionSuggestions(markers);
+       // If query is empty, show all candidates for that context top ranked
+       setMentionSuggestions(candidates);
        return;
     }
     
     // Use Fuse to search and maintain rank weight
-    const fuse = new Fuse(markers, { keys: ['name'], threshold: 0.4 });
+    const fuse = new Fuse(candidates, { keys: ['name'], threshold: 0.4 });
     const results = fuse.search(mentionSearchQuery)
-                        .map(r => r.item)
-                        .sort((a, b) => b.count - a.count);
+                        .map(r => r.item);
     setMentionSuggestions(results);
-  }, [mentionSearchQuery, messages]);
+  }, [mentionSearchQuery, mentionContext, messages, savedGems, ws.activeUsers]);
 
-  const handleMentionSelect = (markerLabel: string) => {
+  const handleMentionSelect = (markerLabel: string, rawInsert?: string, mentionType?: string) => {
     if (cursorPosition === null) return;
     
     const textBeforeCursor = input.slice(0, cursorPosition);
@@ -374,16 +429,44 @@ export function useCognitiveResonance() {
     // Find the @word we are replacing
     const words = textBeforeCursor.split(/\s/);
     const targetWord = words[words.length - 1];
-    
-    if (targetWord && targetWord.startsWith('@')) {
-      const newTextBefore = textBeforeCursor.slice(0, -targetWord.length);
-      const replacement = `@${markerLabel} `;
-      const newInput = newTextBefore + replacement + textAfterCursor;
-      setInput(newInput);
-      setMentionSearchQuery(null);
-      setMentionSuggestions([]);
-      // We ideally want to set cursor position after the replaced word, but React state makes it tricky without a ref
+    if (!targetWord) return;
+
+    const newTextBeforeWord = textBeforeCursor.slice(0, -targetWord.length);
+    let replacement = targetWord;
+
+    if (mentionContext === 'dsl') {
+       replacement = rawInsert || `(${markerLabel})`;
+    } else if (mentionType === 'semantic') {
+       replacement = `@${markerLabel} `;
+    } else {
+       // AST Replacement: @peer:gem#turn
+       const astRegex = /^(?:@([a-zA-Z0-9_\-]*)(?::([a-zA-Z0-9_\-]*))?)?(?:#(\d*))?$/;
+       const match = targetWord.match(astRegex);
+       if (match) {
+          const [, peerRaw, gemRaw, turnRaw] = match;
+          if (mentionContext === 'peer') {
+             replacement = `@${markerLabel}${gemRaw !== undefined ? ':' + gemRaw : ''}${turnRaw !== undefined ? '#' + turnRaw : ''}`;
+             // Auto-append colon if they just selected a peer, to prompt for gem
+             if (gemRaw === undefined && turnRaw === undefined) replacement += ':';
+          } else if (mentionContext === 'gem') {
+             replacement = `${peerRaw !== undefined ? '@' + peerRaw : ''}:${markerLabel}${turnRaw !== undefined ? '#' + turnRaw : ''}`;
+             if (turnRaw === undefined) replacement += '#';
+          } else if (mentionContext === 'turn') {
+             replacement = `${peerRaw !== undefined ? '@' + peerRaw : ''}${gemRaw !== undefined ? ':' + gemRaw : ''}#${markerLabel} `;
+          }
+       } else {
+          // Fallback
+          replacement = targetWord + markerLabel + ' ';
+       }
     }
+
+    const newInput = newTextBeforeWord + replacement + textAfterCursor;
+    setInput(newInput);
+    setMentionSearchQuery(null);
+    setMentionContext(null);
+    setMentionSuggestions([]);
+    
+    // Force focus back to input and set cursor (handled by React state rendering ideally)
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -413,10 +496,75 @@ export function useCognitiveResonance() {
       ws.sendChatMessage(rawUserMessage, { role: 'user', senderName: user?.name });
     }
 
-    // Prompt Interception: Look for @ mentions
+    // Prompt Interception: Modular Mention Syntax parser
+    // Syntax: @[participant](:[gem])?(#[turn])?(\(dsl\))?
     let payloadMessageContent = rawUserMessage;
-    const mentionRegex = /@([a-zA-Z0-9_\-]+)/g;
+    const mentionRegex = /@([a-zA-Z0-9_\-]+)(?::([a-zA-Z0-9_\-]*))?(?:#(\d*))?(?:\(([^)]*)\))?/g;
     const matches = Array.from(rawUserMessage.matchAll(mentionRegex));
+    
+    // Evaluate explicit wakes based on the new rules
+    let hasExplicitWake = false;
+    let targetModel = selectedModel;
+    let targetSystemPrompt = sessionSystemPrompt;
+
+    for (const match of matches) {
+      const [, participant, aiDelegator] = match;
+      
+      const isTargetingMe = participant.toLowerCase() === 'you' || participant === user?.name?.replace(/\s+/g, '');
+      const isDelegatingToAI = aiDelegator !== undefined; 
+
+      if (isTargetingMe && isDelegatingToAI) {
+         hasExplicitWake = true;
+         // Did they specify an AI? (e.g., @you:SystemCoder). If empty (e.g., @you:), use default.
+         if (aiDelegator.trim() !== '') {
+            const specificGem = savedGems.find(g => g.name.replace(/\s+/g, '').toLowerCase() === aiDelegator.toLowerCase());
+            if (specificGem) {
+               targetModel = specificGem.model;
+               targetSystemPrompt = specificGem.systemPrompt;
+            }
+         }
+      }
+    }
+
+    const isMultiActor = Object.keys(ws.activeUsers || {}).length > 1;
+
+    // Explicit Waking Pattern:
+    // If we're in a multi-actor room and the user hasn't explicitly mentioned an AI Gem (via :), 
+    // the AI doesn't generate a response (acts as Silent Observer).
+    if (isMultiActor && !hasExplicitWake) {
+        setIsLoading(false);
+        abortControllerRef.current = null;
+        return;
+    }
+
+    let actualModel = targetModel;
+    let actualSystemPrompt = targetSystemPrompt;
+
+    if (isMultiActor && hasExplicitWake) {
+        payloadMessageContent += `\n\n<system_directive>\nYou are operating in a Multi-Actor Room with several human participants. Analyze the preceding unprompted human messages contextually, and synthesize your answer based on the whole group debate rather than just this single prompt.\n</system_directive>`;
+    }
+
+    // Extract Context Turn References
+    let contextTurns: Message[] = [];
+    for (const match of matches) {
+      const turnRef = match[3];
+      if (turnRef && turnRef.trim() !== '') {
+         const idx = parseInt(turnRef, 10);
+         // Find message in visible history (1-indexed for user, so idx-1)
+         if (!isNaN(idx) && idx > 0 && idx <= messages.length) {
+            contextTurns.push(messages[idx - 1]);
+         }
+      }
+    }
+
+    if (contextTurns.length > 0) {
+       payloadMessageContent += `\n\n<referenced_context>\n`;
+       contextTurns.forEach((m) => {
+          payloadMessageContent += `[Turn Reference]: ${m.role === 'user' ? (m.senderName || 'Peer') : 'AI'}: ${m.content}\n`;
+       });
+       payloadMessageContent += `</referenced_context>\n`;
+    }
+
     const matchedMarkers: Set<string> = new Set();
     
     if (matches.length > 0 && allMarkersList.length > 0) {
@@ -498,17 +646,24 @@ export function useCognitiveResonance() {
     }
     
     // Create a copy of the messages array for the LLM payload where the last message is the augmented one
-    const payloadMessages = [...newMessages];
+    const payloadMessages = newMessages.map(msg => {
+      if (msg.role === 'peer') {
+        return { ...msg, role: 'user' as const, content: `[Peer ${msg.senderName || 'Anonymous'}]: ${msg.content}` };
+      }
+      return msg;
+    });
+
     payloadMessages[payloadMessages.length - 1] = { 
+      ...payloadMessages[payloadMessages.length - 1],
       role: 'user', 
       content: payloadMessageContent 
     };
 
     try {
       const data = await generateResponse(
-        selectedModel, 
+        actualModel, 
         payloadMessages, 
-        sessionSystemPrompt, 
+        actualSystemPrompt, 
         responseSchema,
         abortControllerRef.current?.signal,
         isSearchEnabled
@@ -642,7 +797,7 @@ export function useCognitiveResonance() {
   };
 
   const handleGenerateInvite = async () => {
-    if (!activeSessionId) return;
+    const sessionId = activeSessionId || ensureActiveSession();
     try {
       const token = await auth.getToken?.();
       if (!token) throw new Error("Not logged in");
@@ -656,12 +811,12 @@ export function useCognitiveResonance() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ sessionId: activeSessionId })
+        body: JSON.stringify({ sessionId })
       });
       
       const data = await res.json();
       if (data.token) {
-         const inviteUrl = `${window.location.origin}/?invite=${data.token}#${activeSessionId}`;
+         const inviteUrl = `${window.location.origin}/?invite=${data.token}#${sessionId}`;
          await navigator.clipboard.writeText(inviteUrl);
          alert(`Invite link copied to clipboard:\n${inviteUrl}`);
       } else {
@@ -781,7 +936,7 @@ export function useCognitiveResonance() {
     historySearchQuery, setHistorySearchQuery, activeSidebarTab, setActiveSidebarTab,
     searchResults, targetTurnIndex, editingSessionId, setEditingSessionId, editSessionName, setEditSessionName,
     markerViewMode, setMarkerViewMode, artifactContent, setArtifactContent, markerSearchQuery, setMarkerSearchQuery,
-    mentionSearchQuery, setMentionSearchQuery, mentionSuggestions, handleInputChange, handleMentionSelect,
+    mentionSearchQuery, setMentionSearchQuery, mentionSuggestions, setMentionSuggestions, mentionContext, setMentionContext, handleInputChange, handleMentionSelect,
     isDissonancePanelOpen, setIsDissonancePanelOpen, isRightSidebarOpen, setIsRightSidebarOpen,
     copiedIndex, setCopiedIndex, isGemSidebarOpen, setIsGemSidebarOpen,
     availableModels, chatModels, savedGems, defaultGemId, activeGemId, selectedModel, setSelectedModel,

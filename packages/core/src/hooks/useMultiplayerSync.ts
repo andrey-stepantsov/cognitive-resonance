@@ -11,11 +11,12 @@ export interface UseMultiplayerSyncOptions {
   workerUrl: string; // e.g. "api.my-domain.workers.dev" or local "localhost:8787"
   sessionId: string;
   token?: string;
+  userName?: string;
 }
 
-export function useMultiplayerSync({ workerUrl, sessionId, token }: UseMultiplayerSyncOptions) {
+export function useMultiplayerSync({ workerUrl, sessionId, token, userName }: UseMultiplayerSyncOptions) {
   const [isConnected, setIsConnected] = useState(false);
-  const [activeUsers, setActiveUsers] = useState<Record<string, { userId?: string; sessionId: string }>>({});
+  const [activeUsers, setActiveUsers] = useState<Record<string, { userId?: string; userName?: string; sessionId: string }>>({});
   const [localSessionId, setLocalSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MultiplayerMessage[]>([]);
   const [cursors, setCursors] = useState<Record<string, {x: number, y: number}>>({});
@@ -32,9 +33,11 @@ export function useMultiplayerSync({ workerUrl, sessionId, token }: UseMultiplay
     // Strip trailing slashes and any existing http(s) protocol prefix
     const cleanWorkerUrl = workerUrl.replace(/\/$/, '').replace(/^https?:\/\//, '');
     let wsUrl = `${protocol}://${cleanWorkerUrl}/room/${sessionId}`;
-    if (token) {
-      wsUrl += `?token=${encodeURIComponent(token)}`;
-    }
+    const params = new URLSearchParams();
+    if (token) params.append('token', token);
+    if (userName) params.append('name', userName);
+    const qs = params.toString();
+    if (qs) wsUrl += `?${qs}`;
     
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
@@ -85,7 +88,7 @@ export function useMultiplayerSync({ workerUrl, sessionId, token }: UseMultiplay
                 setLocalSessionId(data.payload.yourSessionId);
               }
             } else if (data.payload.action === 'join') {
-              setActiveUsers(prev => ({ ...prev, [data.payload.sessionId]: { userId: data.payload.userId, sessionId: data.payload.sessionId } }));
+              setActiveUsers(prev => ({ ...prev, [data.payload.sessionId]: { userId: data.payload.userId, userName: data.payload.userName, sessionId: data.payload.sessionId } }));
             } else if (data.payload.action === 'leave') {
                setActiveUsers(prev => {
                   const next = { ...prev };

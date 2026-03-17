@@ -348,7 +348,11 @@ export function useREPL() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (e.key === ' ' && cr.mentionSearchQuery !== null && cr.mentionSuggestions.length > 0) {
       e.preventDefault();
-      cr.handleMentionSelect(cr.mentionSuggestions[0].name);
+      cr.handleMentionSelect(
+        cr.mentionSuggestions[0].name,
+        cr.mentionSuggestions[0].raw,
+        cr.mentionSuggestions[0].type
+      );
       return;
     }
     

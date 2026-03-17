@@ -157,6 +157,38 @@ describe('useVoiceToDSL', () => {
     expect(result.current.error).toBeNull();
   });
 
+  it('handles error during start', () => {
+    mockRecognitionInstance.start = vi.fn().mockImplementation(() => { throw new Error('Start failed'); });
+    (window as any).SpeechRecognition = mockSpeechRecognition;
+    const { result } = renderHook(() => useVoiceToDSL(vi.fn()));
+
+    act(() => {
+      result.current.startListening();
+    });
+
+    expect(result.current.isListening).toBe(false);
+  });
+
+  it('caches the media stream', async () => {
+    const fakeStream = {} as any;
+    Object.assign(navigator, {
+      mediaDevices: {
+        getUserMedia: vi.fn().mockResolvedValue(fakeStream)
+      }
+    });
+
+    const { result } = renderHook(() => useVoiceToDSL(vi.fn()));
+    
+    let stream1;
+    await act(async () => { stream1 = await result.current.acquireMediaStream(); });
+    let stream2;
+    await act(async () => { stream2 = await result.current.acquireMediaStream(); });
+
+    expect(stream1).toBe(fakeStream);
+    expect(stream2).toBe(fakeStream);
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+  });
+
   describe('Capacitor Native Flow', () => {
     beforeEach(() => {
       vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
@@ -219,6 +251,18 @@ describe('useVoiceToDSL', () => {
       });
 
       expect(SpeechRecognition.stop).toHaveBeenCalled();
+      expect(result.current.isListening).toBe(false);
+    });
+
+    it('handles exception during native start', async () => {
+      vi.mocked(SpeechRecognition.checkPermissions).mockRejectedValue(new Error('Native crash'));
+      const { result } = renderHook(() => useVoiceToDSL(vi.fn()));
+
+      await act(async () => {
+        await result.current.startListening();
+      });
+
+      expect(result.current.error).toBe('Native crash');
       expect(result.current.isListening).toBe(false);
     });
   });

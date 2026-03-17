@@ -3,6 +3,7 @@ import { Env } from './index';
 interface Session {
   id: string;
   userId?: string;
+  userName?: string;
 }
 
 export class RoomSession {
@@ -21,7 +22,8 @@ export class RoomSession {
         const metadata = ws.deserializeAttachment() as any;
         this.sessions.set(ws, { 
           id: metadata?.id || crypto.randomUUID(),
-          userId: metadata?.userId 
+          userId: metadata?.userId,
+          userName: metadata?.userName
         });
       } catch (e) {
         this.sessions.set(ws, { id: crypto.randomUUID() });
@@ -38,9 +40,10 @@ export class RoomSession {
     const { 0: client, 1: server } = new WebSocketPair();
     const sessionId = crypto.randomUUID();
     const userId = request.headers.get('X-User-Id') || undefined;
+    const userName = request.headers.get('X-User-Name') || undefined;
 
     this.state.acceptWebSocket(server);
-    this.sessions.set(server, { id: sessionId, userId });
+    this.sessions.set(server, { id: sessionId, userId, userName });
 
     // Cancel any pending alarms (room empty flush) since a user joined
     await this.state.storage.deleteAlarm();
@@ -50,12 +53,12 @@ export class RoomSession {
     const roomId = url.pathname.split('/').filter(Boolean).pop() || 'unknown';
     await this.state.storage.put('roomId', roomId);
 
-    server.serializeAttachment({ id: sessionId, userId });
+    server.serializeAttachment({ id: sessionId, userId, userName });
 
-    const activeUsers = Array.from(this.sessions.values()).map(s => ({ userId: s.userId, sessionId: s.id }));
+    const activeUsers = Array.from(this.sessions.values()).map(s => ({ userId: s.userId, userName: s.userName, sessionId: s.id }));
     server.send(JSON.stringify({ type: 'presence', payload: { action: 'sync', users: activeUsers, yourSessionId: sessionId } }));
 
-    this.broadcast(JSON.stringify({ type: 'presence', payload: { action: 'join', userId, sessionId } }), server);
+    this.broadcast(JSON.stringify({ type: 'presence', payload: { action: 'join', userId, userName, sessionId } }), server);
 
     return new Response(null, {
       status: 101,
@@ -130,7 +133,7 @@ export class RoomSession {
     this.sessions.delete(ws);
     
     if (session) {
-      this.broadcast(JSON.stringify({ type: 'presence', payload: { action: 'leave', userId: session.userId, sessionId: session.id } }));
+      this.broadcast(JSON.stringify({ type: 'presence', payload: { action: 'leave', userId: session.userId, userName: session.userName, sessionId: session.id } }));
     }
     // If the room is empty, schedule a background flush
     if (this.sessions.size === 0) {

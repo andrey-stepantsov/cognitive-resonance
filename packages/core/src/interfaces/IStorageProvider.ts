@@ -6,6 +6,8 @@ export interface SessionRecord {
   customName?: string;
   config?: any;
   data: any; // the actual message/node payload
+  parentId?: string; // The session ID this branched from
+  forkedAt?: number; // When the fork occurred
   isCloud?: boolean; // Useful for UI indicators
   isArchived?: boolean; // Indicates if the session is archived
 }
@@ -71,4 +73,9 @@ export interface IStorageProvider {
   // --- Gems config methods ---
   saveGemsConfig(config: GemsConfig): Promise<void>;
   loadGemsConfig(): Promise<GemsConfig | null>;
+
+  /**
+   * Clones a session into a specific divergent branch.
+   */
+  forkSession?(sessionId: string): Promise<string | undefined>;
 }

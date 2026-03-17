@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   custom_name TEXT,
   config TEXT,
   data TEXT,
+  parent_id TEXT,
+  forked_at INTEGER,
   is_archived INTEGER DEFAULT 0,
   user_id TEXT DEFAULT 'legacy'
 );

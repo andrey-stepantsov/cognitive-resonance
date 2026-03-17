@@ -138,6 +138,22 @@ export class CloudflareStorageProvider implements IStorageProvider {
     }
   }
 
+  async forkSession(sessionId: string): Promise<string | undefined> {
+    try {
+      const res = await fetch(`${this.workerUrl}/api/sessions/${sessionId}/fork`, {
+        method: 'POST',
+        headers: this.authHeaders(true),
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) return undefined;
+      const data = await res.json() as any;
+      return data.id; // Return the new branched session ID
+    } catch (err) {
+      console.error(`CloudflareStorageProvider: Failed to fork session ${sessionId}:`, err);
+      return undefined;
+    }
+  }
+
   async clearAll(): Promise<void> {
     // Load all and delete individually (D1 has no TRUNCATE in the REST API)
     const sessions = await this.loadAllSessions();
@@ -211,6 +227,8 @@ export class CloudflareStorageProvider implements IStorageProvider {
       customName: row.customName,
       config: row.config ? (typeof row.config === 'string' ? JSON.parse(row.config) : row.config) : undefined,
       data: row.data ? (typeof row.data === 'string' ? JSON.parse(row.data) : row.data) : {},
+      parentId: row.parentId,
+      forkedAt: row.forkedAt,
       isCloud: true,
       isArchived: !!row.isArchived,
     };
