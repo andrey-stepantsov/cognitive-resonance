@@ -68,7 +68,7 @@ function loadSessionFromDB(db: DatabaseEngine, sessionId: string): { role: strin
     } else if (ev.type === 'AI_RESPONSE') {
       try {
         const payload = JSON.parse(ev.payload);
-        history.push({ role: 'assistant', content: payload.text });
+        history.push({ role: 'model', content: payload.text });
         aiCount++;
       } catch (e) {}
     }
@@ -80,7 +80,7 @@ function loadSessionFromDB(db: DatabaseEngine, sessionId: string): { role: strin
     
     // Print the last turn for context
     const lastUser = history.filter(h => h.role === 'user').pop();
-    const lastAI = history.filter(h => h.role === 'assistant').pop();
+    const lastAI = history.filter(h => h.role === 'model').pop();
     console.log('\n--- Last Interaction ---');
     if (lastUser) console.log(`\x1b[36m[User]\x1b[0m ${lastUser.content.substring(0, 100)}${lastUser.content.length > 100 ? '...' : ''}`);
     if (lastAI) console.log(`\x1b[33m[AI]\x1b[0m   ${lastAI.content.substring(0, 100)}${lastAI.content.length > 100 ? '...' : ''}`);
@@ -203,7 +203,7 @@ export function registerChatCommands(program: Command) {
 
         if (options.format === 'json') {
           console.log(JSON.stringify({
-             role: 'assistant',
+             role: 'model',
              content: responsePayload.reply,
              metadata: { dissonanceScore: responsePayload.dissonanceScore, nodes: responsePayload.nodes }
           }));
