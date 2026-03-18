@@ -11,6 +11,7 @@ import { registerAssertCommand } from './commands/assert';
 import { registerUserCommands } from './commands/user';
 import { registerPortabilityCommands } from './commands/portability';
 import { registerGitCommands } from './commands/git';
+import { registerServeCommand } from './commands/serve';
 
 // Path to store the CLI authentication token
 const TOKEN_FILE_PATH = path.resolve(process.cwd(), '.cr-cli-token');
@@ -27,6 +28,7 @@ program
   .option('-d, --db <path>', 'Global option: Path to SQLite database', 'cr.sqlite');
 
 import { registerChatCommands } from './commands/chat';
+import { registerObserveCommands } from './commands/observe';
 
 // Register model 2 commands
 registerSimulateCommand(program);
@@ -35,6 +37,8 @@ registerUserCommands(program);
 registerPortabilityCommands(program);
 registerGitCommands(program);
 registerChatCommands(program);
+registerObserveCommands(program);
+registerServeCommand(program);
 
 program.parseAsync(process.argv).catch(err => {
   console.error('Fatal CLI Error:', err);

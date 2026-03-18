@@ -1,0 +1,47 @@
+{
+  "entities": [
+    {
+      "id": "ent-alpha",
+      "name": "Alpha Release",
+      "latest_artefact_id": "art-1",
+      "previous_artefact_id": null
+    }
+  ],
+  "artefacts": [
+    {
+      "id": "art-1",
+      "source_session_id": "evt-1",
+      "source_event_id": "evt-3",
+      "type": "application/json",
+      "content": "{\"frontend\":\"Frontend Module\",\"backend\":\"Backend Module\"}",
+      "version": 1
+    }
+  ],
+  "sessions": [
+    {
+      "id": "evt-1",
+      "owner_id": "U1",
+      "head_event_id": "evt-3"
+    }
+  ],
+  "events": [
+    {
+      "id": "evt-2",
+      "session_id": "evt-1",
+      "timestamp": 1001,
+      "actor": "U1",
+      "type": "USER_ACTION",
+      "payload": "{\"text\":\"Create the schema for a new web app\"}",
+      "previous_event_id": null
+    },
+    {
+      "id": "evt-3",
+      "session_id": "evt-1",
+      "timestamp": 1002,
+      "actor": "AI_BOT",
+      "type": "AI_ACTION",
+      "payload": "{\"text\":\"Here is the schema.\"}",
+      "previous_event_id": "evt-2"
+    }
+  ]
+}

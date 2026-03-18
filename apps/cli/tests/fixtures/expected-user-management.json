@@ -1,0 +1,9 @@
+{
+  "users": [
+    {
+      "email": "alice@test.cr",
+      "nick": "alice_wonderland",
+      "status": "suspended"
+    }
+  ]
+}

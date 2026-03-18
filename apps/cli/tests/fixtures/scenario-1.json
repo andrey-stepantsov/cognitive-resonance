@@ -1,0 +1,40 @@
+{
+  "name": "Base Scaffold App",
+  "events": [
+    {
+      "id": "evt-1",
+      "timestamp": 1000,
+      "actor": "U1",
+      "type": "SESSION_CREATED"
+    },
+    {
+      "id": "evt-2",
+      "timestamp": 1001,
+      "actor": "U1",
+      "type": "USER_ACTION",
+      "payload": {
+        "text": "Create the schema for a new web app"
+      }
+    },
+    {
+      "id": "evt-3",
+      "timestamp": 1002,
+      "actor": "AI_BOT",
+      "type": "AI_ACTION",
+      "payload": {
+        "text": "Here is the schema."
+      },
+      "produces_artefact": {
+        "id": "art-1",
+        "type": "application/json",
+        "content": {
+          "frontend": "Frontend Module",
+          "backend": "Backend Module"
+        },
+        "version": 1
+      },
+      "promotes_entity": "Alpha Release",
+      "entity_id": "ent-alpha"
+    }
+  ]
+}

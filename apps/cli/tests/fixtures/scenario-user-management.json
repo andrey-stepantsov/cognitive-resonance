@@ -1,0 +1,36 @@
+{
+  "name": "User Management",
+  "events": [
+    {
+      "id": "evt-u1",
+      "timestamp": 1000,
+      "actor": "SYSTEM",
+      "type": "USER_REGISTERED",
+      "payload": {
+        "id": "user-1",
+        "email": "alice@test.cr",
+        "nick": "alice",
+        "password_hash": "hash1"
+      }
+    },
+    {
+      "id": "evt-u2",
+      "timestamp": 1001,
+      "actor": "SYSTEM",
+      "type": "NICK_UPDATED",
+      "payload": {
+        "userId": "user-1",
+        "nick": "alice_wonderland"
+      }
+    },
+    {
+      "id": "evt-u3",
+      "timestamp": 1002,
+      "actor": "SYSTEM",
+      "type": "USER_SUSPENDED",
+      "payload": {
+        "userId": "user-1"
+      }
+    }
+  ]
+}

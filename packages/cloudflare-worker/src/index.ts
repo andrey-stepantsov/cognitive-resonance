@@ -286,6 +286,13 @@ export default {
       return handleSessionsAPI(request, env, path, authResult.userId, ctx);
     }
 
+    // --- Events Sync API (D1) — requires auth ---
+    if (path.startsWith('/api/events')) {
+      const authResult = await requireAuth(request, env);
+      if (isAuthError(authResult)) return authResult;
+      return handleEventsAPI(request, env, path, authResult.userId);
+    }
+
     if (path.startsWith('/api/gems')) {
       const authResult = await requireAuth(request, env);
       if (isAuthError(authResult)) return authResult;
@@ -618,6 +625,62 @@ async function handleSearchAPI(request: Request, env: Env, userId: string): Prom
     });
 
   return jsonResponse({ results });
+}
+
+// ─── Events Sync (D1) ────────────────────────────────────────────
+
+async function handleEventsAPI(request: Request, env: Env, path: string, userId: string): Promise<Response> {
+  if (request.method === 'GET') {
+    const url = new URL(request.url);
+    const since = parseInt(url.searchParams.get('since') || '0', 10);
+    
+    // Safety limit 500 events per pull
+    const { results } = await env.DB.prepare(
+      'SELECT id, session_id, timestamp, actor, type, payload, previous_event_id FROM events WHERE user_id = ? AND timestamp > ? ORDER BY timestamp ASC LIMIT 500'
+    ).bind(userId, since).all();
+    
+    return jsonResponse({ events: results || [] });
+  } 
+  
+  if (request.method === 'POST') {
+    const isBatch = path.endsWith('/batch');
+    if (!isBatch) return corsResponse('Only /batch is supported for POST', 400);
+    
+    const body = await request.json() as { events: any[] };
+    if (!body.events || !Array.isArray(body.events)) {
+       return jsonResponse({ error: 'Expected an array of events' }, 400);
+    }
+    
+    if (body.events.length === 0) return jsonResponse({ ok: true });
+    
+    // D1 Transactions / Batching
+    const stmts = body.events.map(ev => {
+       const payloadStr = typeof ev.payload === 'string' ? ev.payload : JSON.stringify(ev.payload);
+       return env.DB.prepare(`
+         INSERT OR IGNORE INTO events (id, session_id, timestamp, actor, type, payload, previous_event_id, user_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+       `).bind(
+         ev.id,
+         ev.session_id,
+         ev.timestamp,
+         ev.actor,
+         ev.type,
+         payloadStr,
+         ev.previous_event_id || null,
+         userId
+       );
+    });
+    
+    try {
+      await env.DB.batch(stmts);
+      return jsonResponse({ ok: true });
+    } catch (err: any) {
+      console.error('[Sync Daemon] Failed to handle event batch:', err);
+      return jsonResponse({ error: 'Failed to insert events' }, 500);
+    }
+  }
+  
+  return corsResponse('Method Not Allowed', 405);
 }
 
 // ─── Gems Config ─────────────────────────────────────────────────

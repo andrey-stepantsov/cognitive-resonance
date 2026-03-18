@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterEach, beforeEach } from 'vitest';
 import worker, { generateSessionEmbeddings, verifyAppwriteJwt, clearJwksCache, checkRateLimit, rateLimitStore } from '../index';
 import { verifyJwt } from '../auth';
 
@@ -17,6 +17,10 @@ function makeCtx(): any {
 }
 
 describe('Cloudflare Worker - cr-vector-pipeline', () => {
+  beforeEach(() => {
+    rateLimitStore.clear();
+  });
+
   it('handles OPTIONS requests for CORS', async () => {
     const request = new Request('http://localhost/api/sessions', { method: 'OPTIONS' });
     const response = await worker.fetch(request, makeEnv(), makeCtx());
@@ -329,6 +333,73 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
     });
     const response = await worker.fetch(request, makeEnv({ DB: {} }), makeCtx());
     expect(response.status).toBe(405);
+  });
+
+  // --- Events Sync (D1) ---
+
+  describe('/api/events', () => {
+    it('returns newly synced events on GET', async () => {
+      const mockDB = {
+        prepare: vi.fn().mockReturnValue({
+          bind: vi.fn().mockReturnValue({
+            all: vi.fn().mockResolvedValue({
+              results: [
+                { id: 'evt-1', session_id: 'sess-1', timestamp: 100, actor: 'user', type: 'msg', payload: '{}', previous_event_id: null }
+              ]
+            }),
+          }),
+        }),
+      };
+      const request = new Request('http://localhost/api/events?since=50', {
+        method: 'GET', headers: authHeaders(),
+      });
+      const response = await worker.fetch(request, makeEnv({ DB: mockDB }), makeCtx());
+      expect(response.status).toBe(200);
+      const body = await response.json() as any;
+      expect(body.events).toHaveLength(1);
+      expect(body.events[0].id).toBe('evt-1');
+    });
+
+    it('rejects POST to non-batch endpoint', async () => {
+      const request = new Request('http://localhost/api/events', {
+        method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ events: [] })
+      });
+      const response = await worker.fetch(request, makeEnv(), makeCtx());
+      expect(response.status).toBe(400);
+    });
+
+    it('accepts valid POST to /api/events/batch', async () => {
+      const mockDB = {
+        prepare: vi.fn().mockReturnValue({ bind: vi.fn() }),
+        batch: vi.fn().mockResolvedValue([{}]),
+      };
+      const request = new Request('http://localhost/api/events/batch', {
+        method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          events: [
+            { id: 'evt-1', session_id: 'sess-1', timestamp: 100, actor: 'user', type: 'msg', payload: { foo: 'bar' } }
+          ]
+        })
+      });
+      const response = await worker.fetch(request, makeEnv({ DB: mockDB }), makeCtx());
+      expect(response.status).toBe(200);
+      
+      const body = await response.json() as any;
+      expect(body.ok).toBe(true);
+      expect(mockDB.batch).toHaveBeenCalledTimes(1);
+    });
+    
+    it('returns ok early for empty batch', async () => {
+       const mockDB = { batch: vi.fn() };
+       const request = new Request('http://localhost/api/events/batch', {
+         method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+         body: JSON.stringify({ events: [] })
+       });
+       const response = await worker.fetch(request, makeEnv({ DB: mockDB }), makeCtx());
+       expect(response.status).toBe(200);
+       expect(mockDB.batch).not.toHaveBeenCalled();
+    });
   });
 
   // --- Gems PUT ---
@@ -1189,6 +1260,10 @@ describe('verifyJwt', () => {
 });
 
 describe('JWT auth mode', () => {
+  beforeEach(() => {
+    rateLimitStore.clear();
+  });
+
   it('authenticates with valid JWT when JWT_SECRET is set', async () => {
     const token = await createTestJwt({ sub: 'user-99', exp: Math.floor(Date.now() / 1000) + 3600 });
     const mockDB = {
@@ -1376,6 +1451,10 @@ describe('verifyAppwriteJwt (account.get())', () => {
 });
 
 describe('Appwrite auth in requireAuth pipeline', () => {
+  beforeEach(() => {
+    clearJwksCache();
+    rateLimitStore.clear();
+  });
   let keyPair: CryptoKeyPair;
   let originalFetch: typeof globalThis.fetch;
 

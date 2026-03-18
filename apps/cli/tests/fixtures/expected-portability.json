@@ -1,0 +1,12 @@
+{
+  "entities": [
+    {
+      "name": "Alpha Release",
+      "latest_artefact_id": "art-1",
+      "expected_content": {
+        "frontend": "Frontend Module",
+        "backend": "Backend Module"
+      }
+    }
+  ]
+}

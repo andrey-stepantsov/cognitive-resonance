@@ -13,6 +13,19 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id, timestamp DESC);
 
+CREATE TABLE IF NOT EXISTS events (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  timestamp INTEGER NOT NULL,
+  actor TEXT NOT NULL,
+  type TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  previous_event_id TEXT,
+  user_id TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_sync ON events(user_id, session_id, timestamp);
+
 CREATE TABLE IF NOT EXISTS gems_config (
   id TEXT NOT NULL DEFAULT 'default',
   config TEXT,

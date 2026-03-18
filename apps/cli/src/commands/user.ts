@@ -1,0 +1,104 @@
+import { Command } from 'commander';
+import { DatabaseEngine } from '../db/DatabaseEngine';
+import crypto from 'crypto';
+
+export function registerUserCommands(program: Command) {
+  const userCmd = program.command('user').description('User management commands');
+  
+  userCmd.command('register <email> <nick> <password>')
+    .option('-d, --db <path>', 'Path to SQLite database', 'test.sqlite')
+    .action((email, nick, password, options) => {
+        const db = new DatabaseEngine(options.db);
+        const userId = crypto.randomUUID();
+        db.upsertUser({
+             id: userId,
+             email,
+             nick,
+             password_hash: password, // Note: hash in real app
+             status: 'active'
+        });
+        db.createSession('SYSTEM', 'system-session');
+        db.appendEvent({
+             session_id: 'system-session',
+             timestamp: Date.now(),
+             actor: 'SYSTEM',
+             type: 'USER_REGISTERED',
+             payload: JSON.stringify({ id: userId, email, nick, password_hash: password }),
+             previous_event_id: null
+        });
+        console.log(`User registered: ${userId}`);
+        db.close();
+    });
+
+  userCmd.command('suspend <userId>')
+    .option('-d, --db <path>', 'Path to SQLite database', 'test.sqlite')
+    .action((userId, options) => {
+        const db = new DatabaseEngine(options.db);
+        const user = db.getUserById(userId);
+        if (user) {
+            user.status = 'suspended';
+            db.upsertUser(user);
+            db.createSession('SYSTEM', 'system-session');
+            db.appendEvent({
+                 session_id: 'system-session',
+                 timestamp: Date.now(),
+                 actor: 'SYSTEM',
+                 type: 'USER_SUSPENDED',
+                 payload: JSON.stringify({ userId }),
+                 previous_event_id: null
+            });
+            console.log(`User suspended: ${userId}`);
+        } else {
+            console.error(`User not found: ${userId}`);
+        }
+        db.close();
+    });
+    
+  userCmd.command('set-password <userId> <newPassword>')
+    .option('-d, --db <path>', 'Path to SQLite database', 'test.sqlite')
+    .action((userId, newPassword, options) => {
+        const db = new DatabaseEngine(options.db);
+        const user = db.getUserById(userId);
+        if (user) {
+            user.password_hash = newPassword;
+            db.upsertUser(user);
+            db.createSession('SYSTEM', 'system-session');
+            db.appendEvent({
+                 session_id: 'system-session',
+                 timestamp: Date.now(),
+                 actor: 'SYSTEM',
+                 type: 'PASSWORD_UPDATED',
+                 payload: JSON.stringify({ userId, password_hash: newPassword }),
+                 previous_event_id: null
+            });
+            console.log(`User password updated: ${userId}`);
+        } else {
+            console.error(`User not found: ${userId}`);
+        }
+        db.close();
+    });
+
+  userCmd.command('set-nick <userId> <newNick>')
+    .option('-d, --db <path>', 'Path to SQLite database', 'test.sqlite')
+    .action((userId, newNick, options) => {
+        const db = new DatabaseEngine(options.db);
+        const user = db.getUserById(userId);
+        if (user) {
+            user.nick = newNick;
+            db.upsertUser(user);
+            db.createSession('SYSTEM', 'system-session');
+            db.appendEvent({
+                 session_id: 'system-session',
+                 timestamp: Date.now(),
+                 actor: 'SYSTEM',
+                 type: 'NICK_UPDATED',
+                 payload: JSON.stringify({ userId, nick: newNick }),
+                 previous_event_id: null
+            });
+            console.log(`User nick updated: ${userId}`);
+        } else {
+            console.error(`User not found: ${userId}`);
+        }
+        db.close();
+    });
+}
