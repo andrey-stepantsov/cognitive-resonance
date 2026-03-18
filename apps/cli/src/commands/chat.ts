@@ -424,10 +424,17 @@ export function registerChatCommands(program: Command) {
             break;
           case CommandAction.MODEL_USE:
             if (command.args[0] === 'ls') {
-               console.log('\n[System] Available Core Gemini Models:');
-               console.log('  - gemini-2.5-flash (Default, lightning fast)');
-               console.log('  - gemini-2.5-pro   (Advanced reasoning, coding)');
-               console.log('\nTip: Use /model use <model_name> to switch.\n');
+               process.stdout.write('\n[System] Fetching available models from Google... ');
+               try {
+                  const models = await fetchModels();
+                  console.log('Done.\n');
+                  for (const m of models) {
+                     console.log(`  - \x1b[36m${m.name.replace('models/', '')}\x1b[0m (${m.displayName})`);
+                  }
+                  console.log('\nTip: Use /model use <model_name> to switch.\n');
+               } catch (err: any) {
+                  console.log(`Failed. ${err.message}`);
+               }
             } else if (command.args[0]) {
               currentModel = command.args[0];
               console.log(`[System] Switched to model: ${currentModel}`);
