@@ -111,7 +111,7 @@ describe('GitRemoteSync', () => {
 
   it('uses dynamic token from configureAuth over static apiKey', async () => {
     const gitMock = await import('isomorphic-git');
-    sync.configureAuth(() => 'jwt-token-from-appwrite');
+    sync.configureAuth(() => 'jwt-token-from-dynamic-source');
     const mockFs = {};
 
     await sync.pushToRemote(mockFs, '/session-123', 'main');
@@ -119,7 +119,7 @@ describe('GitRemoteSync', () => {
     expect(gitMock.default.push).toHaveBeenCalledWith(
       expect.objectContaining({
         headers: {
-          'Authorization': 'Bearer jwt-token-from-appwrite'
+          'Authorization': 'Bearer jwt-token-from-dynamic-source'
         }
       })
     );

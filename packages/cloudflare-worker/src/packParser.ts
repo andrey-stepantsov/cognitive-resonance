@@ -337,7 +337,7 @@ export async function parsePackfile(packData: ArrayBuffer): Promise<GitObject[]>
  * Read a variable-length integer from delta data.
  * Returns [value, bytes consumed].
  */
-function readDeltaVarInt(data: Uint8Array, offset: number): [number, number] {
+export function readDeltaVarInt(data: Uint8Array, offset: number): [number, number] {
   let value = 0;
   let shift = 0;
   let consumed = 0;
@@ -363,7 +363,7 @@ function readDeltaVarInt(data: Uint8Array, offset: number): [number, number] {
  *     - Copy: MSB=1, followed by offset/size bytes (copy from base)
  *     - Insert: MSB=0, byte = count of literal bytes to insert
  */
-function applyDelta(base: Uint8Array, delta: Uint8Array): Uint8Array {
+export function applyDelta(base: Uint8Array, delta: Uint8Array): Uint8Array {
   let dOffset = 0;
 
   // Read base size (for validation)

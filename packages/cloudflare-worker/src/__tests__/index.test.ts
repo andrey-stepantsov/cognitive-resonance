@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterEach, beforeEach } from 'vitest';
-import worker, { generateSessionEmbeddings, verifyAppwriteJwt, clearJwksCache, checkRateLimit, rateLimitStore } from '../index';
+import worker, { generateSessionEmbeddings, checkRateLimit, rateLimitStore } from '../index';
 import { verifyJwt } from '../auth';
 
 const TEST_API_KEY = 'test-api-key-abc123';
@@ -399,6 +399,17 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
        const response = await worker.fetch(request, makeEnv({ DB: mockDB }), makeCtx());
        expect(response.status).toBe(200);
        expect(mockDB.batch).not.toHaveBeenCalled();
+    });
+
+    it('handles malformed JSON payload', async () => {
+       const request = new Request('http://localhost/api/events/batch', {
+         method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+         body: '{bad json'
+       });
+       const response = await worker.fetch(request, makeEnv({}), makeCtx());
+       expect(response.status).toBe(400);
+       const body = await response.json() as any;
+       expect(body.error).toBeDefined();
     });
   });
 
@@ -1366,168 +1377,7 @@ async function createRS256Jwt(payload: Record<string, any>, privateKey: CryptoKe
 }
 
 /** Helper: export public key as JWK for mock JWKS endpoint */
-async function exportPublicKeyJwk(publicKey: CryptoKey, kid = 'test-kid') {
-  const jwk = await crypto.subtle.exportKey('jwk', publicKey) as any;
-  return { ...jwk, kid, use: 'sig', alg: 'RS256' };
-}
 
-describe('verifyAppwriteJwt (account.get())', () => {
-  let originalFetch: typeof globalThis.fetch;
-
-  beforeAll(() => {
-    originalFetch = globalThis.fetch;
-  });
-
-  afterEach(() => {
-    globalThis.fetch = originalFetch;
-    clearJwksCache();
-  });
-
-  function mockAccountFetch(response: Response) {
-    globalThis.fetch = vi.fn().mockResolvedValue(response) as any;
-  }
-
-  it('verifies a valid JWT by calling Appwrite account API', async () => {
-    mockAccountFetch(
-      new Response(JSON.stringify({ $id: 'appwrite-user-42', email: 'test@test.com' }), { status: 200 })
-    );
-    const result = await verifyAppwriteJwt('valid-jwt-token', 'https://cloud.appwrite.io/v1', 'test-project');
-    expect(result).toEqual({ userId: 'appwrite-user-42' });
-  });
-
-  it('rejects when Appwrite returns 401', async () => {
-    mockAccountFetch(
-      new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401 })
-    );
-    const result = await verifyAppwriteJwt('invalid-token', 'https://cloud.appwrite.io/v1');
-    expect(result).toBeNull();
-  });
-
-  it('rejects when Appwrite returns no $id', async () => {
-    mockAccountFetch(
-      new Response(JSON.stringify({ email: 'test@test.com' }), { status: 200 })
-    );
-    const result = await verifyAppwriteJwt('weird-token', 'https://cloud.appwrite.io/v1');
-    expect(result).toBeNull();
-  });
-
-  it('rejects when Appwrite endpoint fails', async () => {
-    mockAccountFetch(
-      new Response('Internal Error', { status: 500 })
-    );
-    const result = await verifyAppwriteJwt('token', 'https://cloud.appwrite.io/v1');
-    expect(result).toBeNull();
-  });
-
-  it('caches verified tokens', async () => {
-    const mockFetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ $id: 'cached-user' }), { status: 200 })
-    );
-    globalThis.fetch = mockFetch as any;
-
-    // First call should hit Appwrite
-    const r1 = await verifyAppwriteJwt('cache-test-token', 'https://cloud.appwrite.io/v1');
-    expect(r1).toEqual({ userId: 'cached-user' });
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-
-    // Second call should use cache
-    const r2 = await verifyAppwriteJwt('cache-test-token', 'https://cloud.appwrite.io/v1');
-    expect(r2).toEqual({ userId: 'cached-user' });
-    expect(mockFetch).toHaveBeenCalledTimes(1); // Not called again
-  });
-
-  it('sends X-Appwrite-Project header when projectId provided', async () => {
-    const mockFetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ $id: 'user-with-project' }), { status: 200 })
-    );
-    globalThis.fetch = mockFetch as any;
-
-    await verifyAppwriteJwt('project-token', 'https://cloud.appwrite.io/v1', 'my-project');
-
-    const callArgs = mockFetch.mock.calls[0];
-    expect(callArgs[1].headers['X-Appwrite-Project']).toBe('my-project');
-    expect(callArgs[1].headers['X-Appwrite-JWT']).toBe('project-token');
-  });
-});
-
-describe('Appwrite auth in requireAuth pipeline', () => {
-  beforeEach(() => {
-    clearJwksCache();
-    rateLimitStore.clear();
-  });
-  let keyPair: CryptoKeyPair;
-  let originalFetch: typeof globalThis.fetch;
-
-  beforeAll(async () => {
-    keyPair = await generateRSAKeyPair();
-    originalFetch = globalThis.fetch;
-  });
-
-  afterEach(() => {
-    globalThis.fetch = originalFetch;
-    clearJwksCache();
-  });
-
-  it('authenticates with Appwrite JWT when APPWRITE_ENDPOINT is set', async () => {
-    // Mock the Appwrite account API to return a valid user
-    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
-      if (typeof url === 'string' && url.includes('/account')) {
-        return new Response(JSON.stringify({ $id: 'aw-user-99', email: 'test@example.com' }), { status: 200 });
-      }
-      return originalFetch(url);
-    }) as any;
-
-    const mockDB = {
-      prepare: vi.fn().mockReturnValue({
-        bind: vi.fn().mockReturnValue({
-          all: vi.fn().mockResolvedValue({ results: [] }),
-        }),
-      }),
-    };
-
-    const request = new Request('http://localhost/api/sessions', {
-      method: 'GET',
-      headers: { Authorization: 'Bearer some-appwrite-jwt-token' },
-    });
-
-    const response = await worker.fetch(
-      request,
-      makeEnv({ DB: mockDB, APPWRITE_ENDPOINT: 'https://cloud.appwrite.io/v1', APPWRITE_PROJECT_ID: 'test-project' }),
-      makeCtx(),
-    );
-
-    expect(response.status).toBe(200);
-  });
-
-  it('falls back to API key when Appwrite JWT is invalid', async () => {
-    // Mock Appwrite account API to reject the token
-    globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401 })
-    ) as any;
-
-    const mockDB = {
-      prepare: vi.fn().mockReturnValue({
-        bind: vi.fn().mockReturnValue({
-          all: vi.fn().mockResolvedValue({ results: [] }),
-        }),
-      }),
-    };
-
-    const request = new Request('http://localhost/api/sessions', {
-      method: 'GET',
-      headers: authHeaders(),  // Uses API key
-    });
-
-    const response = await worker.fetch(
-      request,
-      makeEnv({ DB: mockDB, APPWRITE_ENDPOINT: 'https://cloud.appwrite.io/v1' }),
-      makeCtx(),
-    );
-
-    // Should fall through to API key validation
-    expect(response.status).toBe(200);
-  });
-});
 
 // --- Rate Limiting ---
 

@@ -8,6 +8,8 @@ import {
   parseCommitRefs,
   parseTreeEntries,
   extractObjectRefs,
+  readDeltaVarInt,
+  applyDelta,
   type GitObject,
 } from '../packParser';
 
@@ -277,6 +279,82 @@ describe('packParser', () => {
     it('returns empty for blobs', () => {
       const obj: GitObject = { sha: 'z'.repeat(40), type: 'blob', data: new Uint8Array(10) };
       expect(extractObjectRefs(obj)).toEqual([]);
+    });
+  });
+
+  describe('packParser delta utils', () => {
+    it('reads delta varint correctly', () => {
+      // 0x05 -> value 5, consumed 1
+      let [val, consumed] = readDeltaVarInt(new Uint8Array([0x05]), 0);
+      expect(val).toBe(5);
+      expect(consumed).toBe(1);
+
+      // 0x85 0x01 -> 1 << 7 | 5 = 133
+      [val, consumed] = readDeltaVarInt(new Uint8Array([0x85, 0x01]), 0);
+      expect(val).toBe(133);
+      expect(consumed).toBe(2);
+    });
+
+    it('applies copy and insert delta correctly', () => {
+      const base = new TextEncoder().encode('Hello world!');
+      const deltaBytes: number[] = [];
+      deltaBytes.push(12); // base size
+      deltaBytes.push(18); // result size
+
+      // Copy cmd: cmd=0x91
+      deltaBytes.push(0x91);
+      deltaBytes.push(0); // offset = 0
+      deltaBytes.push(6); // size = 6
+
+      // Insert cmd: MSB=0, cmd=6
+      deltaBytes.push(6);
+      deltaBytes.push(...new TextEncoder().encode('brave '));
+
+      // Copy cmd: cmd=0x91
+      deltaBytes.push(0x91);
+      deltaBytes.push(6); // offset = 6
+      deltaBytes.push(6); // size = 6
+
+      const delta = new Uint8Array(deltaBytes);
+      const result = applyDelta(base, delta);
+      expect(new TextDecoder().decode(result)).toBe('Hello brave world!');
+    });
+    
+    it('parses extended copy offsets and sizes', () => {
+      const base = new Uint8Array(10000);
+      base.fill(0x42);
+      
+      const deltaBytes: number[] = [];
+      const pushVarint = (val: number) => {
+        let v = val;
+        do {
+          let b = v & 0x7f;
+          v >>= 7;
+          if (v > 0) b |= 0x80;
+          deltaBytes.push(b);
+        } while (v > 0);
+      };
+      pushVarint(10000);
+      pushVarint(10000);
+      
+      deltaBytes.push(0xFF);
+      deltaBytes.push(0x10); // offset byte 1
+      deltaBytes.push(0x27); // offset byte 2
+      deltaBytes.push(0x00); // offset byte 3
+      deltaBytes.push(0x00); // offset byte 4
+      deltaBytes.push(0x10); // size byte 1
+      deltaBytes.push(0x27); // size byte 2
+      deltaBytes.push(0x00); // size byte 3
+      
+      const delta = new Uint8Array(deltaBytes);
+      const result = applyDelta(base, delta);
+      expect(result.length).toBe(10000);
+    });
+    
+    it('throws on unsupported 0 opcode', () => {
+      const base = new Uint8Array([1, 2]);
+      const delta = new Uint8Array([2, 5, 0]); // opcode 0 is reserved
+      expect(() => applyDelta(base, delta)).toThrow('Unexpected delta opcode 0');
     });
   });
 });

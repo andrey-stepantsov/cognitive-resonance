@@ -8,9 +8,6 @@ export interface Env {
   // Secrets
   API_KEY: string;
   JWT_SECRET?: string;
-  // Appwrite auth
-  APPWRITE_ENDPOINT?: string;
-  APPWRITE_PROJECT_ID?: string;
 }
 
 // ─── Rate Limiting ───────────────────────────────────────────────
@@ -71,6 +68,7 @@ import {
 
 import { handleAuthAPI } from './authRoutes';
 export { RoomSession } from './roomSession';
+import { getEdgeLogger } from './logger';
 
 import {
   parsePackfile,
@@ -105,65 +103,7 @@ export function corsResponse(body: string | null, status: number, extraHeaders?:
 
 // ─── Auth ────────────────────────────────────────────────────────
 
-// ─── Appwrite JWT verification via account.get() ────────────────
-
-/** Cached verified JWTs: token → { userId, verifiedAt } */
-const jwtVerifyCache = new Map<string, { userId: string; verifiedAt: number }>();
-const JWT_CACHE_TTL = 300_000; // 5 minutes
-
-/** Clear the JWT cache (for testing). */
-export function clearJwksCache() {
-  jwtVerifyCache.clear();
-}
-
-/**
- * Verify an Appwrite JWT by calling the Appwrite Account API.
- *
- * Appwrite doesn't expose a JWKS endpoint for external JWT verification.
- * The supported pattern is to call `GET /v1/account` with the JWT set via
- * `X-Appwrite-JWT` header. If the token is valid, Appwrite returns the user.
- */
-export async function verifyAppwriteJwt(
-  token: string,
-  endpoint: string,
-  projectId?: string,
-): Promise<{ userId: string } | null> {
-  // Check cache first
-  const cached = jwtVerifyCache.get(token);
-  if (cached && Date.now() - cached.verifiedAt < JWT_CACHE_TTL) {
-    return { userId: cached.userId };
-  }
-
-  try {
-    const accountUrl = endpoint.endsWith('/v1')
-      ? `${endpoint}/account`
-      : `${endpoint}/v1/account`;
-
-    const headers: Record<string, string> = {
-      'X-Appwrite-JWT': token,
-      'Content-Type': 'application/json',
-    };
-
-    // Appwrite Cloud requires the project ID header
-    if (projectId) {
-      headers['X-Appwrite-Project'] = projectId;
-    }
-
-    const response = await fetch(accountUrl, { headers });
-    if (!response.ok) return null;
-
-    const account = await response.json() as { $id?: string; email?: string };
-    const userId = account.$id;
-    if (!userId) return null;
-
-    // Cache the result
-    jwtVerifyCache.set(token, { userId, verifiedAt: Date.now() });
-
-    return { userId };
-  } catch {
-    return null;
-  }
-}
+// ─── Local JWT verification via HMAC ────────────────────────────
 
 interface AuthResult {
   userId: string;
@@ -171,9 +111,8 @@ interface AuthResult {
 
 /**
  * Authenticate a request. Supports three modes (tried in order):
- * 1. Appwrite JWKS mode (RS256) — when APPWRITE_ENDPOINT is set
- * 2. HMAC mode — when JWT_SECRET is set
- * 3. API key mode — validates API_KEY, returns 'default' as userId
+ * 1. HMAC mode — when JWT_SECRET is set
+ * 2. API key mode — validates API_KEY, returns 'default' as userId
  */
 export async function requireAuth(request: Request, env: Env): Promise<Response | AuthResult> {
   let token = '';
@@ -204,11 +143,7 @@ export async function requireAuth(request: Request, env: Env): Promise<Response 
     return { userId: token.replace('cr_mock_', '') };
   }
 
-  // 1. Try Appwrite JWKS (RS256) if configured
-  if (env.APPWRITE_ENDPOINT) {
-    const result = await verifyAppwriteJwt(token, env.APPWRITE_ENDPOINT, env.APPWRITE_PROJECT_ID);
-    if (result) return result;
-  }
+
 
   // 2. Try HMAC (local Cloudflare Auth)
   const result = await verifyJwt(token, env.JWT_SECRET);
@@ -376,6 +311,7 @@ export default {
 // ─── Sessions CRUD ───────────────────────────────────────────────
 
 async function handleSessionsAPI(request: Request, env: Env, path: string, userId: string, ctx?: ExecutionContext): Promise<Response> {
+  const logger = getEdgeLogger(request);
   // Extract session ID from /api/sessions/:id
   const segments = path.replace(/^\/api\/sessions\/?/, '').split('/').filter(Boolean);
   const sessionId = segments[0] || null;
@@ -418,7 +354,7 @@ async function handleSessionsAPI(request: Request, env: Env, path: string, userI
 
       // Fire-and-forget: generate embeddings for semantic search
       const sessionData = typeof body.data === 'string' ? JSON.parse(body.data) : (body.data || {});
-      const embeddingPromise = generateSessionEmbeddings(sessionId, sessionData, env, userId);
+      const embeddingPromise = generateSessionEmbeddings(sessionId, sessionData, env, userId, logger);
       if (ctx) {
         ctx.waitUntil(embeddingPromise);
       }
@@ -531,6 +467,7 @@ export async function generateSessionEmbeddings(
   data: any,
   env: Env,
   userId: string = 'default',
+  logger: any = { error: console.error }
 ): Promise<void> {
   try {
     if (!env.AI || !env.VECTORIZE) return;
@@ -564,7 +501,7 @@ export async function generateSessionEmbeddings(
       metadata: { sessionId, userId },
     }]);
   } catch (err) {
-    console.error(`[Vectorize] Failed to embed session ${sessionId}:`, err);
+    logger.error(`[Vectorize] Failed to embed session ${sessionId}:`, err);
   }
 }
 
@@ -630,6 +567,7 @@ async function handleSearchAPI(request: Request, env: Env, userId: string): Prom
 // ─── Events Sync (D1) ────────────────────────────────────────────
 
 async function handleEventsAPI(request: Request, env: Env, path: string, userId: string): Promise<Response> {
+  const logger = getEdgeLogger(request);
   if (request.method === 'GET') {
     const url = new URL(request.url);
     const since = parseInt(url.searchParams.get('since') || '0', 10);
@@ -646,8 +584,14 @@ async function handleEventsAPI(request: Request, env: Env, path: string, userId:
     const isBatch = path.endsWith('/batch');
     if (!isBatch) return corsResponse('Only /batch is supported for POST', 400);
     
-    const body = await request.json() as { events: any[] };
-    if (!body.events || !Array.isArray(body.events)) {
+    let body;
+    try {
+      body = await request.json() as { events: any[] };
+    } catch (e) {
+      return jsonResponse({ error: 'Invalid JSON payload' }, 400);
+    }
+    
+    if (!body || !body.events || !Array.isArray(body.events)) {
        return jsonResponse({ error: 'Expected an array of events' }, 400);
     }
     
@@ -675,7 +619,7 @@ async function handleEventsAPI(request: Request, env: Env, path: string, userId:
       await env.DB.batch(stmts);
       return jsonResponse({ ok: true });
     } catch (err: any) {
-      console.error('[Sync Daemon] Failed to handle event batch:', err);
+      logger.error('[Sync Daemon] Failed to handle event batch:', err);
       return jsonResponse({ error: 'Failed to insert events' }, 500);
     }
   }
@@ -792,26 +736,6 @@ async function readLooseObject(bucket: R2Bucket, userId: string, sha: string): P
   return { sha, type, data };
 }
 
-/**
- * List all loose object SHAs for a user/session prefix.
- */
-async function listLooseObjectShas(bucket: R2Bucket, userId: string): Promise<string[]> {
-  const prefix = `${userId}/objects/`;
-  const shas: string[] = [];
-  let cursor: string | undefined;
-  do {
-    const listed = await bucket.list({ prefix, cursor });
-    for (const obj of listed.objects) {
-      // key: {userId}/objects/{2}/{38}
-      const parts = obj.key.replace(prefix, '').split('/');
-      if (parts.length === 2) {
-        shas.push(parts[0] + parts[1]);
-      }
-    }
-    cursor = listed.truncated ? listed.cursor : undefined;
-  } while (cursor);
-  return shas;
-}
 
 async function handleGitInfoRefs(request: Request, env: Env, userId: string): Promise<Response> {
   const url = new URL(request.url);
@@ -907,13 +831,14 @@ function buildSidebandReceivePackResponse(refUpdates: string[]): Uint8Array {
 }
 
 async function handleGitReceivePack(request: Request, env: Env, userId: string): Promise<Response> {
+  const logger = getEdgeLogger(request);
   const rawBuffer = await request.arrayBuffer();
   const rawData = new Uint8Array(rawBuffer);
   const url = new URL(request.url);
   const parts = url.pathname.split('/');
   const sessionId = parts[2];
 
-  console.log(`Received ${rawBuffer.byteLength} bytes for session ${sessionId}`);
+  logger.info(`Received ${rawBuffer.byteLength} bytes for session ${sessionId}`);
 
   const respHeaders = new Headers({
     'Content-Type': 'application/x-git-receive-pack-result',
@@ -940,21 +865,21 @@ async function handleGitReceivePack(request: Request, env: Env, userId: string):
         packData.byteOffset + packData.byteLength
       ));
 
-      console.log(`Parsed ${objects.length} objects from packfile`);
+      logger.info(`Parsed ${objects.length} objects from packfile`);
 
       // Store each object as a loose object in R2
       for (const obj of objects) {
         await storeLooseObject(env.GIT_PACKS_BUCKET, userId, obj);
       }
 
-      console.log(`Stored ${objects.length} loose objects in R2`);
+      logger.info(`Stored ${objects.length} loose objects in R2`);
     }
 
     // Update refs based on the commands
     for (const cmd of commands) {
       await writeRef(env.GIT_PACKS_BUCKET, userId, cmd.refName.replace('refs/', ''), cmd.newSha);
       refUpdates.push(cmd.refName);
-      console.log(`Updated ref ${cmd.refName} → ${cmd.newSha}`);
+      logger.info(`Updated ref ${cmd.refName} → ${cmd.newSha}`);
     }
 
     // If no explicit commands, default to updating refs/heads/main
@@ -965,7 +890,7 @@ async function handleGitReceivePack(request: Request, env: Env, userId: string):
     return new Response(buildSidebandReceivePackResponse(refUpdates), { status: 200, headers: respHeaders });
 
   } catch (err: any) {
-    console.error(`Failed to process receive-pack for ${sessionId}:`, err);
+    logger.error(`Failed to process receive-pack for ${sessionId}:`, err);
 
     // Even on parse failure, return a valid git protocol response
     return new Response(buildSidebandReceivePackResponse(['refs/heads/main']), { status: 200, headers: respHeaders });
