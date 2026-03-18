@@ -277,6 +277,21 @@ export function registerChatCommands(program: Command) {
       completer 
     });
 
+    const updatePrompt = (nick: string) => {
+       rl.setPrompt(`\x1b[35mcr@${nick}\x1b[0m> `);
+    };
+
+    // Attempt to load the user's nickname asynchronously to decorate the prompt
+    backendFetch('/api/auth/me', { method: 'GET' })
+       .then(r => r.json())
+       .then((d: any) => { 
+          if (d && d.user && d.user.name) {
+             updatePrompt(d.user.name);
+             rl.prompt(true);
+          } 
+       })
+       .catch(() => {});
+
     // Intercept stdout once to prevent echoing keystrokes during secure password entry
     // @ts-ignore
     rl._writeToOutput = function _writeToOutput(stringToWrite: string) {
@@ -453,7 +468,12 @@ export function registerChatCommands(program: Command) {
               process.stdout.write('[System] Logging in... ');
               const res = await backendFetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
               const data = await res.json() as any;
-              if (res.ok && data.token) { saveCliToken(data.token); console.log(`Success! Logged in as ${data.user?.name || email}`);}
+              if (res.ok && data.token) { 
+                 saveCliToken(data.token); 
+                 const nick = data.user?.name || email.split('@')[0];
+                 updatePrompt(nick);
+                 console.log(`Success! Logged in as ${nick}`);
+              }
               else console.log(`Failed. ${data.error || 'Invalid credentials'}`);
             } catch (err: any) { console.log(`Failed. Network error: ${err.message}`); }
             break;
@@ -476,7 +496,11 @@ export function registerChatCommands(program: Command) {
                 process.stdout.write('[System] Signing up... ');
                 const res = await backendFetch('/api/auth/signup', { method: 'POST', body: JSON.stringify({ email, password, name }) });
                 const data = await res.json() as any;
-                if (res.ok && data.token) { saveCliToken(data.token); console.log(`Success! Account created for ${email}`); }
+                if (res.ok && data.token) { 
+                   saveCliToken(data.token); 
+                   updatePrompt(name);
+                   console.log(`Success! Account created for ${email}`); 
+                }
                 else console.log(`Failed. ${data.error || 'Could not create account'}`);
              } catch (err: any) { console.log(`Failed. Network error: ${err.message}`); }
              break;
