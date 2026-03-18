@@ -423,10 +423,19 @@ export function registerChatCommands(program: Command) {
             console.log('[System] Session history cleared.');
             break;
           case CommandAction.MODEL_USE:
-            if (command.args[0]) {
+            if (command.args[0] === 'ls') {
+               console.log('\n[System] Available Core Gemini Models:');
+               console.log('  - gemini-2.5-flash (Default, lightning fast)');
+               console.log('  - gemini-2.5-pro   (Advanced reasoning, coding)');
+               console.log('  - gemini-2.0-flash');
+               console.log('  - gemini-1.5-pro');
+               console.log('\nTip: Use /model use <model_name> to switch.\n');
+            } else if (command.args[0]) {
               currentModel = command.args[0];
               console.log(`[System] Switched to model: ${currentModel}`);
-            } else console.log(`[System] Current model: ${currentModel}`);
+            } else {
+              console.log(`[System] Current model: ${currentModel}`);
+            }
             break;
           case CommandAction.LOGIN: {
             const email = command.args[0]; 
@@ -568,7 +577,7 @@ export function registerChatCommands(program: Command) {
         try {
           const response = await generateResponse(currentModel, chatHistory, systemPrompt, schema, undefined, false);
           console.log(`\n🤖 [@${activeActor}] ${response.reply}\n`);
-          chatHistory.push({ role: 'assistant', content: response.reply });
+          chatHistory.push({ role: 'model', content: response.reply });
 
           // Record response
           const responseEventId = db.appendEvent({
