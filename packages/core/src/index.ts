@@ -11,3 +11,4 @@ export * from './interfaces/IAuthProvider';
 export * from './interfaces/IStorageProvider';
 
 export * from './providers/CognitivePlatformContext';
+export * from './providers/LocalNodeStorageProvider';

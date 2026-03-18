@@ -56,12 +56,22 @@ Scale from asynchronous Git collaboration to live, sub-millisecond real-time pre
 2. Stream live messaging and WebRTC voice payloads directly through the Durable Object for extreme speed.
 3. When the live session ends, the Durable Object flushes the aggregated transcript back into D1 for permanent storage and vectorization.
 
-### Phase 4: CLI Interactive & Headless Scripting Support (Current)
+### Phase 4: CLI Interactive & Headless Scripting Support ✅
 Implement a unified Command Line Interface (`apps/cli`) that mirrors the web/extension functionality with specialized focus on terminal environments.
 1. **Interactive REPL**: A persistent chat mode with commands supporting full workflow context.
 2. **Headless Execution Mode**: Designed specifically for shell scripting, testing pipelines, and CI automation. Supports reading from `stdin` via pipes (e.g., `cat log.txt | cr chat "investigate"`).
 3. **Structured Machine Output**: Configurable flags (e.g., `--format json`) to ensure CLI outputs are parsable by jq or other shell tools, discarding conversational filler.
 4. **Headless Authentication**: Non-interactive credential injection via `CR_API_KEY` mapped directly to the local config store or environment variables, bypassing interactive prompts.
+
+### Phase 5: Event-Sourced Local Database ✅
+Built the foundation of Event-Sourced architecture.
+1. Designed `apps/cli/src/db/DatabaseEngine.ts` to power the CLI locally utilizing `better-sqlite3`.
+2. Created schema for `events`, `sessions`, `artefacts`, and `entities` forming the core local source of truth.
+
+### Phase 6: Local-First Event-Sourced Migration (Current)
+Moving away from a Cloud-first model, elevating the local device running the CLI to be the absolute source of truth that can run autonomously offline for weeks.
+1. **Local CLI Server**: CLI has `cr serve` which spins up a generic backend HTTP/WS server running on `localhost:3000` wrapping `DatabaseEngine`.
+2. **Frontend Adapter**: PWA uses `LocalNodeStorageProvider` to adapt to the local event-sourced backend instead of relying directly on Cloudflare D1.
 
 ## Tooling & Dependencies Decisions
 *   **Authentication:** Appwrite RS256 JWT (via JWKS) → HMAC fallback → API key (Bearer token).
