@@ -392,6 +392,28 @@ export function registerChatCommands(program: Command) {
 
       const command = parseCommand(text);
 
+      const askSecure = (query: string): Promise<string> => {
+        return new Promise((resolve) => {
+           // @ts-ignore
+           rl.stdoutMuted = true;
+           rl.question(query, (password) => {
+              // @ts-ignore
+              rl.stdoutMuted = false;
+              console.log(''); // newline after entry
+              resolve(password);
+           });
+           
+           // Intercept stdout to prevent echoing keystrokes
+           // @ts-ignore
+           rl._writeToOutput = function _writeToOutput(stringToWrite: string) {
+              // @ts-ignore
+              if (rl.stdoutMuted && stringToWrite !== '\r\n' && stringToWrite !== '\n') return;
+              // @ts-ignore
+              readline.Interface.prototype._writeToOutput.call(this, stringToWrite);
+           };
+        });
+      };
+
       if (command) {
          switch (command.action) {
           case CommandAction.SESSION_CLEAR:
@@ -405,8 +427,12 @@ export function registerChatCommands(program: Command) {
             } else console.log(`[System] Current model: ${currentModel}`);
             break;
           case CommandAction.LOGIN: {
-            const email = command.args[0]; const password = command.args[1];
-            if (!email || !password) { console.log('[System] Usage: /login <email> <password>'); break; }
+            const email = command.args[0]; 
+            if (!email) { console.log('[System] Usage: /login <email> [password]'); break; }
+            let password = command.args[1];
+            if (!password) password = await askSecure('Password: ');
+            if (!password) { console.log('[System] Password cannot be empty.'); break; }
+            
             try {
               process.stdout.write('[System] Logging in... ');
               const res = await backendFetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
@@ -417,8 +443,19 @@ export function registerChatCommands(program: Command) {
             break;
           }
           case CommandAction.SIGNUP: {
-             const email = command.args[0]; const password = command.args[1]; const name = command.args.slice(2).join(' ') || email?.split('@')[0];
-             if (!email || !password) { console.log('[System] Usage: /signup <email> <password> [name]'); break; }
+             const email = command.args[0]; 
+             if (!email) { console.log('[System] Usage: /signup <email> [password] [name]'); break; }
+             let password = command.args[1];
+             let name = command.args.slice(2).join(' ');
+             
+             if (!password) {
+                 password = await askSecure('Choose a Password: ');
+                 if (!password) { console.log('[System] Password cannot be empty.'); break; }
+                 name = await new Promise(res => rl.question('Display Name (optional): ', (ans) => res(ans.trim() || email.split('@')[0])));
+             } else if (!name) {
+                 name = email.split('@')[0];
+             }
+
              try {
                 process.stdout.write('[System] Signing up... ');
                 const res = await backendFetch('/api/auth/signup', { method: 'POST', body: JSON.stringify({ email, password, name }) });
