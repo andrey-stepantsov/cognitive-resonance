@@ -58,16 +58,16 @@ export function AuthScreen({
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {mode === 'cloud' ? (
             <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-bottom-2">
-              <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider pl-1">API Key</label>
+              <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider pl-1">Edge Auth Token</label>
               <input 
                 type="password" 
-                placeholder="AIza..."
+                placeholder="e.g. cognitive-resonance-admin-key"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-zinc-200 focus:outline-none focus:border-indigo-500/50 transition-colors"
                 required={mode === 'cloud'}
               />
-              <p className="text-xs text-zinc-500 mt-2 text-center">Enter your Google Gemini API key to run on the Edge context.</p>
+              <p className="text-xs text-zinc-500 mt-2 text-center">Enter your secure Edge key to authenticate against your live Cloudflare Worker.</p>
             </div>
           ) : (
             <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-bottom-2 text-center">
