@@ -427,8 +427,6 @@ export function registerChatCommands(program: Command) {
                console.log('\n[System] Available Core Gemini Models:');
                console.log('  - gemini-2.5-flash (Default, lightning fast)');
                console.log('  - gemini-2.5-pro   (Advanced reasoning, coding)');
-               console.log('  - gemini-2.0-flash');
-               console.log('  - gemini-1.5-pro');
                console.log('\nTip: Use /model use <model_name> to switch.\n');
             } else if (command.args[0]) {
               currentModel = command.args[0];
