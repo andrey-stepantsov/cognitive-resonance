@@ -1,4 +1,5 @@
-import type { IStorageProvider, SessionRecord, GemsConfig } from '@cr/core';
+import type { IStorageProvider, SessionRecord, GemsConfig, IEvent } from '@cr/core';
+import { reduceSessionState } from '@cr/core';
 
 /**
  * Cloud storage provider that persists sessions to a Cloudflare D1 database
@@ -47,30 +48,47 @@ export class CloudflareStorageProvider implements IStorageProvider {
     return h;
   }
 
-  async saveSession(sessionId: string, data: any): Promise<string> {
+  async createSession(sessionId: string, config?: any): Promise<void> {
     const id = sessionId || `session-${Date.now()}`;
-    const preview = data.messages?.length > 0
-      ? (data.messages[0].content.substring(0, 40) + '...')
-      : 'Empty Session';
-
     try {
       await fetch(`${this.workerUrl}/api/sessions/${id}`, {
         method: 'PUT',
         headers: this.authHeaders(true),
         body: JSON.stringify({
           timestamp: Date.now(),
-          preview,
-          customName: data.customName || null,
-          config: JSON.stringify(data.config || {}),
-          data: JSON.stringify(data),
-          isArchived: data.isArchived || false,
+          preview: 'Empty Session',
+          customName: null,
+          config: JSON.stringify(config || {}),
+          data: JSON.stringify({ messages: [] }),
+          isArchived: false,
+        }),
+      });
+
+      if (config) {
+        await this.appendEvent(id, 'SESSION_CREATED', { config });
+      }
+    } catch (err) {
+      console.error('CloudflareStorageProvider: Failed to create session:', err);
+    }
+  }
+
+  async appendEvent(sessionId: string, type: string, payload: any): Promise<void> {
+    try {
+      await fetch(`${this.workerUrl}/api/events`, {
+        method: 'POST',
+        headers: this.authHeaders(true),
+        body: JSON.stringify({
+          session_id: sessionId,
+          timestamp: Date.now(),
+          actor: 'LOCAL_FRONTEND', // Or the actual user ID if available
+          type,
+          payload: JSON.stringify(payload),
+          previous_event_id: null
         }),
       });
     } catch (err) {
-      console.error('CloudflareStorageProvider: Failed to save session:', err);
+      console.error(`CloudflareStorageProvider: Failed to append event ${type}:`, err);
     }
-
-    return id;
   }
 
   async loadAllSessions(): Promise<SessionRecord[]> {
@@ -81,7 +99,13 @@ export class CloudflareStorageProvider implements IStorageProvider {
       });
       if (!res.ok) return [];
       const rows: any[] = await res.json();
-      return rows.map((row) => this.mapToRecord(row));
+      
+      const records: SessionRecord[] = [];
+      for (const row of rows) {
+        const rec = await this.loadSession(row.id);
+        if (rec) records.push(rec);
+      }
+      return records;
     } catch (err) {
       console.error('CloudflareStorageProvider: Failed to load sessions:', err);
       return [];
@@ -91,12 +115,17 @@ export class CloudflareStorageProvider implements IStorageProvider {
   async loadSession(sessionId: string): Promise<SessionRecord | undefined> {
     if (!this.ready) return undefined;
     try {
-      const res = await fetch(`${this.workerUrl}/api/sessions/${sessionId}`, {
+      const res = await fetch(`${this.workerUrl}/api/events/${sessionId}`, {
         headers: this.authHeaders(),
       });
       if (!res.ok) return undefined;
-      const row = await res.json();
-      return this.mapToRecord(row);
+      const events: IEvent[] = await res.json();
+      
+      const rec = reduceSessionState(events, sessionId);
+      if (rec) {
+         rec.isCloud = true;
+      }
+      return rec;
     } catch (err) {
       console.error(`CloudflareStorageProvider: Failed to load session ${sessionId}:`, err);
       return undefined;
@@ -219,19 +248,5 @@ export class CloudflareStorageProvider implements IStorageProvider {
     }
   }
 
-  private mapToRecord(row: any): SessionRecord {
-    return {
-      id: row.id,
-      timestamp: row.timestamp,
-      preview: row.preview,
-      customName: row.customName,
-      config: row.config ? (typeof row.config === 'string' ? JSON.parse(row.config) : row.config) : undefined,
-      data: row.data ? (typeof row.data === 'string' ? JSON.parse(row.data) : row.data) : {},
-      parentId: row.parentId,
-      forkedAt: row.forkedAt,
-      isCloud: true,
-      isArchived: !!row.isArchived,
-      userId: row.userId,
-    };
-  }
+  // Removed mapToRecord as we now rely on event sourcing
 }

@@ -9,11 +9,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), tailwindcss()],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-      // Appwrite injections for @cr/backend
-      'import.meta.env.VITE_APPWRITE_ENDPOINT': JSON.stringify(env.VITE_APPWRITE_ENDPOINT),
-      'import.meta.env.VITE_APPWRITE_PROJECT': JSON.stringify(env.VITE_APPWRITE_PROJECT),
-      'import.meta.env.VITE_APPWRITE_DB_ID': JSON.stringify(env.VITE_APPWRITE_DB_ID),
-      'import.meta.env.VITE_APPWRITE_SESSIONS_COLLECTION_ID': JSON.stringify(env.VITE_APPWRITE_SESSIONS_COLLECTION_ID),
+
       'import.meta.env.VITE_CLOUDFLARE_WORKER_URL': JSON.stringify(env.VITE_CLOUDFLARE_WORKER_URL),
     },
     resolve: {

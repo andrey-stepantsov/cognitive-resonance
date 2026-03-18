@@ -219,21 +219,16 @@ export function useCognitiveResonance() {
     }
   }, [activeSessionId]);
 
-  // Auto-save
+  // Initialize Session ID if starting a new chat
   useEffect(() => {
-    if (messages.length > 0 && !isViewMode) {
-      const data = {
-        timestamp: new Date().toISOString(),
-        config: { model: selectedModel, systemPrompt: sessionSystemPrompt, gemId: activeGemId },
-        messages: messages.map(msg => ({ role: msg.role, content: msg.content, ...(msg.internalState ? { internalState: msg.internalState } : {}) }))
-      };
-      storage.saveSession(activeSessionId || '', data).then((id: string) => {
-        if (!activeSessionId) setActiveSessionId(id);
-        // Refresh sessions list so sidebar stays in sync
-        storage.loadAllSessions().then(setSessions);
-      });
+    if (!activeSessionId && messages.length === 0) {
+      const newId = `session-${Date.now()}`;
+      setActiveSessionId(newId);
+      // Wait to actually dispatch SESSION_CREATED until the first message, 
+      // or do it now if we consider empty sessions valid.
+      // We'll dispatch it lazily on the first message send.
     }
-  }, [messages, selectedModel, sessionSystemPrompt, activeGemId, isViewMode, activeSessionId, storage]);
+  }, [activeSessionId, messages.length]);
 
   // Initialize on mount
   useEffect(() => {
@@ -495,7 +490,18 @@ export function useCognitiveResonance() {
     setSelectedTurnIndex(null);
     abortControllerRef.current = new AbortController();
 
-    if (ws.isConnected && activeSessionId) {
+    // --- Event Sourcing: Init Session if First Message ---
+    const currentSessionId = activeSessionId || `session-${Date.now()}`;
+    if (!activeSessionId) {
+      setActiveSessionId(currentSessionId);
+      await storage.createSession(currentSessionId, { model: selectedModel, systemPrompt: sessionSystemPrompt, gemId: activeGemId });
+      storage.loadAllSessions().then(setSessions);
+    }
+
+    // --- Event Sourcing: Append User Message ---
+    await storage.appendEvent(currentSessionId, 'CHAT_MESSAGE', { message: userMsg });
+
+    if (ws.isConnected && currentSessionId) {
       ws.sendChatMessage(rawUserMessage, { role: 'user', senderName: user?.name });
     }
 
@@ -680,11 +686,15 @@ export function useCognitiveResonance() {
           candidatesTokenCount: data.usageMetadata.candidatesTokenCount
         } : undefined
       };
-      setMessages(prev => {
-        const modelCount = prev.filter(m => m.role === 'model').length;
-        return [...prev, { role: 'model', content: data.reply, internalState: newState, modelTurnIndex: modelCount }];
-      });
-      if (ws.isConnected && activeSessionId) {
+      // --- Event Sourcing: Append AI Message ---
+      const modelCount = messages.filter(m => m.role === 'model').length + 1;
+      const aiMsg: Message = { role: 'model', content: data.reply, internalState: newState, modelTurnIndex: modelCount };
+      
+      setMessages(prev => [...prev, aiMsg]);
+      
+      await storage.appendEvent(currentSessionId, 'CHAT_MESSAGE', { message: aiMsg });
+
+      if (ws.isConnected && currentSessionId) {
         ws.sendChatMessage(data.reply, { role: 'model', internalState: newState });
       }
     } catch (error: any) {

@@ -1,32 +1,19 @@
-# Cognitive Resonance: Phase 9 Handover
+# Next Session Objective: CLI Live Artefact Integration & Feature Specific E2E
 
-You are taking over the **Cognitive Resonance** project at the beginning of **Phase 9: Observability Improvements**. 
+## Current State
+We have successfully completed the foundational components of **Phase 15: CLI Completeness & Multi-Agent Routing**. 
+- The `@` Mention DSL parser was built into `@cr/core`.
+- The CLI (`apps/cli/src/commands/chat.ts`) was refactored to support distinct AI "Gem" profiles (`Architect`, `Coder`) and autonomous **AI-to-AI Hand-offs**.
+- We added the **`/exec [cmd]`** runtime capability.
+- The programmatic 3-player E2E test (`e2e_multi_agent_runtime.test.ts`) covering these mechanisms passes successfully.
 
-## Context & Recent Achievements
-In the previous session, we successfully completed **Phase 8 (Asynchronous Cloud Relay)**. 
-- We built a local CLI daemon (`serve.ts`) that runs a background sync loop every 5 seconds.
-- We added an `events` table to the Cloudflare D1 edge database (`packages/cloudflare-worker/schema.sql`).
-- We implemented robust `GET /api/events` and `POST /api/events/batch` REST endpoints securely behind our Cloudflare Worker using the `.cr-cli-token` authentication header.
-- The `DatabaseEngine.ts` natively tracks and synchronizes `EventRecord`s efficiently. The SQLite and Cloudflare test suites all pass.
+## Next Steps
+In this new session, we need to implement the **Live Artefact Generation** flow so the 3-player generative setup can be run live by a user in the terminal, bridging the AI's logic strictly to the local repository. 
 
-We also conducted an **Observability Architecture Analysis**:
-- **Traceability** is solid via the immutable Event-Sourced architecture.
-- **CLI Support** is extremely powerful via the `cr observe` commands.
-- **Log Retrieval** is currently the weakest link, relying entirely on raw `console.log` output. 
-
-## Your Goal for this Session
-You will be implementing **Phase 9**, addressing the observability gaps with structured logging, file rotation, and distributed trace correlation. 
-
-Please review to `implementation_plan.md` in your artifacts directory (which the user has approved) for the detailed step-by-step required. Your tasks are:
-
-**Step 1: Structured Logging & Rotation (CLI)**
-1. Install `pino` and `pino-roll` into the `apps/cli` workspace.
-2. Implement a `logger.ts` utility that wraps `pino`.
-3. Update `serve.ts` and background daemon fetch calls to use the structured JSON logger. Configure it to write to a localized `cr-daemon.log` in the CWD, matching the SQLite database location, with rotation enabled.
-
-**Step 2: Edge Logging & Distributed Tracing**
-1. Update `packages/cloudflare-worker/src/index.ts` with a wrapper that normalizes Cloudflare `console.log()` calls so they output strings of JSON payloads, ensuring Cloudflare Log Drains can parse them.
-2. Update the CLI daemon background `fetch` loops to generate a `crypto.randomUUID()` and inject it as the `X-Request-Id` header.
-3. Update the Cloudflare worker to extract this `X-Request-Id` header and inject it into all contextual edge logs, effectively creating 1:1 trace correlation from local CLI execution to the edge.
-
-Begin execution on Step 1. Ensure `npm run test` remains green!
+Please refer to the updated architecture plans to execute the following:
+1. **Artefact Translation**: Update the Gemini schema in `chat.ts` to allow the Coder to output a `files` array. When files are received iteratively, save them to the workspace and automatically trigger `ArtefactManager.createDraft()` to commit the proposal.
+2. **Promote Command**: Implement a `/promote` command in the CLI to merge the AI's drafts.
+3. **Feature-Specific E2E Scripts**: Build explicit, modular test scenarios for:
+   - The Artefact Lifecycle (`e2e_artefact_lifecycle.test.ts`)
+   - Session Forking / Cloning logic (`e2e_session_forking.test.ts`)
+   - The Daemon Sync offline queuing (`e2e_daemon_sync.test.ts`).

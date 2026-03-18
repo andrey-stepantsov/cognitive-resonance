@@ -3,18 +3,23 @@ import git from 'isomorphic-git';
 
 // Initialize a virtual file system bound specifically to our artifact workspace
 // We use LightningFS to maintain IndexedDB persistence between reloads in the browser.
-export const vfs = new fs('cr-artifacts-vfs');
+export const vfs = typeof navigator !== 'undefined' || typeof indexedDB !== 'undefined' 
+  ? new fs('cr-artifacts-vfs') 
+  : null;
 
 export class GitContextManager {
   public readonly fs: any;
   public readonly dir: string;
   public readonly globalDir: string;
 
-  constructor(sessionId: string) {
-    // Each chat session gets its own isolated virtual repository folder
-    this.fs = vfs; // Initialize the fs property with the global vfs instance
-    this.dir = `/${sessionId}`;
-    this.globalDir = '/global-workspace';
+  constructor(sessionId: string, customFs?: any, baseDir?: string) {
+    // Each chat session gets its own isolated virtual repository folder by default
+    // If a custom fs is provided, use it (for CLI).
+    this.fs = customFs || vfs;
+    this.dir = baseDir || `/${sessionId}`;
+    // If we're using normal fs, globalDir doesn't make as much sense in the same way,
+    // but we'll default to a sibling directory or fallback to vfs style.
+    this.globalDir = baseDir ? `${baseDir}-global` : `/global-workspace`;
   }
 
   /**
@@ -24,17 +29,17 @@ export class GitContextManager {
     try {
       // Ensure the directory exists
       try {
-        await vfs.promises.stat(targetDir);
+        await this.fs.promises.stat(targetDir);
       } catch (err: any) {
         if (err.code === 'ENOENT') {
-          await vfs.promises.mkdir(targetDir);
+          await this.fs.promises.mkdir(targetDir, { recursive: true });
         } else {
           throw err;
         }
       }
 
       // Initialize the git repo
-      await git.init({ fs: vfs, dir: targetDir, defaultBranch: 'main' });
+      await git.init({ fs: this.fs, dir: targetDir, defaultBranch: 'main' });
       console.log(`[GitContextManager] Initialized repository at ${targetDir}`);
     } catch (err) {
       console.error(`[GitContextManager] Failed to init repository at ${targetDir}:`, err);
@@ -56,10 +61,10 @@ export class GitContextManager {
   private async _stageFileSafe(targetDir: string, filepath: string, content: string): Promise<void> {
     try {
       const fullPath = `${targetDir}/${filepath}`;
-      await vfs.promises.writeFile(fullPath, content, 'utf8');
+      await this.fs.promises.writeFile(fullPath, content, 'utf8');
       
       await git.add({
-        fs: vfs,
+        fs: this.fs,
         dir: targetDir,
         filepath
       });
@@ -84,7 +89,7 @@ export class GitContextManager {
   private async _commitChangeSafe(targetDir: string, message: string, authorName: string = 'Cognitive Resonance', authorEmail: string = 'system@cr.local'): Promise<string> {
     try {
       const sha = await git.commit({
-        fs: vfs,
+        fs: this.fs,
         dir: targetDir,
         author: {
           name: authorName,
@@ -114,7 +119,7 @@ export class GitContextManager {
   private async _getStatusMatrixSafe(targetDir: string): Promise<any[]> {
     try {
       return await git.statusMatrix({
-        fs: vfs,
+        fs: this.fs,
         dir: targetDir
       });
     } catch (err) {
@@ -133,7 +138,7 @@ export class GitContextManager {
 
   private async _hasCommitsSafe(targetDir: string): Promise<boolean> {
     try {
-      await git.resolveRef({ fs: vfs, dir: targetDir, ref: 'HEAD' });
+      await git.resolveRef({ fs: this.fs, dir: targetDir, ref: 'HEAD' });
       return true;
     } catch {
       return false;
@@ -150,7 +155,7 @@ export class GitContextManager {
 
   private async _getCurrentBranchSafe(targetDir: string): Promise<string> {
     try {
-      return await git.currentBranch({ fs: vfs, dir: targetDir, fullname: false }) || 'main';
+      return await git.currentBranch({ fs: this.fs, dir: targetDir, fullname: false }) || 'main';
     } catch (err) {
       return 'main';
     }

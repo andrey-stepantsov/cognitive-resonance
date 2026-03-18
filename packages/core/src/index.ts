@@ -6,9 +6,13 @@ export * from './services/CommandParser';
 export * from './services/GeminiService';
 export * from './services/SearchService';
 export * from './services/GitContextManager';
+export * from './services/ArtefactManager';
 
 export * from './interfaces/IAuthProvider';
 export * from './interfaces/IStorageProvider';
 
 export * from './providers/CognitivePlatformContext';
 export * from './providers/LocalNodeStorageProvider';
+
+export * from './interfaces/IEvents';
+export * from './services/EventReducers';

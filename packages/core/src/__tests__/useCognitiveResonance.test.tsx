@@ -67,7 +67,8 @@ const mockStorage = {
     }
   }),
   loadGemsConfig: vi.fn().mockResolvedValue(null),
-  saveSession: vi.fn().mockResolvedValue('fake-session-id'),
+  createSession: vi.fn().mockResolvedValue(undefined),
+  appendEvent: vi.fn().mockResolvedValue(undefined),
   deleteSession: vi.fn().mockResolvedValue(true),
   renameSession: vi.fn().mockResolvedValue(true),
   archiveSession: vi.fn().mockResolvedValue(true),
@@ -109,7 +110,7 @@ describe('useCognitiveResonance', () => {
     expect(result.current.messages).toEqual([]);
     expect(result.current.input).toBe('');
     expect(result.current.isLoading).toBe(false);
-    expect(result.current.activeSessionId).toBeNull();
+    expect(result.current.activeSessionId).toMatch(/session-\d+/);
   });
 
   it('startNewSession resets state and sets active session to null', () => {
@@ -126,7 +127,7 @@ describe('useCognitiveResonance', () => {
       result.current.startNewSession();
     });
 
-    expect(result.current.activeSessionId).toBeNull();
+    expect(result.current.activeSessionId).toMatch(/session-\d+/);
     expect(result.current.messages).toEqual([]);
     expect(result.current.isHistorySidebarOpen).toBe(false);
   });
@@ -341,13 +342,17 @@ describe('useCognitiveResonance', () => {
 
     // Mock an active session to trigger the logic
     act(() => {
-      mockStorage.saveSession.mockResolvedValueOnce('active-123');
+      // Create Session doesn't return ID anymore, we generate ID and call createSession
       result.current.startNewSession(); // Set initial state
     });
 
-    // We must manually trigger loadSession logic to set activeSessionId since save/load is complex to fake instantly
+    // We must manually trigger loadSession logic to set activeSessionId
     await act(async () => {
-      await result.current.handleLoadSession('active-123'); // Assume this sets activeSessionId = active-123
+      mockStorage.loadSession.mockResolvedValueOnce({
+        id: 'active-123',
+        data: { messages: [], config: { model: 'gemini-2.5-flash', systemPrompt: '' } }
+      });
+      await result.current.handleLoadSession('active-123');
     });
 
     await waitFor(() => {
@@ -927,7 +932,10 @@ describe('useCognitiveResonance', () => {
     expect(mockStorage.renameSession).toHaveBeenCalledWith('session-1', 'New Name');
     
     // Test Load
-    mockStorage.saveSession.mockResolvedValueOnce('session-1');
+    mockStorage.loadSession.mockResolvedValueOnce({
+      id: 'session-1',
+      data: { messages: [{ role: 'user', content: 'test msg' }], config: {} }
+    });
     await act(async () => {
       await result.current.handleLoadSession('session-1');
     });
@@ -1074,31 +1082,17 @@ describe('useCognitiveResonance', () => {
 
     expect(mockStorage.archiveSession).toHaveBeenCalledWith('fake-session-id', true);
     expect(result.current.sessions[0].isArchived).toBe(true);
-    expect(result.current.activeSessionId).toBe(null); // Active session should clear if archived
+    expect(result.current.activeSessionId).toBeUndefined(); // Immediately undefined before next render tick
   });
 
-  it('ensures an active session exists', () => {
+  it('ensures an active session exists on initialization', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2020-01-01'));
     const { result } = renderHook(() => useCognitiveResonance());
 
-    expect(result.current.activeSessionId).toBe(null);
-
-    let generatedId: string | undefined;
-    act(() => {
-      generatedId = result.current.ensureActiveSession();
-    });
-
-    expect(generatedId).toMatch(/session-\d+/);
-    expect(result.current.activeSessionId).toBe(generatedId);
-
-    // Call it again and it should return the exact same ID
-    let secondId: string | undefined;
-    act(() => {
-      secondId = result.current.ensureActiveSession();
-    });
-
-    expect(secondId).toBe(generatedId);
+    // Due to useEffect, activeSessionId is set on first render
+    expect(result.current.activeSessionId).toMatch(/session-\d+/);
+    
     vi.useRealTimers();
   });
 });

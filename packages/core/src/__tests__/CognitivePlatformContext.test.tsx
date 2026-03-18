@@ -64,7 +64,8 @@ describe('CognitivePlatformContext', () => {
 
     mockCloudStorage = {
       init: vi.fn().mockResolvedValue(undefined),
-      saveSession: vi.fn(),
+      createSession: vi.fn(),
+      appendEvent: vi.fn(),
       saveGemsConfig: vi.fn()
     };
   });
@@ -159,8 +160,8 @@ describe('CognitivePlatformContext', () => {
        if (screen.getByTestId('status').textContent !== AuthStatus.ANONYMOUS) throw new Error();
     });
 
-    // Mock local storage having sessions
-    mockLocalStorage.loadAllSessions.mockResolvedValue([{ id: 's1', data: {} }]);
+    // Mock local storage having sessions with data to append
+    mockLocalStorage.loadAllSessions.mockResolvedValue([{ id: 's1', config: { model: 'test' }, data: { messages: [{ role: 'user', content: 'test msg' }] } }]);
     mockLocalStorage.loadGemsConfig.mockResolvedValue({ gems: [] });
 
     // Trigger login to switch to cloudAuth
@@ -184,7 +185,8 @@ describe('CognitivePlatformContext', () => {
     });
 
     expect(screen.queryByTestId('migration-prompt')).toBeNull();
-    expect(mockCloudStorage.saveSession).toHaveBeenCalledWith('s1', {});
+    expect(mockCloudStorage.createSession).toHaveBeenCalledWith('s1', { model: 'test' });
+    expect(mockCloudStorage.appendEvent).toHaveBeenCalledWith('s1', 'CHAT_MESSAGE', { message: { role: 'user', content: 'test msg' } });
     expect(mockLocalStorage.clearAll).toHaveBeenCalled();
   });
 
@@ -214,7 +216,7 @@ describe('CognitivePlatformContext', () => {
     });
 
     expect(screen.queryByTestId('migration-prompt')).toBeNull();
-    expect(mockCloudStorage.saveSession).not.toHaveBeenCalled();
+    expect(mockCloudStorage.createSession).not.toHaveBeenCalled();
     expect(mockLocalStorage.clearAll).not.toHaveBeenCalled(); // Skipping shouldn't clear local
   });
 

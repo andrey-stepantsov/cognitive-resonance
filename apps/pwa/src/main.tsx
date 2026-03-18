@@ -16,25 +16,28 @@ import {
   gitRemoteSync
 } from '@cr/backend';
 
-// Configure backend with Cloudflare Worker URL
+const isLocalMode = typeof window !== 'undefined' && window.localStorage?.getItem('cr_local_mode') === 'true';
+const backendUrl = isLocalMode 
+  ? 'http://localhost:3000' 
+  : (import.meta.env.VITE_CLOUDFLARE_WORKER_URL || 'http://localhost:8787');
+
+// Configure backend with correct URL
 initBackendEnvironment({
-  gitRemoteUrl: import.meta.env.VITE_CLOUDFLARE_WORKER_URL,
+  gitRemoteUrl: backendUrl,
 });
 
 // Initialize platform providers
 const localStorage = new LocalIndexedDBProvider();
 
 // Cloudflare-backed cloud auth
-const cloudAuth = new CloudflareAuthProvider(
-  import.meta.env.VITE_CLOUDFLARE_WORKER_URL || 'http://localhost:8787'
-);
+const cloudAuth = new CloudflareAuthProvider(backendUrl);
 
 // For localAuth, we also use the CloudflareAuthProvider now to enforce security
 const localAuth = cloudAuth;
 
 const cloudStorage = new CloudflareStorageProvider();
 cloudStorage.configure(
-  import.meta.env.VITE_CLOUDFLARE_WORKER_URL || '',
+  backendUrl,
   import.meta.env.VITE_CR_API_KEY || ''
 );
 // Wire dynamic JWT from CloudflareAuth into CF storage and git sync requests

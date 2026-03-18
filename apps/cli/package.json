@@ -18,6 +18,7 @@
     "@cr/backend": "^1.0.0",
     "@cr/core": "^1.0.0",
     "better-sqlite3": "^12.8.0",
+    "chokidar": "^5.0.0",
     "commander": "^12.0.0",
     "cors": "^2.8.6",
     "dotenv": "^16.4.5",

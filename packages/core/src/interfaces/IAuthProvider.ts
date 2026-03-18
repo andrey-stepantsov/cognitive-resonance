@@ -42,14 +42,14 @@ export interface IAuthProvider {
   login(): Promise<void>;
 
   /**
-   * Logs the user in with email and password.
+   * Connects to the local CLI daemon
    */
-  loginWithEmail?(email: string, password: string): Promise<void>;
+  connectLocal?(): Promise<void>;
 
   /**
-   * Signs the user up with email and password.
+   * Connects to the Cloud Edge with an API Key
    */
-  signupWithEmail?(email: string, password: string): Promise<void>;
+  connectCloud?(apiKey: string): Promise<void>;
 
   /**
    * Logs the user out.

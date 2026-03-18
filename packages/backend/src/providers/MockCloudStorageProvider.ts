@@ -48,28 +48,53 @@ export class MockCloudStorageProvider implements IStorageProvider {
     return this.ready;
   }
 
-  async saveSession(sessionId: string, data: any): Promise<string> {
+  async createSession(sessionId: string, config?: any): Promise<void> {
     return simulateNetwork(async () => {
-      const id = sessionId || `session-${Date.now()}`;
       const db = await openMockDB();
-      const preview = data.messages?.length > 0
-        ? (data.messages[0].content.substring(0, 40) + '...')
-        : 'Empty Session';
-
       const record: SessionRecord = {
-        id,
+        id: sessionId,
         timestamp: Date.now(),
-        preview,
-        customName: data.customName,
-        config: data.config,
-        data,
-        isCloud: true // Mark as cloud
+        preview: 'Empty Session',
+        config: config,
+        data: { messages: [] },
+        isCloud: true
       };
 
-      return new Promise<string>((resolve, reject) => {
+      return new Promise<void>((resolve, reject) => {
         const tx = db.transaction(SESSIONS_STORE, 'readwrite');
         tx.objectStore(SESSIONS_STORE).put(record);
-        tx.oncomplete = () => resolve(id);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    });
+  }
+
+  async appendEvent(sessionId: string, type: string, payload: any): Promise<void> {
+    return simulateNetwork(async () => {
+      const db = await openMockDB();
+      const record = await this.loadSession(sessionId);
+      
+      if (!record) {
+        console.warn(`MockCloudStorageProvider: Cannot append event to missing session ${sessionId}`);
+        return;
+      }
+
+      // Very rudimentary state application just enough to keep the mock working for UI tests
+      if (type === 'SESSION_CREATED' && payload.config) {
+        record.config = { ...record.config, ...payload.config };
+        record.data.config = record.config;
+      } else if (type === 'CHAT_MESSAGE' && payload.message) {
+        record.data.messages = record.data.messages || [];
+        record.data.messages.push(payload.message);
+        record.preview = record.data.messages[0].content.substring(0, 40) + '...';
+      }
+
+      record.timestamp = Date.now();
+
+      return new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(SESSIONS_STORE, 'readwrite');
+        tx.objectStore(SESSIONS_STORE).put(record);
+        tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
       });
     });

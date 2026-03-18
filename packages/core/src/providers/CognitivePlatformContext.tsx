@@ -124,7 +124,12 @@ export function CognitivePlatformProvider({
     }
 
     for (const session of localSessions) {
-      await cloudStorage.saveSession(session.id, session.data);
+      await cloudStorage.createSession(session.id, session.config);
+      if (session.data && session.data.messages) {
+        for (const msg of session.data.messages) {
+           await cloudStorage.appendEvent(session.id, 'CHAT_MESSAGE', { message: msg });
+        }
+      }
     }
 
     // Nuke local
@@ -140,17 +145,17 @@ export function CognitivePlatformProvider({
     setActiveStorage(cloudStorage);
   };
 
-  const interceptLoginWithEmail = async (email: string, password: string) => {
+  const interceptConnectLocal = async () => {
     setActiveAuth(cloudAuth);
-    if (cloudAuth.loginWithEmail) {
-      await cloudAuth.loginWithEmail(email, password);
+    if (cloudAuth.connectLocal) {
+      await cloudAuth.connectLocal();
     }
   };
 
-  const interceptSignupWithEmail = async (email: string, password: string) => {
+  const interceptConnectCloud = async (apiKey: string) => {
     setActiveAuth(cloudAuth);
-    if (cloudAuth.signupWithEmail) {
-      await cloudAuth.signupWithEmail(email, password);
+    if (cloudAuth.connectCloud) {
+      await cloudAuth.connectCloud(apiKey);
     }
   };
 
@@ -161,13 +166,13 @@ export function CognitivePlatformProvider({
       if (activeAuth === localAuth) return interceptLogin();
       return activeAuth.login();
     },
-    loginWithEmail: async (email, password) => {
-      if (activeAuth === localAuth) return interceptLoginWithEmail(email, password);
-      if (activeAuth.loginWithEmail) return activeAuth.loginWithEmail(email, password);
+    connectLocal: async () => {
+      if (activeAuth === localAuth) return interceptConnectLocal();
+      if (activeAuth.connectLocal) return activeAuth.connectLocal();
     },
-    signupWithEmail: async (email, password) => {
-      if (activeAuth === localAuth) return interceptSignupWithEmail(email, password);
-      if (activeAuth.signupWithEmail) return activeAuth.signupWithEmail(email, password);
+    connectCloud: async (apiKey) => {
+      if (activeAuth === localAuth) return interceptConnectCloud(apiKey);
+      if (activeAuth.connectCloud) return activeAuth.connectCloud(apiKey);
     },
     logout: async () => {
       if (activeAuth === cloudAuth) return activeAuth.logout();

@@ -103,6 +103,19 @@ export interface CommandIntent {
 }
 
 /**
+ * Parses a raw string for @ mentions
+ */
+export function parseMentions(input: string): string[] {
+  const mentions: string[] = [];
+  const regex = /(^|\s)@([a-zA-Z0-9_]+)/g;
+  let match;
+  while ((match = regex.exec(input)) !== null) {
+    mentions.push(match[2].toLowerCase());
+  }
+  return mentions;
+}
+
+/**
  * Parses a raw REPL string into a structured CommandIntent.
  * Supports basic slash commands (e.g., "/session load 123", "/graph ls Node")
  * Returns null if the input is not a command.

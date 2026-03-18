@@ -36,27 +36,57 @@ export class LocalIndexedDBProvider implements IStorageProvider {
     return this.ready;
   }
 
-  async saveSession(sessionId: string, data: any): Promise<string> {
+  async createSession(sessionId: string, config?: any): Promise<void> {
     const id = sessionId || `session-${Date.now()}`;
     const db = await openDB();
-    const preview = data.messages?.length > 0
-      ? (data.messages[0].content.substring(0, 40) + '...')
-      : 'Empty Session';
 
     const record: SessionRecord = {
       id,
       timestamp: Date.now(),
-      preview,
-      customName: data.customName,
-      config: data.config,
-      data,
+      preview: 'Empty Session',
+      customName: undefined,
+      config: config,
+      data: { messages: [] },
       isCloud: false
     };
 
     return new Promise((resolve, reject) => {
       const tx = db.transaction(SESSIONS_STORE, 'readwrite');
       tx.objectStore(SESSIONS_STORE).put(record);
-      tx.oncomplete = () => resolve(id);
+      tx.oncomplete = async () => {
+         if (config) {
+             await this.appendEvent(id, 'SESSION_CREATED', { config });
+         }
+         resolve();
+      };
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async appendEvent(sessionId: string, type: string, payload: any): Promise<void> {
+    const db = await openDB();
+    const record = await this.loadSession(sessionId);
+    
+    if (!record) {
+      console.warn(`LocalIndexedDBProvider: Cannot append event to missing session ${sessionId}`);
+      return;
+    }
+
+    if (type === 'SESSION_CREATED' && payload.config) {
+      record.config = { ...record.config, ...payload.config };
+      record.data.config = record.config;
+    } else if (type === 'CHAT_MESSAGE' && payload.message) {
+      record.data.messages = record.data.messages || [];
+      record.data.messages.push(payload.message);
+      record.preview = record.data.messages[0].content.substring(0, 40) + '...';
+    }
+
+    record.timestamp = Date.now();
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(SESSIONS_STORE, 'readwrite');
+      tx.objectStore(SESSIONS_STORE).put(record);
+      tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
   }

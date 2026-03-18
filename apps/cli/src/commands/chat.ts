@@ -5,7 +5,9 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { DatabaseEngine } from '../db/DatabaseEngine';
-import { parseCommand, CommandAction } from '@cr/core/src/services/CommandParser';
+import { parseCommand, CommandAction, parseMentions } from '@cr/core/src/services/CommandParser';
+import { GemProfiles } from '../services/GemRegistry';
+import { exec } from 'child_process';
 
 // Path to store the CLI authentication token
 const TOKEN_FILE_PATH = path.resolve(process.cwd(), '.cr-cli-token');
@@ -197,6 +199,31 @@ export function registerChatCommands(program: Command) {
       if (!text) { rl.prompt(); return; }
       if (text === '/exit' || text === '/quit') { rl.close(); return; }
 
+      if (text.startsWith('/exec ')) {
+        const cmd = text.slice(6);
+        console.log(`[System] Executing: ${cmd}`);
+        exec(cmd, { cwd: process.cwd() }, (error: any, stdout: string, stderr: string) => {
+          let output = '';
+          if (stdout) output += stdout;
+          if (stderr) output += '\nError: ' + stderr;
+          if (error) output += '\nExit Code: ' + error.code;
+          
+          console.log(output);
+          chatHistory.push({ role: 'user', content: `[System Exec Output]:\n${output}` });
+          const execEventId = db.appendEvent({
+            session_id: sessionId,
+            timestamp: Date.now(),
+            actor: 'SYSTEM',
+            type: 'RUNTIME_OUTPUT',
+            payload: JSON.stringify({ text: output }),
+            previous_event_id: lastEventId
+          });
+          lastEventId = execEventId;
+          rl.prompt();
+        });
+        return;
+      }
+
       const command = parseCommand(text);
 
       if (command) {
@@ -303,40 +330,69 @@ export function registerChatCommands(program: Command) {
         return;
       }
 
-      // Record prompt
-      const promptEventId = db.appendEvent({
-          session_id: sessionId,
-          timestamp: Date.now(),
-          actor: 'LOCAL_USER',
-          type: 'USER_PROMPT',
-          payload: JSON.stringify({ text }),
-          previous_event_id: lastEventId
-      });
-      lastEventId = promptEventId;
+      // Automatic Handoff Loop
+      let nextInput = text;
+      let isFirstTurn = true;
+      let explicitTarget: string | undefined;
 
-      chatHistory.push({ role: 'user', content: text });
-      process.stdout.write('Thinking...\n');
+      const initialMentions = parseMentions(text);
+      explicitTarget = initialMentions.find(m => GemProfiles[m]);
+      
+      while (nextInput) {
+        if (!isFirstTurn) {
+          chatHistory.push({ role: 'user', content: nextInput });
+        } else {
+          // Record initial literal user prompt
+          const promptEventId = db.appendEvent({
+              session_id: sessionId,
+              timestamp: Date.now(),
+              actor: 'LOCAL_USER',
+              type: 'USER_PROMPT',
+              payload: JSON.stringify({ text: nextInput }),
+              previous_event_id: lastEventId
+          });
+          lastEventId = promptEventId;
+          chatHistory.push({ role: 'user', content: nextInput });
+        }
 
-      try {
-        const response = await generateResponse(currentModel, chatHistory, 'You are a helpful CLI assistant.', schema, undefined, false);
-        console.log(`\n🤖 ${response.reply}\n`);
-        chatHistory.push({ role: 'assistant', content: response.reply });
+        const activeActor = explicitTarget ? explicitTarget : currentModel;
+        const systemPrompt = explicitTarget ? GemProfiles[explicitTarget] : 'You are a helpful CLI assistant.';
 
-        // Record response
-        const responseEventId = db.appendEvent({
-          session_id: sessionId,
-          timestamp: Date.now(),
-          actor: currentModel,
-          type: 'AI_RESPONSE',
-          payload: JSON.stringify({ text: response.reply, dissonance: response.dissonanceScore }),
-          previous_event_id: lastEventId
-        });
-        lastEventId = responseEventId;
+        process.stdout.write(`Thinking (@${activeActor})...\n`);
 
-      } catch (err: any) {
-        console.error(`\nAPI Error: ${err.message}\n`);
-        chatHistory.pop();
-        // optionally remove the failed prompt from the DB, but event sourcing implies immutability.
+        try {
+          const response = await generateResponse(currentModel, chatHistory, systemPrompt, schema, undefined, false);
+          console.log(`\n🤖 [@${activeActor}] ${response.reply}\n`);
+          chatHistory.push({ role: 'assistant', content: response.reply });
+
+          // Record response
+          const responseEventId = db.appendEvent({
+            session_id: sessionId,
+            timestamp: Date.now(),
+            actor: activeActor,
+            type: 'AI_RESPONSE',
+            payload: JSON.stringify({ text: response.reply, dissonance: response.dissonanceScore }),
+            previous_event_id: lastEventId
+          });
+          lastEventId = responseEventId;
+
+          // Check for handoffs
+          const responseMentions = parseMentions(response.reply);
+          const nextTargetGem = responseMentions.find(m => GemProfiles[m] && m !== activeActor);
+          
+          if (nextTargetGem) {
+            console.log(`[System] Handoff to @${nextTargetGem} detected.`);
+            nextInput = `[System] @${activeActor} called @${nextTargetGem}. Please proceed based on their output.`;
+            explicitTarget = nextTargetGem;
+            isFirstTurn = false;
+          } else {
+            break; // No more handoffs
+          }
+        } catch (err: any) {
+          console.error(`\nAPI Error: ${err.message}\n`);
+          chatHistory.pop();
+          break;
+        }
       }
       rl.prompt();
     }).on('close', () => {

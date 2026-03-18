@@ -34,12 +34,19 @@ export interface IStorageProvider {
   isReady(): boolean;
 
   /**
-   * Saves or updates a session.
-   * @param sessionId Session ID, or empty string to create new
-   * @param data Full session data object
-   * @returns The saved session ID
+   * Creates or initializes a new session.
+   * @param sessionId Session ID
+   * @param config Optional configuration representing initial state (models, prompts)
    */
-  saveSession(sessionId: string, data: any): Promise<string>;
+  createSession(sessionId: string, config?: any): Promise<void>;
+
+  /**
+   * Appends an atomic event to the session stream.
+   * @param sessionId Session ID
+   * @param type The distinct EventType (e.g. CHAT_MESSAGE)
+   * @param payload The data payload for the event
+   */
+  appendEvent(sessionId: string, type: string, payload: any): Promise<void>;
 
   /**
    * Loads all available sessions.

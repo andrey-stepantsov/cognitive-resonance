@@ -20,28 +20,18 @@ export class CloudflareAuthProvider implements IAuthProvider {
 
     try {
       const storedToken = globalThis.localStorage?.getItem(TOKEN_STORAGE_KEY);
+      const isLocal = globalThis.localStorage?.getItem('cr_local_mode') === 'true';
 
       if (storedToken) {
         this.jwt = storedToken;
         
-        // Verify token by calling /api/auth/me
-        const response = await fetch(`${this.endpoint}/api/auth/me`, {
-          headers: {
-            'Authorization': `Bearer ${this.jwt}`
-          }
-        });
-
-        if (response.ok) {
-          const data = await response.json() as any;
-          this.user = {
-            id: data.user.id,
-            name: data.user.name,
-            email: data.user.email,
-          };
-          this.status = AuthStatus.AUTHENTICATED;
+        if (isLocal) {
+          this.user = { id: 'local', name: 'Local Dev', email: 'dev@localhost' };
         } else {
-          throw new Error('Invalid token');
+          this.user = { id: 'cloud', name: 'Cloud User', email: 'cloud@edge' };
         }
+        
+        this.status = AuthStatus.AUTHENTICATED;
       } else {
         throw new Error('No token');
       }
@@ -68,76 +58,47 @@ export class CloudflareAuthProvider implements IAuthProvider {
   }
 
   async login(): Promise<void> {
-    console.warn('[CloudflareAuth] OAuth login not implemented. Please use email/password.');
+    console.warn('[CloudflareAuth] OAuth login not implemented. Please use connectCloud or connectLocal.');
     this.status = AuthStatus.ERROR;
     this.notifyListeners();
   }
 
-  async loginWithEmail(email: string, password: string): Promise<void> {
+  async connectLocal(): Promise<void> {
     this.status = AuthStatus.LOADING;
     this.notifyListeners();
 
-    try {
-      const response = await fetch(`${this.endpoint}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-
-      if (!response.ok) {
-        throw new Error('Login failed');
-      }
-
-      const data = await response.json() as any;
-      this.jwt = data.token;
-      this.user = {
-        id: data.user.id,
-        name: data.user.name,
-        email: data.user.email,
-      };
-      
-      globalThis.localStorage?.setItem(TOKEN_STORAGE_KEY, this.jwt as string);
-      this.status = AuthStatus.AUTHENTICATED;
-    } catch (err) {
-      console.error('[CloudflareAuth] Email login failed:', err);
-      this.status = AuthStatus.ERROR;
-    }
-
+    this.jwt = 'local-dev-token';
+    this.user = {
+      id: 'local',
+      name: 'Local Dev',
+      email: 'dev@localhost',
+    };
+    
+    globalThis.localStorage?.setItem(TOKEN_STORAGE_KEY, this.jwt);
+    globalThis.localStorage?.setItem('cr_local_mode', 'true');
+    this.status = AuthStatus.AUTHENTICATED;
+    
     this.notifyListeners();
+    globalThis.location?.reload();
   }
 
-  async signupWithEmail(email: string, password: string): Promise<void> {
+  async connectCloud(apiKey: string): Promise<void> {
     this.status = AuthStatus.LOADING;
     this.notifyListeners();
 
-    try {
-      const name = email.split('@')[0];
-      const response = await fetch(`${this.endpoint}/api/auth/signup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, name })
-      });
-
-      if (!response.ok) {
-        throw new Error('Signup failed');
-      }
-
-      const data = await response.json() as any;
-      this.jwt = data.token;
-      this.user = {
-        id: data.user.id,
-        name: data.user.name,
-        email: data.user.email,
-      };
-      
-      globalThis.localStorage?.setItem(TOKEN_STORAGE_KEY, this.jwt as string);
-      this.status = AuthStatus.AUTHENTICATED;
-    } catch (err) {
-      console.error('[CloudflareAuth] Signup failed:', err);
-      this.status = AuthStatus.ERROR;
-    }
-
+    this.jwt = apiKey;
+    this.user = {
+      id: 'cloud',
+      name: 'Cloud User',
+      email: 'cloud@edge',
+    };
+    
+    globalThis.localStorage?.setItem(TOKEN_STORAGE_KEY, this.jwt);
+    globalThis.localStorage?.setItem('cr_local_mode', 'false');
+    this.status = AuthStatus.AUTHENTICATED;
+    
     this.notifyListeners();
+    globalThis.location?.reload();
   }
 
   async logout(): Promise<void> {

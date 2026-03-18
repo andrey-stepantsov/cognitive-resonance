@@ -46,7 +46,24 @@ The frontend currently contains legacy concepts that contradict the Local-First 
 
 ---
 
-## Phase 15: The PWA Visual Architecture
+## Phase 15: CLI Completeness & Multi-Agent Routing
+Before any UI work begins, the underlying CLI and core execution engine must support targeted routing, autonomous agent hand-offs, and runtime verification of generated code.
+
+**1. The `@` Mention DSL Parsing & Routing (`@cr/core`)**
+- Implement core parsing to detect intended recipients (e.g., `@Architect`, `@Coder`) from chat messages.
+- Route context explicitly to distinct AI "Gems" equipped with their own system prompts.
+
+**2. Multi-Agent Ecosystem (Gems)**
+- Instantiate `Architect` (focuses on planning and delegating) and `Coder` (focuses on execution) profiles.
+- Enable automatic handoffs so an Architect's response containing `@Coder` automatically triggers the Coder's execution.
+
+**3. Simple Runtime Capabilities (`/exec`)**
+- Add an `/exec [cmd]` slash command strictly for human developers (Scientist).
+- Spawn a `child_process` bound to the active Artefact Workspace directory, capturing `stdout/stderr` to securely verify task completion.
+
+---
+
+## Phase 16: The PWA Visual Architecture
 With the backend solid and the legacy code gone, we build the core UX described in the design documents.
 
 **1. The Artefact Interface (Diff Viewer & Rich Media)**
@@ -63,7 +80,7 @@ With the backend solid and the legacy code gone, we build the core UX described 
 
 ---
 
-## Final Phase: MVP Verification Demo & E2E Testing
+## Phase 17: Final MVP Verification Demo & E2E Testing
 To prove the architecture is sound before committing fully to the React UI, we will build a headless MVP Verification Demo.
 
 **1. The Component Genesis Test**

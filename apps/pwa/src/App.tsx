@@ -72,20 +72,19 @@ export default function App() {
   if (authStatus !== 'authenticated') {
     return (
       <AuthScreen 
-        onLoginOAuth={() => auth.login()} 
-        onLoginEmail={(email, password) => {
-          if (auth.loginWithEmail) {
-            auth.loginWithEmail(email, password).catch((err: any) => {
+        onConnectCloud={(apiKey) => {
+          if (auth.connectCloud) {
+            auth.connectCloud(apiKey).catch((err: any) => {
               console.error(err);
-              alert(`Login failed: ${err?.message || JSON.stringify(err)}`);
+              alert(`Connection failed: ${err?.message || JSON.stringify(err)}`);
             });
           }
         }}
-        onSignupEmail={(email, password) => {
-          if (auth.signupWithEmail) {
-            auth.signupWithEmail(email, password).catch((err: any) => {
+        onConnectLocal={() => {
+          if (auth.connectLocal) {
+            auth.connectLocal().catch((err: any) => {
               console.error(err);
-              alert(`Signup failed: ${err?.message || JSON.stringify(err)}`);
+              alert(`Connection failed: ${err?.message || JSON.stringify(err)}`);
             });
           }
         }}

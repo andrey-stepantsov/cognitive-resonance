@@ -1,4 +1,6 @@
 import type { IStorageProvider, SessionRecord, GemsConfig } from '../interfaces/IStorageProvider';
+import { reduceSessionState } from '../services/EventReducers';
+import type { IEvent } from '../interfaces/IEvents';
 
 export class LocalNodeStorageProvider implements IStorageProvider {
   readonly type = 'local' as const;
@@ -21,36 +23,41 @@ export class LocalNodeStorageProvider implements IStorageProvider {
     return this.ready;
   }
 
-  async saveSession(sessionId: string, data: any): Promise<string> {
-    if (!this.ready) return sessionId;
-    const id = sessionId || `session-${Date.now()}`;
-
+  async createSession(sessionId: string, config?: any): Promise<void> {
+    if (!this.ready) return;
     try {
-      // Ensure session exists
       await fetch(`${this.baseUrl}/api/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, owner_id: 'LOCAL_FRONTEND' }),
+        body: JSON.stringify({ id: sessionId, owner_id: 'LOCAL_FRONTEND' }),
       });
 
-      // Append snapshot event
+      if (config) {
+        await this.appendEvent(sessionId, 'SESSION_CREATED', { config });
+      }
+    } catch (err) {
+      console.error('LocalNodeStorageProvider: Failed to create session:', err);
+    }
+  }
+
+  async appendEvent(sessionId: string, type: string, payload: any): Promise<void> {
+    if (!this.ready) return;
+    try {
       await fetch(`${this.baseUrl}/api/events`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          session_id: id,
+          session_id: sessionId,
           timestamp: Date.now(),
           actor: 'LOCAL_FRONTEND',
-          type: 'PWA_SNAPSHOT',
-          payload: JSON.stringify(data),
+          type,
+          payload: JSON.stringify(payload),
           previous_event_id: null
         }),
       });
     } catch (err) {
-      console.error('LocalNodeStorageProvider: Failed to save session:', err);
+      console.error(`LocalNodeStorageProvider: Failed to append event ${type}:`, err);
     }
-
-    return id;
   }
 
   async loadAllSessions(): Promise<SessionRecord[]> {
@@ -77,48 +84,9 @@ export class LocalNodeStorageProvider implements IStorageProvider {
     try {
       const res = await fetch(`${this.baseUrl}/api/events/${sessionId}`);
       if (!res.ok) return undefined;
-      const events = await res.json() as any[];
+      const events = await res.json() as IEvent[];
 
-      let data: any = {};
-      let isArchived = false;
-      let timestamp = 0;
-      let hasSnapshot = false;
-      let customName = null;
-
-      for (const evt of events) {
-        if (evt.type === 'PWA_SNAPSHOT') {
-          data = JSON.parse(evt.payload || '{}');
-          isArchived = !!data.isArchived;
-          timestamp = evt.timestamp;
-          customName = data.customName || null;
-          hasSnapshot = true;
-        } else if (evt.type === 'PWA_ARCHIVE_TOGGLE') {
-          const payload = JSON.parse(evt.payload || '{}');
-          isArchived = payload.isArchived;
-          data.isArchived = isArchived;
-        } else if (evt.type === 'PWA_RENAME') {
-          const payload = JSON.parse(evt.payload || '{}');
-          customName = payload.customName;
-          data.customName = customName;
-        }
-      }
-
-      if (!hasSnapshot) return undefined;
-
-      const preview = data.messages?.length > 0 
-        ? data.messages[0].content.substring(0, 40) + '...'
-        : 'Empty Session';
-
-      return {
-        id: sessionId,
-        timestamp,
-        preview,
-        customName,
-        config: data.config,
-        data,
-        isCloud: false,
-        isArchived,
-      };
+      return reduceSessionState(events, sessionId);
     } catch (err) {
       console.error(`LocalNodeStorageProvider: Failed to load session ${sessionId}:`, err);
       return undefined;

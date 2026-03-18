@@ -70,7 +70,8 @@ describe('SearchService', () => {
   const mockStorage: IStorageProvider = {
     type: 'local',
     isReady: () => true,
-    saveSession: vi.fn(),
+    createSession: vi.fn(),
+    appendEvent: vi.fn(),
     loadSession: vi.fn(),
     deleteSession: vi.fn(),
     renameSession: vi.fn(),
