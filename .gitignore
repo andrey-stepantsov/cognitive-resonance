@@ -1,4 +1,4 @@
-Packages and worker states
+# Packages and worker states
 node_modules/
 dist/
 dist-ssr/
@@ -12,6 +12,9 @@ build/
 
 # Local CLI environment
 .cr/
+cr.sqlite
+cr-daemon*.log
+prompt-for-new-session.md
 
 # Vitest / coverage
 coverage/
