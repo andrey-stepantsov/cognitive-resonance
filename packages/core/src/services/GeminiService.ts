@@ -75,13 +75,19 @@ export async function fetchModels(): Promise<any[]> {
 
 function filterModelList(rawModels: any[]): any[] {
   const excludePatterns = ['vision', 'embedding', 'aqa', 'audio', 'learn', 'bison', 'gecko'];
+  const userFilterRegex = process.env.CR_MODEL_FILTER ? new RegExp(process.env.CR_MODEL_FILTER) : null;
 
   return rawModels
     .filter((m) => {
       const name = m.name || '';
       if (!name.includes('gemini-')) return false;
       const lower = name.toLowerCase();
-      return !excludePatterns.some((p) => lower.includes(p));
+      if (excludePatterns.some((p) => lower.includes(p))) return false;
+      
+      if (userFilterRegex && !userFilterRegex.test(name)) {
+        return false;
+      }
+      return true;
     })
     .map((m) => ({
       name: m.name || '',
