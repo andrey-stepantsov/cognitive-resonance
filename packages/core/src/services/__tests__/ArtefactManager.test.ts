@@ -41,9 +41,9 @@ describe('ArtefactManager', () => {
     manager = new ArtefactManager('test-session');
     
     // Mock vfs
-    vfs.promises.stat = vi.fn().mockResolvedValue({});
-    vfs.promises.mkdir = vi.fn().mockResolvedValue(true);
-    vfs.promises.writeFile = vi.fn().mockResolvedValue(true);
+    vfs!.promises.stat = vi.fn().mockResolvedValue({});
+    vfs!.promises.mkdir = vi.fn().mockResolvedValue(true);
+    vfs!.promises.writeFile = vi.fn().mockResolvedValue(true);
   });
 
   describe('proposeDraft', () => {
@@ -55,7 +55,7 @@ describe('ArtefactManager', () => {
         ref: expect.stringContaining('draft/testFile.md/'),
         checkout: true
       }));
-      expect(vfs.promises.writeFile).toHaveBeenCalledWith(expect.stringContaining('testFile.md'), 'new draft content', 'utf8');
+      expect(vfs!.promises.writeFile).toHaveBeenCalledWith(expect.stringContaining('testFile.md'), 'new draft content', 'utf8');
       expect(git.add).toHaveBeenCalled();
       expect(git.commit).toHaveBeenCalledWith(expect.objectContaining({
         message: 'Draft proposal for testFile.md',

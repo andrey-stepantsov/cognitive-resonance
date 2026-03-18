@@ -1,99 +1,68 @@
-
 import { render, screen, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CognitivePlatformProvider, useCognitivePlatform } from '../providers/CognitivePlatformContext';
 import { AuthStatus } from '../interfaces/IAuthProvider';
 
 const TestComponent = () => {
-  const { authStatus, isReady, showMigrationPrompt, migrateToCloud, skipMigration, auth } = useCognitivePlatform();
+  const { authStatus, isReady, auth } = useCognitivePlatform();
   if (!isReady) return <div data-testid="status">Loading</div>;
   
   return (
     <div>
       <div data-testid="status">{authStatus}</div>
-      {showMigrationPrompt && <div data-testid="migration-prompt">Migration Prompt</div>}
-      <button data-testid="migrate-btn" onClick={migrateToCloud}>Migrate</button>
-      <button data-testid="skip-btn" onClick={skipMigration}>Skip</button>
       <button data-testid="login-btn" onClick={auth.login}>Login</button>
-      <button data-testid="login-email-btn" onClick={() => auth.loginWithEmail?.('test@test.com', 'pass')}>Login Email</button>
-      <button data-testid="signup-email-btn" onClick={() => auth.signupWithEmail?.('test@test.com', 'pass')}>Signup Email</button>
       <button data-testid="logout-btn" onClick={auth.logout}>Logout</button>
     </div>
   );
 };
 
 describe('CognitivePlatformContext', () => {
-  let mockLocalAuth: any;
-  let mockLocalStorage: any;
-  let mockCloudAuth: any;
-  let mockCloudStorage: any;
-  let cloudAuthChangeCb: any = null;
+  let mockAuth: any;
+  let mockStorage: any;
+  let authChangeCb: any = null;
 
   beforeEach(() => {
-    mockLocalAuth = {
-      init: vi.fn(),
+    authChangeCb = null;
+
+    mockAuth = {
+      init: vi.fn().mockResolvedValue(undefined),
       getStatus: vi.fn().mockReturnValue(AuthStatus.ANONYMOUS),
       getUser: vi.fn().mockReturnValue(undefined),
-      onChange: vi.fn().mockReturnValue(vi.fn()),
+      onChange: vi.fn().mockImplementation((cb) => {
+        authChangeCb = cb;
+        return vi.fn();
+      }),
       login: vi.fn(),
       logout: vi.fn()
     };
     
-    mockLocalStorage = {
-      init: vi.fn().mockResolvedValue(undefined),
-      loadAllSessions: vi.fn().mockResolvedValue([]),
-      loadGemsConfig: vi.fn().mockResolvedValue(null),
-      clearAll: vi.fn().mockResolvedValue(undefined)
-    };
-
-    cloudAuthChangeCb = null;
-
-    mockCloudAuth = {
-      init: vi.fn(),
-      getStatus: vi.fn().mockReturnValue(AuthStatus.ANONYMOUS),
-      getUser: vi.fn().mockReturnValue(undefined),
-      onChange: vi.fn().mockImplementation((cb) => {
-        cloudAuthChangeCb = cb;
-        return vi.fn();
-      }),
-      login: vi.fn(),
-      loginWithEmail: vi.fn(),
-      signupWithEmail: vi.fn(),
-      logout: vi.fn()
-    };
-
-    mockCloudStorage = {
-      init: vi.fn().mockResolvedValue(undefined),
-      createSession: vi.fn(),
-      appendEvent: vi.fn(),
-      saveGemsConfig: vi.fn()
+    mockStorage = {
+      init: vi.fn().mockResolvedValue(undefined)
     };
   });
 
   const customRender = () => {
     return render(
-      <CognitivePlatformProvider
-        localAuth={mockLocalAuth}
-        localStorage={mockLocalStorage}
-        cloudAuth={mockCloudAuth}
-        cloudStorage={mockCloudStorage}
-      >
+      <CognitivePlatformProvider auth={mockAuth} storage={mockStorage}>
         <TestComponent />
       </CognitivePlatformProvider>
     );
   };
 
-  it('renders loading state initially and then authenticates as local anonymous', async () => {
+  it('renders loading state initially and then authenticates as anonymous', async () => {
     customRender();
     expect(screen.getByTestId('status').textContent).toBe('Loading');
     
     await waitFor(() => {
       expect(screen.getByTestId('status').textContent).toBe(AuthStatus.ANONYMOUS);
     });
+    
+    expect(mockAuth.init).toHaveBeenCalled();
+    expect(mockStorage.init).toHaveBeenCalled();
   });
 
-  it('starts in cloud mode if cloudAuth is already authenticated', async () => {
-    mockCloudAuth.getStatus.mockReturnValue(AuthStatus.AUTHENTICATED);
+  it('starts authenticated if auth provider is already authenticated', async () => {
+    mockAuth.getStatus.mockReturnValue(AuthStatus.AUTHENTICATED);
     customRender();
     
     await waitFor(() => {
@@ -101,188 +70,17 @@ describe('CognitivePlatformContext', () => {
     });
   });
 
-  it('intercepts login to swap to cloud tracking', async () => {
+  it('updates state when auth provider emits onChange', async () => {
     customRender();
     await waitFor(() => {
        if (screen.getByTestId('status').textContent !== AuthStatus.ANONYMOUS) throw new Error();
     });
 
     await act(async () => {
-      screen.getByTestId('login-btn').click();
+      if (authChangeCb) authChangeCb(AuthStatus.AUTHENTICATED, { name: 'Test User' });
     });
 
-    expect(mockCloudAuth.login).toHaveBeenCalled();
-  });
-
-  it('intercepts loginWithEmail to swap to cloud tracking', async () => {
-    customRender();
-    await waitFor(() => {
-       if (screen.getByTestId('status').textContent !== AuthStatus.ANONYMOUS) throw new Error();
-    });
-
-    await act(async () => {
-      screen.getByTestId('login-email-btn').click();
-    });
-
-    expect(mockCloudAuth.loginWithEmail).toHaveBeenCalledWith('test@test.com', 'pass');
-  });
-
-  it('intercepts signupWithEmail to swap to cloud tracking', async () => {
-    customRender();
-    await waitFor(() => {
-       if (screen.getByTestId('status').textContent !== AuthStatus.ANONYMOUS) throw new Error();
-    });
-
-    await act(async () => {
-      screen.getByTestId('signup-email-btn').click();
-    });
-
-    expect(mockCloudAuth.signupWithEmail).toHaveBeenCalledWith('test@test.com', 'pass');
-  });
-
-  it('ignores local logout but triggers cloud logout', async () => {
-    mockCloudAuth.getStatus.mockReturnValue(AuthStatus.AUTHENTICATED);
-    customRender();
-    await waitFor(() => {
-       if (screen.getByTestId('status').textContent !== AuthStatus.AUTHENTICATED) throw new Error();
-    });
-
-    await act(async () => {
-      screen.getByTestId('logout-btn').click();
-    });
-
-    expect(mockCloudAuth.logout).toHaveBeenCalled();
-  });
-
-  it('handles migration prompt on cloud login', async () => {
-    customRender();
-    await waitFor(() => {
-       if (screen.getByTestId('status').textContent !== AuthStatus.ANONYMOUS) throw new Error();
-    });
-
-    // Mock local storage having sessions with data to append
-    mockLocalStorage.loadAllSessions.mockResolvedValue([{ id: 's1', config: { model: 'test' }, data: { messages: [{ role: 'user', content: 'test msg' }] } }]);
-    mockLocalStorage.loadGemsConfig.mockResolvedValue({ gems: [] });
-
-    // Trigger login to switch to cloudAuth
-    await act(async () => {
-      screen.getByTestId('login-btn').click();
-    });
-
-    await act(async () => {
-      // Simulate cloud login success
-      if (cloudAuthChangeCb) cloudAuthChangeCb(AuthStatus.AUTHENTICATED, { name: 'User' });
-    });
-
-    // Should show migration prompt
-    await waitFor(() => {
-      expect(screen.queryByTestId('migration-prompt')).not.toBeNull();
-    });
-
-    // Test migration process
-    await act(async () => {
-      screen.getByTestId('migrate-btn').click();
-    });
-
-    expect(screen.queryByTestId('migration-prompt')).toBeNull();
-    expect(mockCloudStorage.createSession).toHaveBeenCalledWith('s1', { model: 'test' });
-    expect(mockCloudStorage.appendEvent).toHaveBeenCalledWith('s1', 'CHAT_MESSAGE', { message: { role: 'user', content: 'test msg' } });
-    expect(mockLocalStorage.clearAll).toHaveBeenCalled();
-  });
-
-  it('can skip migration', async () => {
-    customRender();
-    await waitFor(() => {
-       if (screen.getByTestId('status').textContent !== AuthStatus.ANONYMOUS) throw new Error();
-    });
-
-    mockLocalStorage.loadAllSessions.mockResolvedValue([{ id: 's1', data: {} }]);
-    
-    // Trigger login to switch to cloudAuth
-    await act(async () => {
-      screen.getByTestId('login-btn').click();
-    });
-
-    await act(async () => {
-      if (cloudAuthChangeCb) cloudAuthChangeCb(AuthStatus.AUTHENTICATED, { name: 'User' });
-    });
-
-    await waitFor(() => {
-      expect(screen.queryByTestId('migration-prompt')).not.toBeNull();
-    });
-
-    await act(async () => {
-      screen.getByTestId('skip-btn').click();
-    });
-
-    expect(screen.queryByTestId('migration-prompt')).toBeNull();
-    expect(mockCloudStorage.createSession).not.toHaveBeenCalled();
-    expect(mockLocalStorage.clearAll).not.toHaveBeenCalled(); // Skipping shouldn't clear local
-  });
-
-  it('falls back to local auth if cloud is logged out', async () => {
-    mockCloudAuth.getStatus.mockReturnValue(AuthStatus.AUTHENTICATED);
-    customRender();
-    await waitFor(() => {
-       if (screen.getByTestId('status').textContent !== AuthStatus.AUTHENTICATED) throw new Error();
-    });
-
-    await act(async () => {
-      if (cloudAuthChangeCb) cloudAuthChangeCb(AuthStatus.ANONYMOUS, undefined);
-    });
-
-    await waitFor(() => {
-      // It stays anonymous
-      expect(screen.getByTestId('status').textContent).toBe(AuthStatus.ANONYMOUS);
-    });
-  });
-
-  it('proxy auth methods correctly delegate to active auth provider', async () => {
-    mockCloudAuth.getToken = vi.fn().mockReturnValue('fake-token');
-    mockCloudAuth.getStatus.mockReturnValue(AuthStatus.AUTHENTICATED);
-    mockCloudAuth.getUser.mockReturnValue({ name: 'Test' });
-    
-    let proxyAuthRef: any;
-    
-    const TestAuthComponent = () => {
-      const { auth } = useCognitivePlatform();
-      proxyAuthRef = auth;
-      return null;
-    };
-    
-    render(
-      <CognitivePlatformProvider
-        localAuth={mockLocalAuth}
-        localStorage={mockLocalStorage}
-        cloudAuth={mockCloudAuth}
-        cloudStorage={mockCloudStorage}
-      >
-        <TestAuthComponent />
-      </CognitivePlatformProvider>
-    );
-    
-    // Wait for context to settle
-    await waitFor(() => {
-       if (!proxyAuthRef) throw new Error();
-    });
-
-    // We start as anonymous local auth unless we mock status change
-    // Let's force a status change to cloud auth to test cloudAuth delegation
-    await act(async () => {
-       if (cloudAuthChangeCb) cloudAuthChangeCb(AuthStatus.AUTHENTICATED, { name: 'Test' });
-    });
-
-    expect(proxyAuthRef.getToken()).toBe('fake-token');
-    expect(mockCloudAuth.getToken).toHaveBeenCalled();
-    
-    expect(proxyAuthRef.getStatus()).toBe(AuthStatus.AUTHENTICATED);
-    expect(proxyAuthRef.getUser()).toEqual({ name: 'Test' });
-    
-    const listener = vi.fn();
-    proxyAuthRef.onChange(listener);
-    expect(mockCloudAuth.onChange).toHaveBeenCalledWith(listener);
-    
-    await proxyAuthRef.init(); // Cover the empty init function
+    expect(screen.getByTestId('status').textContent).toBe(AuthStatus.AUTHENTICATED);
   });
 
   it('throws error if hook is used outside provider', () => {

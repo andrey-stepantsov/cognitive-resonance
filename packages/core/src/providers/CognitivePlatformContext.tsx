@@ -10,193 +10,61 @@ interface PlatformContextState {
   authStatus: AuthStatus;
   user?: UserProfile;
   isReady: boolean;
-  migrateToCloud: () => Promise<void>;
-  skipMigration: () => void;
-  showMigrationPrompt: boolean;
 }
 
 const CognitivePlatformContext = createContext<PlatformContextState | undefined>(undefined);
 
 interface PlatformProviderProps {
   children: ReactNode;
-  localAuth: IAuthProvider;
-  localStorage: IStorageProvider;
-  cloudAuth: IAuthProvider;
-  cloudStorage: IStorageProvider;
+  auth: IAuthProvider;
+  storage: IStorageProvider;
 }
 
 export function CognitivePlatformProvider({ 
   children,
-  localAuth,
-  localStorage,
-  cloudAuth,
-  cloudStorage 
+  auth,
+  storage
 }: PlatformProviderProps) {
-  
-  // We strictly start with Local defaults
-  const [activeAuth, setActiveAuth] = useState<IAuthProvider>(localAuth);
-  const [activeStorage, setActiveStorage] = useState<IStorageProvider>(localStorage);
   
   const [authStatus, setAuthStatus] = useState<AuthStatus>(AuthStatus.LOADING);
   const [user, setUser] = useState<UserProfile | undefined>(undefined);
   const [isReady, setIsReady] = useState(false);
-  const [showMigrationPrompt, setShowMigrationPrompt] = useState(false);
 
-  // Initialize both backing auth providers to check their implicit state
+  // Initialize providers
   useEffect(() => {
     let mounted = true;
     
     Promise.all([
-      localAuth.init(),
-      localStorage.init?.(),
-      cloudAuth.init(),
-      cloudStorage.init?.()
+      auth.init(),
+      storage.init?.()
     ]).then(() => {
       if (!mounted) return;
       
-      // If the cloud auth provider already has a session, we start in cloud mode
-      if (cloudAuth.getStatus() === AuthStatus.AUTHENTICATED) {
-        setActiveAuth(cloudAuth);
-        setActiveStorage(cloudStorage);
-        setAuthStatus(AuthStatus.AUTHENTICATED);
-        setUser(cloudAuth.getUser());
-      } else {
-        // Otherwise, stay local
-        setAuthStatus(AuthStatus.ANONYMOUS);
-      }
+      setAuthStatus(auth.getStatus());
+      setUser(auth.getUser());
       setIsReady(true);
     });
 
     return () => { mounted = false; };
-  }, [localAuth, localStorage, cloudAuth, cloudStorage]);
+  }, [auth, storage]);
 
-  // Listen to changes on the *active* auth provider
+  // Listen to changes on the auth provider
   useEffect(() => {
-    const unsubscribe = activeAuth.onChange((status, newUser) => {
+    const unsubscribe = auth.onChange((status, newUser) => {
       setAuthStatus(status);
       setUser(newUser);
-      
-      // The logic for migrating from Local -> Cloud
-      if (activeAuth === cloudAuth && status === AuthStatus.AUTHENTICATED) {
-        // We just successfully logged in
-        // We need to check if there are local sessions to migrate
-        checkMigrationNeed();
-      }
-      
-      // If we logout of cloud, return to local
-      if (activeAuth === cloudAuth && status === AuthStatus.ANONYMOUS) {
-        setActiveAuth(localAuth);
-        setActiveStorage(localStorage);
-      }
     });
     
     return unsubscribe;
-  }, [activeAuth, cloudAuth, localAuth, localStorage]);
-
-  // Method exposed to the UI to explicitly trigger a login
-  // We swap to tracking the Cloud auth provider
-  const interceptLogin = async () => {
-    setActiveAuth(cloudAuth);
-    await cloudAuth.login();
-  };
-
-  const checkMigrationNeed = async () => {
-    const localSessions = await localStorage.loadAllSessions();
-    if (localSessions.length > 0) {
-      // Trigger UI prompt to migrate
-      setShowMigrationPrompt(true);
-      // Wait for user action before actually swapping the active storage to cloud storage
-    } else {
-      // Nothing to migrate, quietly swap active storage
-      setActiveStorage(cloudStorage);
-    }
-  };
-
-  const migrateToCloud = async () => {
-    setShowMigrationPrompt(false);
-    
-    // Perform bulk copy
-    const localSessions = await localStorage.loadAllSessions();
-    const localGems = await localStorage.loadGemsConfig();
-
-    if (localGems) {
-        await cloudStorage.saveGemsConfig(localGems);
-    }
-
-    for (const session of localSessions) {
-      await cloudStorage.createSession(session.id, session.config);
-      if (session.data && session.data.messages) {
-        for (const msg of session.data.messages) {
-           await cloudStorage.appendEvent(session.id, 'CHAT_MESSAGE', { message: msg });
-        }
-      }
-    }
-
-    // Nuke local
-    await localStorage.clearAll?.();
-    
-    // Switch to cloud
-    setActiveStorage(cloudStorage);
-  };
-
-  const skipMigration = () => {
-    setShowMigrationPrompt(false);
-    // Explicitly do not nuke local, but future writes go to cloud
-    setActiveStorage(cloudStorage);
-  };
-
-  const interceptConnectLocal = async () => {
-    setActiveAuth(cloudAuth);
-    if (cloudAuth.connectLocal) {
-      await cloudAuth.connectLocal();
-    }
-  };
-
-  const interceptConnectCloud = async (apiKey: string) => {
-    setActiveAuth(cloudAuth);
-    if (cloudAuth.connectCloud) {
-      await cloudAuth.connectCloud(apiKey);
-    }
-  };
-
-  // We wrap the active auth with our interception logic
-  const proxyAuth: IAuthProvider = {
-    ...activeAuth,
-    login: async () => {
-      if (activeAuth === localAuth) return interceptLogin();
-      return activeAuth.login();
-    },
-    connectLocal: async () => {
-      if (activeAuth === localAuth) return interceptConnectLocal();
-      if (activeAuth.connectLocal) return activeAuth.connectLocal();
-    },
-    connectCloud: async (apiKey) => {
-      if (activeAuth === localAuth) return interceptConnectCloud(apiKey);
-      if (activeAuth.connectCloud) return activeAuth.connectCloud(apiKey);
-    },
-    logout: async () => {
-      if (activeAuth === cloudAuth) return activeAuth.logout();
-    },
-    getToken: () => {
-      if (activeAuth.getToken) return activeAuth.getToken();
-      return null;
-    },
-    init: async () => {}, // Already init
-    getStatus: () => authStatus,
-    getUser: () => user,
-    onChange: (listener) => activeAuth.onChange(listener)
-  };
+  }, [auth]);
 
   return (
     <CognitivePlatformContext.Provider value={{
-      auth: proxyAuth,
-      storage: activeStorage,
+      auth,
+      storage,
       authStatus,
       user,
-      isReady,
-      migrateToCloud,
-      skipMigration,
-      showMigrationPrompt
+      isReady
     }}>
       {children}
     </CognitivePlatformContext.Provider>

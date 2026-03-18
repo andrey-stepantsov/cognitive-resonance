@@ -4,14 +4,13 @@ import type { IAuthProvider, UserProfile } from '@cr/core';
 const TOKEN_STORAGE_KEY = 'cr-cf-jwt';
 
 export class CloudflareAuthProvider implements IAuthProvider {
-  private endpoint: string;
   private listeners: Set<(status: AuthStatus, user?: UserProfile) => void> = new Set();
   private status: AuthStatus = AuthStatus.LOADING;
   private user?: UserProfile;
   private jwt?: string;
 
-  constructor(endpoint: string) {
-    this.endpoint = endpoint;
+  constructor(_endpoint: string) {
+    // Endpoint unused in local or mock edge flow
   }
 
   async init(): Promise<void> {

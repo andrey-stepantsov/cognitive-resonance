@@ -209,12 +209,14 @@ export function useCognitiveResonance() {
   useEffect(() => {
     if (activeSessionId) {
        import('../services/GitContextManager').then(({ vfs }) => {
-          vfs.promises.readFile(`/${activeSessionId}/VirtualContext.md`, 'utf8')
-            .then(content => {
-               const str = typeof content === 'string' ? content : new TextDecoder().decode(content);
-               if (str) setArtifactContent(str);
-            })
-            .catch(() => {});
+          if (vfs) {
+            vfs.promises.readFile(`/${activeSessionId}/VirtualContext.md`, 'utf8')
+              .then(content => {
+                 const str = typeof content === 'string' ? content : new TextDecoder().decode(content);
+                 if (str) setArtifactContent(str);
+              })
+              .catch(() => {});
+          }
        });
     }
   }, [activeSessionId]);

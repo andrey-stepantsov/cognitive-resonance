@@ -10,7 +10,6 @@ import App from './App.tsx';
 import { CognitivePlatformProvider } from '@cr/core';
 import { 
   CloudflareAuthProvider,
-  LocalIndexedDBProvider, 
   CloudflareStorageProvider,
   initBackendEnvironment,
   gitRemoteSync
@@ -27,13 +26,10 @@ initBackendEnvironment({
 });
 
 // Initialize platform providers
-const localStorage = new LocalIndexedDBProvider();
+// We no longer need localAuth or localStorage as Cloudflare providers encapsulate both patterns
 
 // Cloudflare-backed cloud auth
 const cloudAuth = new CloudflareAuthProvider(backendUrl);
-
-// For localAuth, we also use the CloudflareAuthProvider now to enforce security
-const localAuth = cloudAuth;
 
 const cloudStorage = new CloudflareStorageProvider();
 cloudStorage.configure(
@@ -47,10 +43,8 @@ gitRemoteSync.configureAuth(() => cloudAuth.getToken());
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <CognitivePlatformProvider
-      localAuth={localAuth}
-      localStorage={localStorage}
-      cloudAuth={cloudAuth}
-      cloudStorage={cloudStorage}
+      auth={cloudAuth}
+      storage={cloudStorage}
     >
       <App />
     </CognitivePlatformProvider>

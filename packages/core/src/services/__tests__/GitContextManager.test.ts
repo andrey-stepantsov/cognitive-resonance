@@ -24,10 +24,10 @@ describe('GitContextManager', () => {
     gitManager = new GitContextManager('test-session-123');
     
     // Mock the raw vfs promised methods we use
-    vfs.promises.stat = vi.fn().mockResolvedValue({});
-    vfs.promises.mkdir = vi.fn().mockResolvedValue(true);
-    vfs.promises.writeFile = vi.fn().mockResolvedValue(true);
-    vfs.promises.readFile = vi.fn().mockResolvedValue('mock file content');
+    vfs!.promises.stat = vi.fn().mockResolvedValue({});
+    vfs!.promises.mkdir = vi.fn().mockResolvedValue(true);
+    vfs!.promises.writeFile = vi.fn().mockResolvedValue(true);
+    vfs!.promises.readFile = vi.fn().mockResolvedValue('mock file content');
   });
 
   it('instantiates correctly with correct directories', () => {
@@ -39,7 +39,7 @@ describe('GitContextManager', () => {
   describe('Session Repository Operations', () => {
     it('initializes the session repository', async () => {
       await gitManager.initRepo();
-      expect(vfs.promises.stat).toHaveBeenCalledWith('/test-session-123');
+      expect(vfs!.promises.stat).toHaveBeenCalledWith('/test-session-123');
       expect(git.init).toHaveBeenCalledWith(expect.objectContaining({
         dir: '/test-session-123'
       }));
@@ -49,7 +49,7 @@ describe('GitContextManager', () => {
       await gitManager.initRepo();
       await gitManager.stageFile('test.md', '# Hello World');
       
-      expect(vfs.promises.writeFile).toHaveBeenCalledWith('/test-session-123/test.md', '# Hello World', 'utf8');
+      expect(vfs!.promises.writeFile).toHaveBeenCalledWith('/test-session-123/test.md', '# Hello World', 'utf8');
       expect(git.add).toHaveBeenCalledWith(expect.objectContaining({
         dir: '/test-session-123',
         filepath: 'test.md'
@@ -69,7 +69,7 @@ describe('GitContextManager', () => {
   describe('Global Workspace Repository Operations', () => {
     it('initializes the global repository', async () => {
       await gitManager.initGlobalRepo();
-      expect(vfs.promises.stat).toHaveBeenCalledWith('/global-workspace');
+      expect(vfs!.promises.stat).toHaveBeenCalledWith('/global-workspace');
       expect(git.init).toHaveBeenCalledWith(expect.objectContaining({
         dir: '/global-workspace'
       }));
@@ -79,7 +79,7 @@ describe('GitContextManager', () => {
       await gitManager.initGlobalRepo();
       await gitManager.stageGlobalFile('global.md', '# Global Standard');
       
-      expect(vfs.promises.writeFile).toHaveBeenCalledWith('/global-workspace/global.md', '# Global Standard', 'utf8');
+      expect(vfs!.promises.writeFile).toHaveBeenCalledWith('/global-workspace/global.md', '# Global Standard', 'utf8');
       expect(git.add).toHaveBeenCalledWith(expect.objectContaining({
         dir: '/global-workspace',
         filepath: 'global.md'
@@ -134,19 +134,19 @@ describe('GitContextManager', () => {
 
   describe('Error Handling', () => {
     it('handles stat non-ENOENT error during initRepo', async () => {
-      vfs.promises.stat = vi.fn().mockRejectedValue(new Error('Generic Error'));
+      vfs!.promises.stat = vi.fn().mockRejectedValue(new Error('Generic Error'));
       await expect(gitManager.initRepo()).rejects.toThrow('Generic Error');
     });
 
     it('handles mkdir ENOENT during initRepo', async () => {
-      vfs.promises.stat = vi.fn().mockRejectedValue({ code: 'ENOENT' });
-      vfs.promises.mkdir = vi.fn().mockResolvedValue(true);
+      vfs!.promises.stat = vi.fn().mockRejectedValue({ code: 'ENOENT' });
+      vfs!.promises.mkdir = vi.fn().mockResolvedValue(true);
       await gitManager.initRepo();
-      expect(vfs.promises.mkdir).toHaveBeenCalledWith('/test-session-123');
+      expect(vfs!.promises.mkdir).toHaveBeenCalledWith('/test-session-123', { recursive: true });
     });
 
     it('handles stageFile error', async () => {
-      vfs.promises.writeFile = vi.fn().mockRejectedValue(new Error('Write Error'));
+      vfs!.promises.writeFile = vi.fn().mockRejectedValue(new Error('Write Error'));
       await expect(gitManager.stageFile('test.md', 'content')).rejects.toThrow('Write Error');
     });
 

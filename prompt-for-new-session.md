@@ -1,19 +1,14 @@
-# Next Session Objective: CLI Live Artefact Integration & Feature Specific E2E
+In our previous session, we successfully conquered the multi-terminal **CLI Background Sync Integration**:
+1. We wired the `cr chat` interactive REPL loop to automatically push and pull `EventRecords` to/from the Cloudflare Edge Worker API using native `node:fs` token persistence (`.cr/token`) without freezing the user's keystrokes.
+2. We proved that two separate headless terminals running `cr chat` could send text messages and trigger AI generations natively across the Local-First Event Stream utilizing the `play_coop.sh` multi-terminal script.
+3. We fixed the environment hierarchy (`CR_CLOUD_URL`) and D1 schema provision scripts to ensure the `Miniflare` local Edge mock handles real tests flawlessly without routing to production accidentally.
+4. We verified 100% test coverage across `@cr/cli` E2E scripts, and `@cr/core` Vitest suites (242/242 tests passing), isolating all local Mock footprints into a dedicated `.cr/` git-ignored directory.
+5. We determined that the previous Node.js `cr serve` Express app does not provide 1:1 functional parity with the comprehensive Cloudflare Edge Worker architecture (e.g. Session fork mechanisms, WebSockets, Git Smart HTTP, Vectorize components).
 
-## Current State
-We have successfully completed the foundational components of **Phase 15: CLI Completeness & Multi-Agent Routing**. 
-- The `@` Mention DSL parser was built into `@cr/core`.
-- The CLI (`apps/cli/src/commands/chat.ts`) was refactored to support distinct AI "Gem" profiles (`Architect`, `Coder`) and autonomous **AI-to-AI Hand-offs**.
-- We added the **`/exec [cmd]`** runtime capability.
-- The programmatic 3-player E2E test (`e2e_multi_agent_runtime.test.ts`) covering these mechanisms passes successfully.
+Our next major milestone is **Transitioning to the PWA Visual Architecture**:
+1. The legacy Appwrite Auth was successfully stripped from the PWA earlier.
+2. We must adapt the React PWA frontend (`useCognitiveResonance.ts` and UI Context) to talk exclusively to the new Event-Sourced Miniflare/Cloudflare D1 backend by connecting to standard REST endpoints using API keys.
+3. We need to implement UI views inside the PWA to natively parse and render the synced `[Remote Artefact]` objects, transforming them into the beautiful visual code/markdown editor we envisioned initially!
+4. By using the pure `Miniflare / wrangler dev` simulator locally, we sidestep all heavy Docker / native dependencies for vector databases while ensuring pure local functional development loop parity before eventually deploying to Cloudflare Workers.
 
-## Next Steps
-In this new session, we need to implement the **Live Artefact Generation** flow so the 3-player generative setup can be run live by a user in the terminal, bridging the AI's logic strictly to the local repository. 
-
-Please refer to the updated architecture plans to execute the following:
-1. **Artefact Translation**: Update the Gemini schema in `chat.ts` to allow the Coder to output a `files` array. When files are received iteratively, save them to the workspace and automatically trigger `ArtefactManager.createDraft()` to commit the proposal.
-2. **Promote Command**: Implement a `/promote` command in the CLI to merge the AI's drafts.
-3. **Feature-Specific E2E Scripts**: Build explicit, modular test scenarios for:
-   - The Artefact Lifecycle (`e2e_artefact_lifecycle.test.ts`)
-   - Session Forking / Cloning logic (`e2e_session_forking.test.ts`)
-   - The Daemon Sync offline queuing (`e2e_daemon_sync.test.ts`).
+Please analyze the current structure in `packages/core` and `apps/pwa` to begin laying the groundwork for the Frontend React integration!

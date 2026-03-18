@@ -8,7 +8,8 @@ import { logger } from '../utils/logger';
 import chokidar from 'chokidar';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ArtefactManager, GitContextManager } from '@cr/core';
+import { ArtefactManager } from '@cr/core/src/services/ArtefactManager';
+import { GitContextManager } from '@cr/core/src/services/GitContextManager';
 
 // removed the broken outer wrapper
 export function createServerApp(dbEngine: DatabaseEngine, clients: Set<WebSocket>) {
@@ -36,6 +37,16 @@ export function createServerApp(dbEngine: DatabaseEngine, clients: Set<WebSocket
     }
   });
 
+  app.get('/api/events', (req, res) => {
+    try {
+      const since = parseInt(req.query.since as string || '0', 10);
+      const events = dbEngine.query('SELECT * FROM events WHERE timestamp > ? ORDER BY timestamp ASC LIMIT 500', [since]);
+      res.json({ events });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post('/api/events', (req, res) => {
     try {
       const event: EventRecord = req.body;
@@ -46,6 +57,24 @@ export function createServerApp(dbEngine: DatabaseEngine, clients: Set<WebSocket
       
       res.json({ id });
     } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/events/batch', (req, res) => {
+    try {
+      const body = req.body;
+      if (!body || !Array.isArray(body.events)) {
+        return res.status(400).json({ error: 'Expected { events: [] }' });
+      }
+      for (const ev of body.events) {
+        // Use insertRemoteEvent to INSERT OR IGNORE and set sync_status = 'SYNCED'
+        dbEngine.insertRemoteEvent(ev);
+        broadcastEvent(dbEngine.get('SELECT * FROM events WHERE id = ?', [ev.id]));
+      }
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error('[Batch Error]', err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -88,7 +117,12 @@ export function registerServeCommand(program: Command) {
     .option('-p, --port <port>', 'Port to listen on', '3000')
     .action((options, command) => {
       const globalOpts = command.parent?.opts() || {};
-      const dbPath = globalOpts.db || 'cr.sqlite';
+      const defaultDbPath = path.join(path.resolve(process.cwd(), '.cr'), 'central.sqlite');
+      const dbPath = program.opts().db || defaultDbPath;
+      
+      if (dbPath === defaultDbPath && !fs.existsSync(path.resolve(process.cwd(), '.cr'))) {
+          fs.mkdirSync(path.resolve(process.cwd(), '.cr'), { recursive: true });
+      }
       
       const dbEngine = new DatabaseEngine(dbPath);
       const clients = new Set<WebSocket>();
@@ -110,45 +144,8 @@ export function registerServeCommand(program: Command) {
         logger.info(`[Cognitive Resonance] WebSocket listening on ws://localhost:${port}`);
         logger.info(`[Cognitive Resonance] Using database at ${dbPath}`);
         
-        // Initialize File Watcher
-        const artefactManager = new ArtefactManager('local-session', fs, process.cwd());
-        
-        const watcher = chokidar.watch(process.cwd(), {
-          ignored: [/(^|[\/\\])\../, /node_modules/, /dist/, /build/, /\.cr-cli-token/, /cr\.sqlite.*/],
-          persistent: true,
-          ignoreInitial: true
-        });
-
-        watcher.on('change', async (filepath) => {
-          try {
-            const relativePath = path.relative(process.cwd(), filepath);
-            const content = fs.readFileSync(filepath, 'utf8');
-            const sha = await artefactManager.commitDirect(relativePath, content, 'Local Development');
-            
-            const headId = dbEngine.get('SELECT head_event_id FROM sessions WHERE id = ?', ['local-session'])?.head_event_id || null;
-            
-            const eventId = dbEngine.appendEvent({
-              session_id: 'local-session',
-              timestamp: Date.now(),
-              actor: 'Local Development',
-              type: 'MANUAL_OVERRIDE',
-              payload: JSON.stringify({ filepath: relativePath, sha }),
-              previous_event_id: headId
-            });
-            
-            const eventRecord = dbEngine.get('SELECT * FROM events WHERE id = ?', [eventId]);
-            for (const client of clients) {
-              if (client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify({ type: 'event', event: eventRecord }));
-              }
-            }
-            logger.info(`[Sync Daemon] Watched file changed: ${relativePath}, committed as ${sha}`);
-          } catch (err: any) {
-            logger.error(`[Sync Daemon] Failed to process file change ${filepath}: ${err.message}`);
-          }
-        });
-
-        logger.info(`[Cognitive Resonance] File watcher initialized for ${process.cwd()}`);
+        // Initialize File Watcher - Disabled for Central Edge Server to prevent infinite fs.writeFile mtime loops
+        logger.info(`[Cognitive Resonance] File watcher disabled for edge node.`);
 
         // Start Background Sync Daemon
         const syncIntervalMs = 5000;
@@ -163,14 +160,14 @@ export async function runSyncDaemon(dbEngine: DatabaseEngine, clients: Set<WebSo
    try {
       const fs = require('fs');
       const path = require('path');
-      const TOKEN_FILE_PATH = path.resolve(process.cwd(), '.cr-cli-token');
+      const TOKEN_FILE_PATH = path.resolve(process.cwd(), '.cr', 'token');
       
       let token: string | null = null;
       if (fs.existsSync(TOKEN_FILE_PATH)) {
          token = fs.readFileSync(TOKEN_FILE_PATH, 'utf-8').trim();
       }
-      
-      const backendUrl = process.env.VITE_CLOUDFLARE_WORKER_URL || process.env.CR_CLOUD_URL || 'http://localhost:8787';
+            // Try local override first, then Vite production env, then fallback
+       const backendUrl = process.env.CR_CLOUD_URL || process.env.VITE_CLOUDFLARE_WORKER_URL || 'http://localhost:8787';
       const baseUrl = backendUrl.replace(/\/$/, '');
       
       const headers = new Headers({ 'Content-Type': 'application/json' });
@@ -248,10 +245,10 @@ export async function runSyncDaemon(dbEngine: DatabaseEngine, clients: Set<WebSo
             }
          }
       } else {
-         if (Math.random() < 0.05) logger.error(`[Sync Daemon] Edge Pull Failed: ${pullRes.status}`);
+         logger.error(`[Sync Daemon] Edge Pull Failed: ${pullRes.status}`);
       }
       
    } catch (err: any) {
-      if (Math.random() < 0.02) logger.error(`[Sync Daemon] Offline or unreachable: ${err.message}`);
+      logger.error(`[Sync Daemon] Offline or unreachable: ${err.message}`);
    }
 }

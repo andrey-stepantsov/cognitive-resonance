@@ -194,6 +194,7 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
+    console.log(`[Edge Logger] ${request.method} ${path} (Auth: ${request.headers.get('Authorization') ? 'Yes' : 'No'})`);
 
     // --- CORS Preflight ---
     if (request.method === 'OPTIONS') {

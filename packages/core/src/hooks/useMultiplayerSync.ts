@@ -61,6 +61,19 @@ export function useMultiplayerSync({ workerUrl, sessionId, token, userName }: Us
           case 'chat':
             setMessages(prev => [...prev, data]);
             break;
+          case 'event':
+            if (data.event && data.event.type === 'ARTEFACT_DRAFT') {
+               const payload = typeof data.event.payload === 'string' ? JSON.parse(data.event.payload) : data.event.payload;
+               setMessages(prev => [...prev, {
+                  type: 'chat',
+                  senderId: 'SYSTEM',
+                  payload: { 
+                     role: 'model', 
+                     content: `[Remote Artefact] Draft proposed: ${payload.branch || 'unknown'} for ${payload.path}`
+                  }
+               }]);
+            }
+            break;
           case 'cursor':
             if (data.senderId) {
               setCursors(prev => ({

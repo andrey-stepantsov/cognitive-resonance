@@ -1,5 +1,5 @@
-import { IEvent } from '../interfaces/IEvents';
-import { SessionRecord } from '../interfaces/IStorageProvider';
+import type { IEvent } from '../interfaces/IEvents';
+import type { SessionRecord } from '../interfaces/IStorageProvider';
 
 export function reduceSessionState(events: IEvent[], sessionId: string): SessionRecord | undefined {
   if (!events || events.length === 0) return undefined;
@@ -56,6 +56,12 @@ export function reduceSessionState(events: IEvent[], sessionId: string): Session
         case 'ARTEFACT_PROPOSED':
         case 'ARTEFACT_PROMOTED':
           // Reserved for future artefact state projection
+          break;
+        case 'ARTEFACT_DRAFT':
+          state.data.messages.push({
+            role: 'model',
+            content: `[Remote Artefact] Draft proposed: ${payload.branch || 'unknown'} for ${payload.path}`
+          });
           break;
       }
     } catch (e) {

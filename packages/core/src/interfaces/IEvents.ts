@@ -1,4 +1,4 @@
-import { Message } from '../hooks/useCognitiveResonance';
+import type { Message } from '../hooks/useCognitiveResonance';
 
 export type EventType = 
   | 'SESSION_CREATED'

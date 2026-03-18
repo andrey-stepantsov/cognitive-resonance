@@ -9,6 +9,7 @@ export interface DraftProposal {
 
 export class ArtefactManager {
   private gitManager: GitContextManager;
+  private queue: Promise<any> = Promise.resolve();
 
   constructor(sessionId: string, customFs?: any, baseDir?: string) {
     this.gitManager = new GitContextManager(sessionId, customFs, baseDir);
@@ -21,89 +22,66 @@ export class ArtefactManager {
     await this.gitManager.initRepo();
   }
 
-  /**
-   * Proposes a new draft by branching off main, staging the file change, and committing.
-   */
   async proposeDraft(filepath: string, content: string, actor: string = 'Cognitive Resonance'): Promise<DraftProposal> {
-    await this.initIfNeeded();
+    return new Promise((resolve, reject) => {
+      this.queue = this.queue.then(async () => {
+        try {
+          await this.initIfNeeded();
+          const dir = this.gitManager.dir;
 
-    const dir = this.gitManager.dir;
+          const currentBranch = await this.gitManager.getCurrentBranch();
+          if (currentBranch !== 'main') {
+            await git.checkout({ fs: this.gitManager.fs, dir, ref: 'main' });
+          }
 
-    // Ensure we are on main before branching
-    const currentBranch = await this.gitManager.getCurrentBranch();
-    if (currentBranch !== 'main') {
-      await git.checkout({ fs: this.gitManager.fs, dir, ref: 'main' });
-    }
+          const timestamp = Date.now();
+          const safeFilepath = filepath.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+          const branchName = `draft/${safeFilepath}/${timestamp}`;
 
-    // Branch off main
-    const timestamp = Date.now();
-    const safeFilepath = filepath.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    const branchName = `draft/${safeFilepath}/${timestamp}`;
+          await git.branch({ fs: this.gitManager.fs, dir, ref: branchName, checkout: true });
 
-    await git.branch({ fs: this.gitManager.fs, dir, ref: branchName, checkout: true });
+          const fullPath = `${dir}/${filepath}`;
+          const parts = fullPath.split('/');
+          parts.pop();
+          const fileDir = parts.join('/');
+          
+          try {
+            await this.gitManager.fs.promises.stat(fileDir);
+          } catch {
+            await this.gitManager.fs.promises.mkdir(fileDir, { recursive: true });
+          }
 
-    // Ensure the directory for the file exists
-    const fullPath = `${dir}/${filepath}`;
-    const parts = fullPath.split('/');
-    parts.pop();
-    const fileDir = parts.join('/');
-    
-    // Create intermediate directories if they don't exist
-    try {
-      await this.gitManager.fs.promises.stat(fileDir);
-    } catch {
-      await this.gitManager.fs.promises.mkdir(fileDir, { recursive: true });
-    }
-
-    await this.gitManager.stageFile(filepath, content);
-    const commitSha = await git.commit({
-      fs: this.gitManager.fs,
-      dir,
-      author: {
-        name: actor,
-        email: 'system@cr.local'
-      },
-      message: `Draft proposal for ${filepath}`
+          await this.gitManager.stageFile(filepath, content);
+          const commitSha = await git.commit({
+            fs: this.gitManager.fs, dir,
+            author: { name: actor, email: 'system@cr.local' },
+            message: `Draft proposal for ${filepath}`
+          });
+          resolve({ branch: branchName, commitSha });
+        } catch (err) { reject(err); }
+      });
     });
-
-    return {
-      branch: branchName,
-      commitSha
-    };
   }
 
-  /**
-   * Promotes an approved draft by cleanly merging it into the permanent timeline (main).
-   */
   async promoteDraft(draftBranch: string, _filepath: string, actor: string = 'Human'): Promise<string> {
-    await this.initIfNeeded();
-    const dir = this.gitManager.dir;
+    return new Promise((resolve, reject) => {
+      this.queue = this.queue.then(async () => {
+        try {
+          await this.initIfNeeded();
+          const dir = this.gitManager.dir;
+          await git.checkout({ fs: this.gitManager.fs, dir, ref: 'main' });
 
-    // Checkout main
-    await git.checkout({ fs: this.gitManager.fs, dir, ref: 'main' });
+          await git.merge({
+            fs: this.gitManager.fs, dir, ours: 'main', theirs: draftBranch,
+            author: { name: actor, email: 'system@cr.local' }, fastForward: true
+          });
 
-    // Merge draft into main
-    try {
-      const mergeResult = await git.merge({
-        fs: this.gitManager.fs,
-        dir,
-        ours: 'main',
-        theirs: draftBranch,
-        author: {
-          name: actor,
-          email: 'system@cr.local'
-        },
-        fastForward: true
+          console.log(`[ArtefactManager] Promoted draft ${draftBranch} to main.`);
+          const headSha = await git.resolveRef({ fs: this.gitManager.fs, dir, ref: 'main' });
+          resolve(headSha);
+        } catch (err) { reject(err); }
       });
-
-      console.log(`[ArtefactManager] Promoted draft ${draftBranch} to main. Merge result:`, mergeResult);
-      
-      const headSha = await git.resolveRef({ fs: this.gitManager.fs, dir, ref: 'main' });
-      return headSha;
-    } catch (err) {
-      console.error(`[ArtefactManager] Failed to merge draft ${draftBranch}:`, err);
-      throw err;
-    }
+    });
   }
 
   /**
@@ -145,36 +123,26 @@ export class ArtefactManager {
     return patch;
   }
 
-  /**
-   * Directly stages and commits changes to the main branch.
-   * Useful for external modifications (e.g. IDE) via CLI.
-   */
   async commitDirect(filepath: string, content: string, actor: string = 'Local Development'): Promise<string> {
-    await this.initIfNeeded();
-    const dir = this.gitManager.dir;
+    return new Promise((resolve, reject) => {
+      this.queue = this.queue.then(async () => {
+        try {
+          await this.initIfNeeded();
+          const dir = this.gitManager.dir;
 
-    const currentBranch = await this.gitManager.getCurrentBranch();
-    if (currentBranch !== 'main') {
-      await git.checkout({ fs: this.gitManager.fs, dir, ref: 'main' });
-    }
+          const currentBranch = await this.gitManager.getCurrentBranch();
+          if (currentBranch !== 'main') {
+            await git.checkout({ fs: this.gitManager.fs, dir, ref: 'main' });
+          }
 
-    try {
-      await this.gitManager.stageFile(filepath, content);
-      const commitSha = await git.commit({
-        fs: this.gitManager.fs,
-        dir,
-        author: {
-          name: actor,
-          email: 'local@cr.local'
-        },
-        message: `Manual update to ${filepath}`
+          await this.gitManager.stageFile(filepath, content);
+          const commitSha = await git.commit({
+            fs: this.gitManager.fs, dir, author: { name: actor, email: 'local@cr.local' },
+            message: `Manual update to ${filepath}`
+          });
+          resolve(commitSha);
+        } catch (err) { reject(err); }
       });
-
-      console.log(`[ArtefactManager] Direct commit applied for ${filepath} (SHA: ${commitSha})`);
-      return commitSha;
-    } catch (err) {
-      console.error(`[ArtefactManager] Failed to commitDirect for ${filepath}:`, err);
-      throw err;
-    }
+    });
   }
 }

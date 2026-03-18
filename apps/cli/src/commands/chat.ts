@@ -7,10 +7,14 @@ import * as crypto from 'crypto';
 import { DatabaseEngine } from '../db/DatabaseEngine';
 import { parseCommand, CommandAction, parseMentions } from '@cr/core/src/services/CommandParser';
 import { GemProfiles } from '../services/GemRegistry';
+import { ArtefactManager } from '@cr/core/src/services/ArtefactManager';
 import { exec } from 'child_process';
+import * as vm from 'vm';
+import { runSyncDaemon } from './serve';
 
 // Path to store the CLI authentication token
-const TOKEN_FILE_PATH = path.resolve(process.cwd(), '.cr-cli-token');
+const CR_DIR = path.resolve(process.cwd(), '.cr');
+const TOKEN_FILE_PATH = path.join(CR_DIR, 'token');
 
 // Helper to reliably read from stdin if piped
 async function readStdin(): Promise<string> {
@@ -30,11 +34,14 @@ function getCliToken(): string | null {
   try { if (fs.existsSync(TOKEN_FILE_PATH)) return fs.readFileSync(TOKEN_FILE_PATH, 'utf-8').trim(); } catch (e) {} return null;
 }
 function saveCliToken(token: string) {
-  try { fs.writeFileSync(TOKEN_FILE_PATH, token, { mode: 0o600 }); } catch (e) { console.error('[Error] Failed to save authentication token:', e); }
+  try { 
+     if (!fs.existsSync(CR_DIR)) fs.mkdirSync(CR_DIR, { recursive: true });
+     fs.writeFileSync(TOKEN_FILE_PATH, token, { mode: 0o600 }); 
+  } catch (e) { console.error('[Error] Failed to save authentication token:', e); }
 }
 
 async function backendFetch(endpoint: string, options: RequestInit = {}): Promise<Response> {
-  const backendUrl = process.env.VITE_CLOUDFLARE_WORKER_URL || 'http://localhost:8787';
+  const backendUrl = process.env.CR_CLOUD_URL || process.env.VITE_CLOUDFLARE_WORKER_URL || 'http://localhost:8787';
   const url = `${backendUrl.replace(/\/$/, '')}${endpoint}`;
   const headers = new Headers(options.headers as any);
   headers.set('Content-Type', 'application/json');
@@ -93,7 +100,13 @@ export function registerChatCommands(program: Command) {
     .option('-m, --model <model>', 'The Gemini model to use', 'gemini-2.5-flash')
     .option('-s, --session <id>', 'Load and append to an existing session ID')
     .action(async (message, options) => {
-      const dbPath = program.opts().db || 'cr.sqlite';
+      const defaultDbPath = path.join(path.resolve(process.cwd(), '.cr'), 'cr.sqlite');
+      const dbPath = program.opts().db || defaultDbPath;
+      
+      if (dbPath === defaultDbPath && !fs.existsSync(path.resolve(process.cwd(), '.cr'))) {
+          fs.mkdirSync(path.resolve(process.cwd(), '.cr'), { recursive: true });
+      }
+      
       const db = new DatabaseEngine(dbPath);
       
       const apiKey = process.env.CR_GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
@@ -132,7 +145,16 @@ export function registerChatCommands(program: Command) {
           properties: {
             reply: { type: 'STRING', description: 'Your markdown-formatted response to the user' },
             dissonanceScore: { type: 'INTEGER', description: '0-100 indicating cognitive load' },
-            nodes: { type: 'ARRAY', items: { type: 'OBJECT', properties: { id: { type: 'STRING' }, label: { type: 'STRING' } } } }
+            nodes: { type: 'ARRAY', items: { type: 'OBJECT', properties: { id: { type: 'STRING' }, label: { type: 'STRING' } } } },
+            files: {
+              type: 'ARRAY',
+              description: 'Optional list of files to create or update',
+              items: {
+                type: 'OBJECT',
+                properties: { path: { type: 'STRING', description: 'Relative file path' }, content: { type: 'STRING', description: 'Full file content' } },
+                required: ['path', 'content']
+              }
+            }
           },
           required: ['reply', 'dissonanceScore']
         };
@@ -156,6 +178,27 @@ export function registerChatCommands(program: Command) {
           payload: JSON.stringify({ text: responsePayload.reply, dissonance: responsePayload.dissonanceScore }),
           previous_event_id: lastEventId
         });
+
+        if (responsePayload.files && Array.isArray(responsePayload.files)) {
+          const manager = new ArtefactManager(sessionId, fs, process.cwd());
+          for (const file of responsePayload.files) {
+             const filepath = path.resolve(process.cwd(), file.path);
+             fs.mkdirSync(path.dirname(filepath), { recursive: true });
+             fs.writeFileSync(filepath, file.content);
+             const draft = await manager.proposeDraft(file.path, file.content, options.model);
+             console.log(`\n[ArtefactManager] Draft proposed: ${draft.branch} for ${file.path}`);
+             
+             lastEventId = db.appendEvent({
+               session_id: sessionId,
+               timestamp: Date.now(),
+               actor: 'SYSTEM',
+               type: 'ARTEFACT_DRAFT',
+               payload: JSON.stringify({ path: file.path, branch: draft.branch, commitSha: draft.commitSha }),
+               previous_event_id: lastEventId
+             });
+          }
+        }
+
         db.close();
 
         if (options.format === 'json') {
@@ -187,11 +230,74 @@ export function registerChatCommands(program: Command) {
     
     const schema = {
       type: 'OBJECT',
-      properties: { reply: { type: 'STRING' }, dissonanceScore: { type: 'INTEGER' } },
+      properties: { 
+        reply: { type: 'STRING' }, 
+        dissonanceScore: { type: 'INTEGER' },
+        files: {
+          type: 'ARRAY',
+          items: {
+            type: 'OBJECT',
+            properties: { path: { type: 'STRING' }, content: { type: 'STRING' } },
+            required: ['path', 'content']
+          }
+        }
+      },
       required: ['reply', 'dissonanceScore']
     };
 
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: 'cr> ' });
+    
+    // Non-blocking native rendering for incoming events
+    const handleIncomingLiveEvent = (ev: any) => {
+      readline.clearLine(process.stdout, 0);
+      readline.cursorTo(process.stdout, 0);
+      
+      if (ev.type === 'USER_PROMPT') {
+        const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
+        console.log(`\x1b[36m[Remote User @${ev.actor}]\x1b[0m ${payload.text}`);
+        chatHistory.push({ role: 'user', content: payload.text });
+      } else if (ev.type === 'AI_RESPONSE') {
+        const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
+        console.log(`\n🤖 [@${ev.actor}] ${payload.text}\n`);
+        chatHistory.push({ role: 'assistant', content: payload.text });
+      } else if (ev.type === 'ARTEFACT_DRAFT') {
+        const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
+        console.log(`[Remote Artefact] Draft proposed: ${payload.branch} for ${payload.path}`);
+      } else if (ev.type === 'RUNTIME_OUTPUT') {
+        const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
+        console.log(`[Remote System Exec Output]:\n${payload.text}`);
+      }
+      
+      if (!lastEventId || ev.id > lastEventId) {
+         lastEventId = ev.id;
+      }
+      
+      rl.prompt(true);
+    };
+
+    const mockWs = {
+      readyState: 1, // WebSocket.OPEN
+      send: (msg: string) => {
+        try {
+          const data = JSON.parse(msg);
+          if (data.type === 'event' && data.event.session_id === sessionId) {
+             handleIncomingLiveEvent(data.event);
+          }
+        } catch(e) {}
+      }
+    } as any;
+    const mockClients = new Set<any>([mockWs]);
+    
+    const silentLogger = {
+      info: () => {},
+      error: (msg: string) => { console.error(`\x1b[31m${msg}\x1b[0m`); }
+    };
+
+    console.log(`[System] Background Sync Daemon started. Connecting to Edge...`);
+    // Run immediately once, then interval
+    runSyncDaemon(db, mockClients, silentLogger);
+    const syncIntervalId = setInterval(() => runSyncDaemon(db, mockClients, silentLogger), 5000);
+
     rl.prompt();
 
     rl.on('line', async (line) => {
@@ -200,27 +306,57 @@ export function registerChatCommands(program: Command) {
       if (text === '/exit' || text === '/quit') { rl.close(); return; }
 
       if (text.startsWith('/exec ')) {
-        const cmd = text.slice(6);
+        const cmd = text.slice(6).trim();
         console.log(`[System] Executing: ${cmd}`);
-        exec(cmd, { cwd: process.cwd() }, (error: any, stdout: string, stderr: string) => {
-          let output = '';
-          if (stdout) output += stdout;
-          if (stderr) output += '\nError: ' + stderr;
-          if (error) output += '\nExit Code: ' + error.code;
-          
-          console.log(output);
-          chatHistory.push({ role: 'user', content: `[System Exec Output]:\n${output}` });
-          const execEventId = db.appendEvent({
+        
+        const execEventId = (outputStr: string) => {
+          console.log(outputStr);
+          chatHistory.push({ role: 'user', content: `[System Exec Output]:\n${outputStr}` });
+          const newId = db.appendEvent({
             session_id: sessionId,
             timestamp: Date.now(),
             actor: 'SYSTEM',
             type: 'RUNTIME_OUTPUT',
-            payload: JSON.stringify({ text: output }),
+            payload: JSON.stringify({ text: outputStr }),
             previous_event_id: lastEventId
           });
-          lastEventId = execEventId;
+          lastEventId = newId;
           rl.prompt();
-        });
+        };
+
+        if (cmd.startsWith('node ')) {
+          const parts = cmd.split(' ');
+          const scriptFile = parts[1];
+          const scriptArgs = parts.slice(2);
+          const filepath = path.resolve(process.cwd(), scriptFile);
+          
+          let output = '';
+          try {
+             const code = fs.readFileSync(filepath, 'utf8');
+             const context = vm.createContext({
+               console: {
+                 log: (...args: any[]) => { output += args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ') + '\n'; },
+                 error: (...args: any[]) => { output += 'Error: ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ') + '\n'; }
+               },
+               process: { argv: ['node', scriptFile, ...scriptArgs] },
+               Buffer: Buffer
+             });
+             vm.runInNewContext(code, context, { timeout: 5000 });
+             if (!output) output = '(Execution completed with no output)';
+             execEventId(output.trim());
+          } catch (err: any) {
+             execEventId(`Error executing script natively in Isolate sandbox: ${err.message}`);
+          }
+        } else {
+          exec(cmd, { cwd: process.cwd() }, (error: any, stdout: string, stderr: string) => {
+            let output = '';
+            if (stdout) output += stdout;
+            if (stderr) output += '\nError: ' + stderr;
+            if (error) output += '\nExit Code: ' + error.code;
+            
+            execEventId(output.trim() || '(No output)');
+          });
+        }
         return;
       }
 
@@ -376,6 +512,26 @@ export function registerChatCommands(program: Command) {
           });
           lastEventId = responseEventId;
 
+          if (response.files && Array.isArray(response.files)) {
+            const manager = new ArtefactManager(sessionId, fs, process.cwd());
+            for (const file of response.files) {
+               const filepath = path.resolve(process.cwd(), file.path);
+               fs.mkdirSync(path.dirname(filepath), { recursive: true });
+               fs.writeFileSync(filepath, file.content);
+               const draft = await manager.proposeDraft(file.path, file.content, activeActor);
+               console.log(`[ArtefactManager] Draft proposed: ${draft.branch} for ${file.path}`);
+               const draftEventId = db.appendEvent({
+                 session_id: sessionId,
+                 timestamp: Date.now(),
+                 actor: 'SYSTEM',
+                 type: 'ARTEFACT_DRAFT',
+                 payload: JSON.stringify({ path: file.path, branch: draft.branch, commitSha: draft.commitSha }),
+                 previous_event_id: lastEventId
+               });
+               lastEventId = draftEventId;
+            }
+          }
+
           // Check for handoffs
           const responseMentions = parseMentions(response.reply);
           const nextTargetGem = responseMentions.find(m => GemProfiles[m] && m !== activeActor);
@@ -396,6 +552,7 @@ export function registerChatCommands(program: Command) {
       }
       rl.prompt();
     }).on('close', () => {
+      clearInterval(syncIntervalId);
       console.log('\nSession ended.');
       db.close();
       process.exit(0);
