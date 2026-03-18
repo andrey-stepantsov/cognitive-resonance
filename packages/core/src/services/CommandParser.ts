@@ -169,6 +169,8 @@ export function parseCommand(input: string): CommandIntent | null {
 
   if (namespace === 'model') {
     if (verb === 'use') return { action: CommandAction.MODEL_USE, args, raw: input };
+    if (verb === 'ls') return { action: CommandAction.MODEL_USE, args: ['ls', ...args], raw: input };
+    if (!verb) return { action: CommandAction.MODEL_USE, args: [], raw: input };
   }
 
   if (namespace === 'gem') {
