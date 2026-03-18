@@ -245,7 +245,37 @@ export function registerChatCommands(program: Command) {
       required: ['reply', 'dissonanceScore']
     };
 
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: 'cr> ' });
+    const shellCommands = [
+      '/help', '/login', '/signup', '/session', '/session ls', '/session new', 
+      '/session clear', '/history', '/model', '/model use', '/gem ls', 
+      '/graph ls', '/graph search', '/graph stats', '/clear', '/archive',
+      '/recover', '/clone', '/exec', '/exit', '/quit'
+    ];
+    
+    const completer = (line: string) => {
+      const words = line.split(' ');
+      const currentWord = words[words.length - 1];
+      let hits: string[] = [];
+
+      if (currentWord.startsWith('@')) {
+         const term = currentWord.substring(1).toLowerCase();
+         const gemNames = Object.keys(GemProfiles);
+         hits = gemNames.filter(name => name.toLowerCase().startsWith(term)).map(n => `@${n}`);
+         return [hits, currentWord];
+      } else if (line.startsWith('/')) {
+         hits = shellCommands.filter(c => c.startsWith(line));
+         return [hits, line];
+      }
+
+      return [[], line];
+    };
+
+    const rl = readline.createInterface({ 
+      input: process.stdin, 
+      output: process.stdout, 
+      prompt: 'cr> ',
+      completer 
+    });
     
     // Non-blocking native rendering for incoming events
     const handleIncomingLiveEvent = (ev: any) => {
