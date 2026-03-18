@@ -7,7 +7,7 @@ const isServeCommand = process.argv.includes('serve');
 const fileTransport = pino.transport({
   target: 'pino-roll',
   options: {
-    file: path.resolve(process.cwd(), 'cr-daemon.log'),
+    file: path.resolve(process.cwd(), '.cr', 'cr-daemon.log'),
     size: '5m',
     mkdir: true,
   }

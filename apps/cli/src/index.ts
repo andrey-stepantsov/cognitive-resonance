@@ -25,7 +25,7 @@ program
   .name('cr')
   .description('Cognitive Resonance Command Line Interface')
   .version('1.0.0')
-  .option('-d, --db <path>', 'Global option: Path to SQLite database', 'cr.sqlite');
+  .option('-d, --db <path>', 'Global option: Path to SQLite database', '.cr/cr.sqlite');
 
 import { registerChatCommands } from './commands/chat';
 import { registerObserveCommands } from './commands/observe';
