@@ -393,7 +393,7 @@ export default function App() {
             </button>
           )}
           <button onClick={() => { clearApiKey(); app.setShowApiKeyModal(true); }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-300 bg-zinc-800/30 hover:bg-zinc-800 rounded border border-zinc-800 transition-colors" title="Change API Key">
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-300 bg-zinc-800/30 hover:bg-zinc-800 rounded border border-zinc-800 transition-colors" title="Change Gemini Key">
             🔑
           </button>
         </div>
