@@ -15,6 +15,7 @@ export type CommandAction =
   | 'LOGIN'
   | 'SIGNUP'
   | 'INVITE'
+  | 'WHOAMI'
 
   // History
   | 'HISTORY'
@@ -70,6 +71,7 @@ export const CommandAction = {
   LOGIN: 'LOGIN' as CommandAction,
   SIGNUP: 'SIGNUP' as CommandAction,
   INVITE: 'INVITE' as CommandAction,
+  WHOAMI: 'WHOAMI' as CommandAction,
   HISTORY: 'HISTORY' as CommandAction,
   MODEL_USE: 'MODEL_USE' as CommandAction,
   GEM_USE: 'GEM_USE' as CommandAction,
@@ -143,6 +145,7 @@ export function parseCommand(input: string): CommandIntent | null {
   if (namespace === 'clear') return { action: CommandAction.SESSION_CLEAR, args: parts.slice(1), raw: input };
   if (namespace === 'login') return { action: CommandAction.LOGIN, args: parts.slice(1), raw: input };
   if (namespace === 'signup') return { action: CommandAction.SIGNUP, args: parts.slice(1), raw: input };
+  if (namespace === 'whoami') return { action: CommandAction.WHOAMI, args: parts.slice(1), raw: input };
   if (namespace === 'invite') return { action: CommandAction.INVITE, args: parts.slice(1), raw: input };
   if (namespace === 'sync') return { action: CommandAction.GIT_SYNC, args: parts.slice(1), raw: input };
   if (namespace === 'push') return { action: CommandAction.GIT_PUSH, args: parts.slice(1), raw: input };

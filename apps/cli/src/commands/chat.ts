@@ -246,8 +246,8 @@ export function registerChatCommands(program: Command) {
     };
 
     const shellCommands = [
-      '/help', '/login', '/signup', '/session', '/session ls', '/session new', 
-      '/session clear', '/history', '/model', '/model use', '/gem ls', 
+      '/help', '/login', '/signup', '/whoami', '/session', '/session ls', '/session new', 
+      '/session clear', '/history', '/model', '/model use', '/model ls', '/gem ls', 
       '/graph ls', '/graph search', '/graph stats', '/clear', '/archive',
       '/recover', '/clone', '/exec', '/exit', '/quit'
     ];
@@ -478,6 +478,19 @@ export function registerChatCommands(program: Command) {
                 const data = await res.json() as any;
                 if (res.ok && data.token) { saveCliToken(data.token); console.log(`Success! Account created for ${email}`); }
                 else console.log(`Failed. ${data.error || 'Could not create account'}`);
+             } catch (err: any) { console.log(`Failed. Network error: ${err.message}`); }
+             break;
+          }
+          case CommandAction.WHOAMI: {
+             try {
+                process.stdout.write('[System] Checking authentication... ');
+                const res = await backendFetch('/api/auth/me', { method: 'GET' });
+                const data = await res.json() as any;
+                if (res.ok && data.user) {
+                   console.log(`\n  ✅ Logged in as: \x1b[36m${data.user.name}\x1b[0m (${data.user.email})`);
+                } else {
+                   console.log(`\n  ❌ Not logged in. Please use /login or /signup.`);
+                }
              } catch (err: any) { console.log(`Failed. Network error: ${err.message}`); }
              break;
           }
