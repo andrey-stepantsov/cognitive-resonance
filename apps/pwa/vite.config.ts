@@ -30,6 +30,18 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       strictPort: true,
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules/mermaid')) return 'vendor-mermaid';
+            if (id.includes('node_modules/d3')) return 'vendor-d3';
+            if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) return 'vendor-react';
+            if (id.includes('node_modules/@cr/core') || id.includes('node_modules/@cr/ui')) return 'cr-packages';
+          }
+        }
+      }
     }
   }
 })
