@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import * as readline from 'readline';
-import { initGemini, generateResponse } from '@cr/core/src/services/GeminiService';
+import { initGemini, generateResponse, fetchModels } from '@cr/core/src/services/GeminiService';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
