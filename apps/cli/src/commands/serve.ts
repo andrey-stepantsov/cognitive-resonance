@@ -186,7 +186,7 @@ export async function runSyncDaemon(dbEngine: DatabaseEngine, clients: Set<WebSo
          
          if (res.ok) {
             dbEngine.markEventsSynced(pendingEvents.map((e: any) => e.id));
-         } else {
+         } else if (res.status !== 401) {
             logger.error(`[Sync Daemon] Edge Push Failed: ${res.status} ${res.statusText}`);
          }
       }
@@ -244,7 +244,7 @@ export async function runSyncDaemon(dbEngine: DatabaseEngine, clients: Set<WebSo
                }
             }
          }
-      } else {
+      } else if (pullRes.status !== 401) {
          logger.error(`[Sync Daemon] Edge Pull Failed: ${pullRes.status}`);
       }
       
