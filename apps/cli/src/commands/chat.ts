@@ -276,6 +276,15 @@ export function registerChatCommands(program: Command) {
       prompt: 'cr> ',
       completer 
     });
+
+    // Intercept stdout once to prevent echoing keystrokes during secure password entry
+    // @ts-ignore
+    rl._writeToOutput = function _writeToOutput(stringToWrite: string) {
+       // @ts-ignore
+       if (rl.stdoutMuted && stringToWrite !== '\r\n' && stringToWrite !== '\n') return;
+       // @ts-ignore
+       readline.Interface.prototype._writeToOutput.call(this, stringToWrite);
+    };
     
     // Non-blocking native rendering for incoming events
     const handleIncomingLiveEvent = (ev: any) => {
@@ -394,8 +403,6 @@ export function registerChatCommands(program: Command) {
 
       const askSecure = (query: string): Promise<string> => {
         return new Promise((resolve) => {
-           // @ts-ignore
-           rl.stdoutMuted = true;
            rl.question(query, (password) => {
               // @ts-ignore
               rl.stdoutMuted = false;
@@ -403,14 +410,9 @@ export function registerChatCommands(program: Command) {
               resolve(password);
            });
            
-           // Intercept stdout to prevent echoing keystrokes
+           // Mute stdout AFTER the question text has been written to the console
            // @ts-ignore
-           rl._writeToOutput = function _writeToOutput(stringToWrite: string) {
-              // @ts-ignore
-              if (rl.stdoutMuted && stringToWrite !== '\r\n' && stringToWrite !== '\n') return;
-              // @ts-ignore
-              readline.Interface.prototype._writeToOutput.call(this, stringToWrite);
-           };
+           rl.stdoutMuted = true;
         });
       };
 
