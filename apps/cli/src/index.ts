@@ -29,6 +29,7 @@ program
 
 import { registerChatCommands } from './commands/chat';
 import { registerObserveCommands } from './commands/observe';
+import { registerMcpCommand } from './commands/mcp';
 
 // Register model 2 commands
 registerSimulateCommand(program);
@@ -39,6 +40,7 @@ registerGitCommands(program);
 registerChatCommands(program);
 registerObserveCommands(program);
 registerServeCommand(program);
+registerMcpCommand(program);
 
 program.parseAsync(process.argv).catch(err => {
   console.error('Fatal CLI Error:', err);

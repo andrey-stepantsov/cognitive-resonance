@@ -65,7 +65,7 @@ describe('CommandParser', () => {
 
   it('returns UNKNOWN for unmapped commands', () => {
     expect(parseCommand('/unknown command')).toEqual({ action: CommandAction.UNKNOWN, args: ['command'], raw: '/unknown command' });
-    expect(parseCommand('/model ls')).toEqual({ action: CommandAction.UNKNOWN, args: ['ls'], raw: '/model ls' });
+    expect(parseCommand('/fake_undefined_command')).toEqual({ action: CommandAction.UNKNOWN, args: [], raw: '/fake_undefined_command' });
     expect(parseCommand('/gem create')).toEqual({ action: CommandAction.UNKNOWN, args: ['create'], raw: '/gem create' });
     expect(parseCommand('/context add')).toEqual({ action: CommandAction.UNKNOWN, args: ['add'], raw: '/context add' });
     expect(parseCommand('/graph unknown')).toEqual({ action: CommandAction.UNKNOWN, args: ['unknown'], raw: '/graph unknown' });

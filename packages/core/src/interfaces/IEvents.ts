@@ -8,7 +8,10 @@ export type EventType =
   | 'PWA_RENAME'
   | 'PWA_ARCHIVE_TOGGLE'
   | 'PWA_DELETE'
-  | 'PWA_SNAPSHOT'; // Kept in type enum, but skipped in reducers based on user request
+  | 'PWA_SNAPSHOT' // Kept in type enum, but skipped in reducers based on user request
+  | 'ARTEFACT_PROPOSAL'
+  | 'ARTEFACT_KEYFRAME'
+  | 'PROJECT_CONFIG';
 
 export interface IEvent {
   event_id?: string;
@@ -38,4 +41,20 @@ export interface RenamePayload {
 
 export interface ArchivePayload {
   isArchived: boolean;
+}
+
+export interface ArtefactProposalPayload {
+  path: string;
+  patch: string; // The unified diff patch or full file content
+  isFullReplacement?: boolean;
+}
+
+export interface ArtefactKeyframePayload {
+  files: Record<string, string>; // path -> content map representing full snapshot
+}
+
+export interface ProjectConfigPayload {
+  projectId: string;
+  basePath: string; // e.g. "packages/core"
+  dependencies?: string[];
 }

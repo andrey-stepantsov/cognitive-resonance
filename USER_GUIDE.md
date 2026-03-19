@@ -65,7 +65,30 @@ cd packages/cloudflare-worker
 npm run deploy
 ```
 
-## 3. Command Line Interface (CLI) Usage
+## 3. Client Connection Topology
+
+When you first open the web application, you are prompted to select your connection topology: **Edge** or **Local**. This step strictly handles where your session data, chat history, and files are stored.
+
+### Connect via Edge
+The **Edge** mode connects your browser directly to the production Cloudflare database (D1). 
+- **Requirement:** You must enter the **Edge Auth Token** provided by your administrator.
+- **Why?** This token proves you are authorized to read and write to the central collaborative database. It has nothing to do with the AI—it simply guarantees secure database access.
+
+### Connect Local Daemon
+The **Local** mode connects your browser to a local file-syncing daemon running on your computer.
+- **Requirement:** You must be running the CLI daemon via `cr serve` in your terminal.
+- By default, this connects to `http://localhost:3000`. You do not need a password, because your browser is strictly talking to your own machine. All files and chat events are saved immediately to your local hard drive.
+
+## 4. Configuring the AI Engine (Gemini)
+
+Because Cognitive Resonance is designed for privacy and flexibility, **the AI generation happens directly from your browser**, not the Cloudflare backend.
+
+1. In the chat interface, you will see a prompt: **"Enter your Google Gemini API key to get started."**
+2. Obtain a free or paid API key from [Google AI Studio](https://aistudio.google.com/apikey) (it usually starts with `AIza...`).
+3. Paste that key into the input box and click **Save**.
+4. The application will securely store this key in your browser's local storage and use it exclusively to stream LLM responses directly from Google.
+
+## 5. Command Line Interface (CLI) Usage
 
 Cognitive Resonance is distributed with a high-performance CLI (`apps/cli`), functioning as both an interactive REPL and a headless execution utility. 
 
@@ -81,7 +104,27 @@ npm run dev --workspace=apps/cli
 | `cr serve` | Deploys the CLI backend (`DatabaseEngine.ts`) locally to proxy for `localhost:3000`. Acts as a synchronization event-source instance in the local-first structure. |
 | `/login` | Provisions credential mapping for interactive use via config files. Evaluates `.env` and `VITE_CR_API_KEY`. |
 | `/observe` | Toggles the real-time AI Cognitive State (Dissonance & Semantic Markers) visual output logs alongside the generated stream response. |
-| `/git pull` | Connects securely to the Cloudflare Worker API. Parses remote HEAD references and reconstructs incremental `isomorphic-git` packfiles synchronously merging them with local artifact topologies. |
+| `/exec` | Materializes the topological sandbox locally for the given repository and executes scripts natively with strict dependency linking. |
+| `/mcp` | Integrates and manages Model Context Protocol (MCP) toolchains across the current sandbox, enabling dynamic cross-tool interaction. |
+
+### Working in the CLI
+
+If you prefer the terminal, you can interact with Cognitive Resonance natively:
+
+1. **Define your AI Key:** Export your Gemini key to your terminal environment so the CLI can generate text:
+   ```bash
+   export CR_GEMINI_API_KEY="AIzaSy...your-actual-key"
+   ```
+2. **Start the Chat CLI:**
+   ```bash
+   npx tsx apps/cli/src/index.ts chat
+   ```
+3. **Register and Login:** Because the CLI syncs your files to the network, you must establish an identity:
+   ```text
+   cr> /signup myemail@domain.com password "My Name"
+   cr> /login myemail@domain.com password
+   ```
+   *Your login token will be saved to your local machine, and your subsequent commits and interactions will be securely signed under your name.*
 
 ### Headless Execution (CI/Scripting)
 The CLI exposes a machine-optimized execution paradigm designed explicitly for CI pipelines and pipe chains. 

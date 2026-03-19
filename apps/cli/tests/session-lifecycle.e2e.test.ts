@@ -74,6 +74,30 @@ describe('In-Process E2E: Session Lifecycle & Commands', () => {
         const db = new DatabaseEngine(dbPath);
         
         // Emulate readline typing directly
+        // Hit various interactive branches
+        mockRl.emit('line', '/login');
+        await new Promise(r => setTimeout(r, 20));
+        mockRl.emit('line', '/signup');
+        await new Promise(r => setTimeout(r, 20));
+        mockRl.emit('line', '/whoami');
+        await new Promise(r => setTimeout(r, 20));
+        mockRl.emit('line', '/history');
+        await new Promise(r => setTimeout(r, 20));
+        mockRl.emit('line', '/session clear');
+        await new Promise(r => setTimeout(r, 20));
+        mockRl.emit('line', '/gem ls');
+        await new Promise(r => setTimeout(r, 20));
+        mockRl.emit('line', '/graph ls');
+        await new Promise(r => setTimeout(r, 20));
+        mockRl.emit('line', '/graph search foo');
+        await new Promise(r => setTimeout(r, 20));
+        mockRl.emit('line', '/graph stats');
+        await new Promise(r => setTimeout(r, 20));
+        mockRl.emit('line', '/clear');
+        await new Promise(r => setTimeout(r, 20));
+        mockRl.emit('line', '/delete');
+        mockRl.emit('line', '/unknowncmd');
+
         mockRl.emit('line', '/archive');
         await new Promise(r => setTimeout(r, 20));
         

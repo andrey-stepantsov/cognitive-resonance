@@ -1,7 +1,7 @@
 # Cognitive Resonance Architecture
 
 ## Overview
-Cognitive Resonance is a multi-platform AI chat application built as an NPM Workspace monorepo. It features a Local-First Sync Topology, Git-backed asynchronous artifact editing, and an advanced AI Cognitive State engine.
+Cognitive Resonance is a multi-platform AI chat application built as an NPM Workspace monorepo. It features a Local-First Sync Topology, Event-Sourced artifact materialization, and an advanced AI Cognitive State engine.
 
 ## Workspaces Structure
 - **`apps/extension`**: The VS Code webview extension.
@@ -9,7 +9,7 @@ Cognitive Resonance is a multi-platform AI chat application built as an NPM Work
 - **`apps/cli`**: A robust Node.js Command Line Interface supporting both interactive REPL and headless batch execution modes.
 - **`packages/ui`**: Highly optimized React components (Markdown, Mermaid, Semantic Graphs, Dissonance Meters) designed to be responsive and native touch-aware.
 - **`packages/core`**: Core utilities including semantic search, state management, AI APIs, and Capacitor wrappers.
-- **`packages/backend`**: Contains integration providers and utilities to interact with Cloudflare (D1 Storage, Workers, R2) and Git synchronization.
+- **`packages/backend`**: Contains integration providers and utilities to interact with Cloudflare (D1 Storage, Workers, R2) and event-sourced synchronization.
 
 ## Key Architectural Pillars
 
@@ -19,14 +19,12 @@ The platform operates on a Local-First, Event-Sourced architecture. The local de
 - **Synchronization:** Both interfaces aggressively sync their events up to the Cloudflare Worker edge database (D1) using an incremental HTTP sync daemon (`runSyncDaemon` chunking events to `/api/events/batch`).
 - **Real-Time Data:** Live presence and inter-client events are broadcast instantaneously using Cloudflare Durable Objects and WebSockets.
 
-### 2. Git Object Storage Protocol
-Single-user and multiplayer asynchronous artifact document editing is backed seamlessly by Git.
-- **Client-Side:** The clients (PWA, extension, CLI) embed `isomorphic-git` to treat local artifacts as fully functional local virtual repositories.
-- **Cloudflare Edge Integration:** The Cloudflare Worker natively implements the Git Smart HTTP protocol (`git-receive-pack` and `git-upload-pack`).
-- **Storage:** During a `git push`, the worker intercepts payloads using `packParser.ts`, extracts the respective Git objects, and maps them as loose objects directly into Cloudflare R2 Storage.
-- **Dynamic Retrieval:** On `git pull`, the backend dynamically executes a BFS graph walk from requested SHAs, traversing commit→tree→blob refs. It dynamically builds the minimal packfile—handling `OFS_DELTA` and `REF_DELTA` chains—and streams it back.
-
-[Read the Deep Dive: Git Object Storage Protocol](docs/technical/git_object_storage.md)
+### 2. Local-First Event-Sourced Materializer
+Single-user and multiplayer asynchronous artifact document editing is backed seamlessly by an Event-Sourced Materialization Engine.
+- **Client-Side:** The clients (PWA, extension, CLI) rely entirely on `DatabaseEngine.ts` and `Materializer.ts` to rebuild state natively from a linear SQLite event log.
+- **Cloudflare Edge Integration:** While the Cloudflare Worker maintains the Git Smart HTTP protocol (`git-receive-pack` and `git-upload-pack`) for edge compatibility, the core sync mechanism relies on the event stream.
+- **Storage:** The core state is kept in the event log (SQLite locally, D1 on the Edge). For Git integration points, the worker intercepts payloads using `packParser.ts`, extracts the respective Git objects, and maps them as loose objects directly into Cloudflare R2 Storage.
+- **Dynamic Materialization:** Instead of `git pull`, the local client dynamically constructs physical workspaces from the event stream. The `Materializer` resolves strict dependencies on the fly during `/exec` commands, supporting multi-repo operations natively.
 
 ### 3. AI Cognitive State (Dissonance & Semantic Markers)
 The system tracks the AI's internal processing context natively.
@@ -47,7 +45,7 @@ The cloud backend runs entirely on Cloudflare:
 ## Tooling & Dependencies Decisions
 *   **Authentication:** HMAC derived local JWT verification → Edge API key fallback (Bearer token).
 *   **Vector Database:** Cloudflare Vectorize (via `@cf/baai/bge-base-en-v1.5` Workers AI model).
-*   **Version Control:** `isomorphic-git` client-side, Git Smart HTTP on Cloudflare Worker, loose objects in R2.
+*   **Version Control:** Local SQLite event log (`DatabaseEngine.ts`), Git Smart HTTP on Cloudflare Worker, loose objects in R2.
 *   **Multiplayer Collab:** WebSockets mediated by Cloudflare Durable Objects.
 *   **CLI Framework:** Customized interactive headless node execution pipeline capturing standard `process.stdin`.
 

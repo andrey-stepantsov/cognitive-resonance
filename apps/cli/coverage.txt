@@ -1,0 +1,181 @@
+
+ RUN  v1.6.1 /Users/stepants/dev/cognitive-resonance/apps/cli
+      Coverage enabled with v8
+
+ ✓ src/db/__tests__/DatabaseEngine.test.ts  (7 tests) 12ms
+stdout | tests/e2e-scenario.test.ts > Local E2E Scenario: User -> Session -> AI Chat > creates a user, session, and chats with AI
+
+--- E2E Flow Success! ---
+User  : Hello AI! Please reply with a short 1-sentence greeting for the user 'Test User'. What is 2+2?
+Agent : I am a mock response because the Gemini API key was missing. 2+2 is 4.
+-------------------------
+
+
+ ✓ tests/e2e-scenario.test.ts  (1 test) 4ms
+[System] Logging in...  ✓ tests/serve-daemon.test.ts  (5 tests) 5ms
+stdout | src/__tests__/e2e_auth_morphing.test.ts > E2E Auth Morphing & Secure Password Interceptor > securely mutates stdout when asking for password natively
+
+
+stdout | src/__tests__/e2e_auth_morphing.test.ts > E2E Auth Morphing & Secure Password Interceptor > morphs the REPL prompt dynamically after successful Edge Token validation
+Success! Logged in as NeuroMancer
+
+[System] Checking authentication...  ✓ src/__tests__/e2e_auth_morphing.test.ts  (3 tests) 118ms
+ ✓ src/__tests__/e2e_multi_agent_runtime.test.ts  (1 test) 243ms
+ ✓ tests/serve-sync-loop.test.ts  (2 tests) 105ms
+stdout | tests/e2e_multi_repo_materialization.test.ts > Multi-Repo Materialization Architecture E2E > should project multiple repositories and synthesize local symlinks accurately
+[Materializer] Synthesized cross-project link: @test/core -> apps/consumer
+
+ ✓ tests/e2e_multi_repo_materialization.test.ts  (1 test) 334ms
+ ✓ tests/admin-commands.test.ts  (4 tests) 306ms
+ ✓ src/__tests__/e2e_artefact_lifecycle.test.ts  (1 test) 32ms
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test REPL interactively in-process and achieve high coverage
+Welcome to Cognitive Resonance! Type /help for commands, or hit Ctrl+C to exit. (DB: /Users/stepants/dev/cognitive-resonance/apps/cli/tests/lifecycle-test-temp/lifecycle.sqlite, Session: 92ad94ae-5e11-41f5-85c6-a21b73f21286)
+[System] Background Sync Daemon started. Connecting to Edge...
+
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test REPL interactively in-process and achieve high coverage
+<empty line>
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test REPL interactively in-process and achieve high coverage
+[System] Session 92ad94ae-5e11-41f5-85c6-a21b73f21286 archived.
+
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test REPL interactively in-process and achieve high coverage
+[System] Session 92ad94ae-5e11-41f5-85c6-a21b73f21286 recovered.
+
+ ✓ tests/logger.test.ts  (3 tests) 66ms
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test REPL interactively in-process and achieve high coverage
+[System] Session cloned. You are now communicating in the new cloned session: d2b0a96b-b86b-4260-b43b-4d844343b8a1
+
+ ✓ tests/observe-cli.test.ts  (3 tests) 254ms
+ ✓ src/__tests__/e2e_session_forking.test.ts  (1 test) 94ms
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test REPL interactively in-process and achieve high coverage
+[System] Session history cleared.
+
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test REPL interactively in-process and achieve high coverage
+[System] Unrecognized command: /model foo
+
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test REPL interactively in-process and achieve high coverage
+[System] Current model: gemini-2.5-flash
+
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test REPL interactively in-process and achieve high coverage
+Failed. Network error: fetch failed
+
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test REPL interactively in-process and achieve high coverage
+[System] Usage: /login <email> [password]
+
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test REPL interactively in-process and achieve high coverage
+Failed. Network error: fetch failed
+
+stdout | tests/chat.test.ts > Chat Error States & Headless Stdin (In-Process) > should catch and print API errors cleanly during interactive REPL
+Welcome to Cognitive Resonance! Type /help for commands, or hit Ctrl+C to exit. (DB: /Users/stepants/dev/cognitive-resonance/apps/cli/tests/chat-err-temp/chat-err.sqlite, Session: afcfe6b9-acff-4269-a8c9-84a1d7d03677)
+[System] Background Sync Daemon started. Connecting to Edge...
+
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test REPL interactively in-process and achieve high coverage
+[System] Usage: /signup <email> [password] [name]
+
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test REPL interactively in-process and achieve high coverage
+[System] Invite is a PWA cloud feature (not supported in local SQLite yet).
+
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test REPL interactively in-process and achieve high coverage
+[System] Unrecognized command: /delete
+
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test REPL interactively in-process and achieve high coverage
+[System] Unrecognized command: /unknowncmd
+
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test REPL interactively in-process and achieve high coverage
+
+[System] Available Sessions (Archived sessions hidden):
+  - [36m92ad94ae-5e11-41f5-85c6-a21b73f21286[0m (Last Active: 2026-03-19T05:03:29.928Z)
+  - [36md2b0a96b-b86b-4260-b43b-4d844343b8a1[0m (Last Active: 2026-03-19T05:03:29.928Z)
+
+
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test REPL interactively in-process and achieve high coverage
+
+[System] Session 92ad94ae-5e11-41f5-85c6-a21b73f21286 is empty or does not exist. Starting fresh.
+
+stdout | tests/chat.test.ts > Chat Error States & Headless Stdin (In-Process) > should catch and print API errors cleanly during interactive REPL
+
+Session ended.
+
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test REPL interactively in-process and achieve high coverage
+
+🤖 [@gemini-2.5-flash] Mocked AI Response
+
+
+ ✓ tests/chat.test.ts  (2 tests) 165ms
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test REPL interactively in-process and achieve high coverage
+
+Session ended.
+
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test headless chat with existing session
+
+🤖 Cognitive Resonance
+---------------------
+Mocked AI Response
+
+[Dissonance: 42/100]
+
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test observe turns wrapper commands and portability
+Cloning https://github.com/octocat/Hello-World.git... DB Path: /Users/stepants/dev/cognitive-resonance/apps/cli/tests/lifecycle-test-temp/lifecycle.sqlite
+
+ ✓ src/__tests__/MCPServer.test.ts  (1 test) 49ms
+ ✓ src/__tests__/cli.test.ts  (2 tests) 4ms
+ ✓ tests/serve.test.ts  (5 tests) 62ms
+ ✓ src/__tests__/e2e_daemon_sync.test.ts  (1 test) 73ms
+stdout | tests/git.test.ts > Git Backend E2E > should git-clone and materialize into DB
+Cloning https://github.com/octocat/Hello-World.git... DB Path: /Users/stepants/dev/cognitive-resonance/apps/cli/tests/git-test-temp/git-test.sqlite
+
+ ✓ tests/serve-cli.test.ts  (1 test) 9ms
+ ✓ tests/index.test.ts  (1 test) 441ms
+stdout | tests/session-lifecycle.e2e.test.ts > In-Process E2E: Session Lifecycle & Commands > should test observe turns wrapper commands and portability
+Resolving submodules...
+Materializing code artefacts...
+✨ Successfully cloned into Entity 'https://github.com/octocat/Hello-World.git'
+Canonical Entity ID: 93b9c817-9ac5-4283-9d30-a16a269fa1f0
+Composite Artefact ID: 1eb82f84-e201-4e7b-ade8-1fdb1c5ec633
+No events found for session: 92ad94ae-5e11-41f5-85c6-a21b73f21286
+Packed entity https://github.com/octocat/Hello-World.git into /Users/stepants/dev/cognitive-resonance/apps/cli/tests/lifecycle-test-temp/bundle.json
+Unpacked bundle /Users/stepants/dev/cognitive-resonance/apps/cli/tests/lifecycle-test-temp/bundle.json successfully.
+
+ ✓ tests/session-lifecycle.e2e.test.ts  (3 tests) 1193ms
+stdout | tests/git.test.ts > Git Backend E2E > should git-clone and materialize into DB
+Resolving submodules...
+Materializing code artefacts...
+✨ Successfully cloned into Entity 'https://github.com/octocat/Hello-World.git'
+Canonical Entity ID: 023b5529-c8fc-4d8d-b8ae-031b06507a47
+Composite Artefact ID: 3e91ff69-c976-41d2-bd27-85fc3fde5f05
+
+ ✓ tests/git.test.ts  (2 tests) 1037ms
+
+ Test Files  21 passed (21)
+      Tests  50 passed (50)
+   Start at  22:03:28
+   Duration  2.53s (transform 697ms, setup 1ms, collect 4.54s, tests 4.61s, environment 3ms, prepare 2.54s)
+
+ % Coverage report from v8
+-------------------|---------|----------|---------|---------|-------------------
+File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
+-------------------|---------|----------|---------|---------|-------------------
+All files          |   81.46 |     68.4 |   81.25 |   81.46 |                   
+ src               |     100 |      100 |     100 |     100 |                   
+  index.ts         |     100 |      100 |     100 |     100 |                   
+ src/commands      |   79.59 |    62.56 |   69.23 |   79.59 |                   
+  assert.ts        |   85.29 |    57.14 |     100 |   85.29 | ...26,44-45,48-50 
+  chat.ts          |    61.7 |       50 |   27.27 |    61.7 | ...73-489,496-499 
+  git.ts           |   83.42 |    38.09 |     100 |   83.42 | ...15,165,167-168 
+  mcp.ts           |   57.69 |      100 |     100 |   57.69 | 14-24             
+  observe.ts       |    94.3 |    78.94 |     100 |    94.3 | 76,85-87,119-121  
+  portability.ts   |   95.45 |    33.33 |     100 |   95.45 | 12-14             
+  serve.ts         |   87.24 |       72 |     100 |   87.24 | ...66-167,215-224 
+  simulate.ts      |     100 |    84.21 |     100 |     100 | 32-42,52          
+  user.ts          |     100 |      100 |     100 |     100 |                   
+ src/controllers   |   81.91 |    67.92 |      50 |   81.91 |                   
+  ...ndHandlers.ts |   81.91 |    67.92 |      50 |   81.91 | ...56-157,185-186 
+ src/db            |    97.7 |    88.57 |     100 |    97.7 |                   
+  ...baseEngine.ts |    97.7 |    88.57 |     100 |    97.7 | 42-45             
+ src/services      |   64.56 |    44.44 |      75 |   64.56 |                   
+  GemRegistry.ts   |     100 |      100 |     100 |     100 |                   
+  MCPServer.ts     |   63.41 |    44.44 |      75 |   63.41 | ...13-114,119-122 
+ src/utils         |   89.14 |    87.87 |   83.33 |   89.14 |                   
+  api.ts           |   78.12 |       40 |   66.66 |   78.12 | 16-22             
+  logger.ts        |     100 |      100 |     100 |     100 |                   
+  prompt.ts        |   83.33 |     87.5 |      75 |   83.33 | 6-7,37-41         
+-------------------|---------|----------|---------|---------|-------------------

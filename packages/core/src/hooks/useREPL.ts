@@ -1,7 +1,6 @@
 import { useCognitiveResonance, type Message } from './useCognitiveResonance';
 import { CommandAction, parseCommand } from '../services/CommandParser';
 import { gitRemoteSync } from '@cr/backend';
-import { GitContextManager } from '../services/GitContextManager';
 import Fuse from 'fuse.js';
 import { useState } from 'react';
 
@@ -260,60 +259,15 @@ export function useREPL() {
            break;
         case CommandAction.GIT_SYNC:
         case CommandAction.GIT_PUSH: {
-           const sessionId = cr.ensureActiveSession();
-           injectSystemMessage('Pushing local virtual repository to Cloudflare Remote...');
-           try {
-             const git = new GitContextManager(sessionId);
-             await git.initRepo(); // Ensure it exists locally
-             
-             if (!(await git.hasCommits())) {
-               injectSystemMessage('Repository is empty. Creating initial commit...');
-               await git.stageFile('VirtualContext.md', '# Initial Context\n');
-               await git.commitChange('Initial repository state');
-             }
-
-             const currentBranch = await git.getCurrentBranch() || 'main';
-             await gitRemoteSync.pushToRemote(git.fs, git.dir, currentBranch);
-             injectSystemMessage('Successfully pushed packfile to Cloudflare! 🎉');
-           } catch (err: any) {
-             injectSystemMessage(`Failed to push to remote: ${err.message}`);
-           }
+           injectSystemMessage('Model 2: Local push has been replaced by automatic background Event Sourcing Sync daemon.');
            break;
         }
         case CommandAction.GIT_PULL: {
-           const sessionId = cr.ensureActiveSession();
-           injectSystemMessage('Pulling from Cloudflare Remote...');
-           try {
-             const git = new GitContextManager(sessionId);
-             await git.initRepo(); // Ensure it exists locally
-             
-             const currentBranch = await git.getCurrentBranch() || 'main';
-             await gitRemoteSync.pullFromRemote(git.fs, git.dir, currentBranch);
-             injectSystemMessage('Successfully pulled from Cloudflare! 📥');
-           } catch (err: any) {
-             injectSystemMessage(`Failed to pull from remote: ${err.message}`);
-           }
+           injectSystemMessage('Model 2: Local pull has been replaced by automatic background Event Sourcing Sync daemon.');
            break;
         }
         case CommandAction.GLOBAL_SYNC: {
-           const sessionId = cr.ensureActiveSession();
-           injectSystemMessage('Pushing global workspace repository to Cloudflare Remote...');
-           try {
-             const git = new GitContextManager(sessionId);
-             await git.initGlobalRepo(); // Ensure it exists locally
-             
-             if (!(await git.hasGlobalCommits())) {
-               injectSystemMessage('Global Repository is empty. Creating initial commit...');
-               await git.stageGlobalFile('SystemPrompt.md', '# Global System Prompt\n');
-               await git.commitGlobalChange('Initial global repository state');
-             }
-
-             const currentBranch = await git.getGlobalBranch() || 'main';
-             await gitRemoteSync.pushToRemote(git.fs, git.globalDir, currentBranch);
-             injectSystemMessage('Successfully pushed Global Workspace packfile! 🌍');
-           } catch (err: any) {
-             injectSystemMessage(`Failed to push to global remote: ${err.message}`);
-           }
+           injectSystemMessage('Model 2: Global repository sync has been replaced by automatic background Event Sourcing Sync daemon.');
            break;
         }
         case CommandAction.GLOBAL_EDIT: {

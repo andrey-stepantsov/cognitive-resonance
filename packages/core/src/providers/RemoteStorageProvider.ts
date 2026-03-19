@@ -14,7 +14,7 @@ export class RemoteStorageProvider implements IStorageProvider {
     this.auth = auth;
     this.apiUrl = typeof process !== 'undefined' && process.env?.VITE_CLOUDFLARE_WORKER_URL
         ? process.env.VITE_CLOUDFLARE_WORKER_URL
-        : (import.meta.env?.VITE_CLOUDFLARE_WORKER_URL || 'http://localhost:8787');
+        : ((import.meta as any).env?.VITE_CLOUDFLARE_WORKER_URL || 'http://localhost:8787');
   }
 
   isReady(): boolean {

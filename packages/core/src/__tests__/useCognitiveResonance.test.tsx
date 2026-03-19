@@ -323,62 +323,7 @@ describe('useCognitiveResonance', () => {
     expect(result.current.messages[1].content).toBe('[Generation Interrupted]');
   });
 
-  it('injects git context and mentions into payload', async () => {
-    vi.mocked(GeminiService.generateResponse).mockResolvedValue({
-      reply: 'Mocked response with git context', dissonanceScore: 0, dissonanceReason: '', semanticNodes: [], semanticEdges: []
-    } as any);
-    vi.mocked(GeminiService.fetchModels).mockResolvedValue([{ name: 'models/gemini-2.5-flash', displayName: 'Gemini 2.5 Flash' }]);
-    
-    // Setup git matrix mocks
-    mockGitContextManager.getStatusMatrix.mockResolvedValue([['local.txt', 1, 1, 0]]);
-    mockGitContextManager.getGlobalStatusMatrix.mockResolvedValue([['global.txt', 0, 1, 0]]);
-    mockGitContextManager.fs.promises.readFile.mockImplementation((path: string) => {
-      if (path.includes('local.txt')) return Promise.resolve('Local Content');
-      if (path.includes('global.txt')) return Promise.resolve('Global Content');
-      return Promise.resolve('');
-    });
 
-    const { result } = renderHook(() => useCognitiveResonance());
-
-    // Mock an active session to trigger the logic
-    act(() => {
-      // Create Session doesn't return ID anymore, we generate ID and call createSession
-      result.current.startNewSession(); // Set initial state
-    });
-
-    // We must manually trigger loadSession logic to set activeSessionId
-    await act(async () => {
-      mockStorage.loadSession.mockResolvedValueOnce({
-        id: 'active-123',
-        data: { messages: [], config: { model: 'gemini-2.5-flash', systemPrompt: '' } }
-      });
-      await result.current.handleLoadSession('active-123');
-    });
-
-    await waitFor(() => {
-      expect(result.current.availableModels.length).toBeGreaterThan(0);
-    });
-
-    // Send input to trigger git context fetching
-    act(() => {
-      result.current.setSelectedModel('gemini-2.5-flash');
-      result.current.setInput('Please review local.txt');
-    });
-
-    await act(async () => {
-      await result.current.handleSubmit({ preventDefault: vi.fn() } as unknown as React.FormEvent);
-    });
-
-    expect(GeminiService.generateResponse).toHaveBeenCalled();
-    const payloadMessages = vi.mocked(GeminiService.generateResponse).mock.calls[0][1];
-    const payloadPassed = payloadMessages[payloadMessages.length - 1].content;
-    
-    // Check for git injected texts
-    expect(payloadPassed).toContain('Current Session Virtual Repository Status');
-    expect(payloadPassed).toContain('Global Workspace Repository Status');
-    expect(payloadPassed).toContain('Local Content');
-    expect(payloadPassed).toContain('Global Content');
-  });
 
   it('intercepts @mentions and injects semantic markers into the payload', async () => {
     let payloadPassed = '';

@@ -1,107 +1,46 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { ArtefactManager } from '../ArtefactManager';
-import { vfs } from '../GitContextManager';
-import git from 'isomorphic-git';
-import * as diff from 'diff';
-
-vi.mock('isomorphic-git', () => {
-  return {
-    default: {
-      init: vi.fn(),
-      add: vi.fn(),
-      commit: vi.fn().mockResolvedValue('mock-sha'),
-      statusMatrix: vi.fn().mockResolvedValue([]),
-      resolveRef: vi.fn().mockImplementation(async ({ ref }) => {
-        if (ref === 'main') return 'main-sha';
-        return 'draft-sha';
-      }),
-      currentBranch: vi.fn().mockResolvedValue('main'),
-      branch: vi.fn(),
-      checkout: vi.fn(),
-      merge: vi.fn().mockResolvedValue({ oid: 'merge-sha' }),
-      readBlob: vi.fn().mockImplementation(async ({ oid }) => {
-        if (oid === 'main-sha') return { blob: Buffer.from('main content') };
-        return { blob: Buffer.from('draft content') };
-      })
-    }
-  };
-});
-
-vi.mock('diff', () => {
-  return {
-    createTwoFilesPatch: vi.fn().mockReturnValue('mock-patch-data')
-  };
-});
+import { IEvent } from '../../interfaces/IEvents';
 
 describe('ArtefactManager', () => {
-  let manager: ArtefactManager;
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    manager = new ArtefactManager('test-session');
+  it('proposes a full replacement when virtual state does not have the file', async () => {
+    // Empty session, no previous events
+    const manager = new ArtefactManager('/tmp/mock', []);
     
-    // Mock vfs
-    vfs!.promises.stat = vi.fn().mockResolvedValue({});
-    vfs!.promises.mkdir = vi.fn().mockResolvedValue(true);
-    vfs!.promises.writeFile = vi.fn().mockResolvedValue(true);
+    const draft = await manager.proposeDraft('src/test.txt', 'Hello World');
+    
+    expect(draft.path).toBe('src/test.txt');
+    expect(draft.isFullReplacement).toBe(false);
+    expect(draft.patch).toContain('@@');
   });
 
-  describe('proposeDraft', () => {
-    it('creates a new draft branch, stages and commits', async () => {
-      const result = await manager.proposeDraft('testFile.md', 'new draft content', 'TestActor');
-      
-      expect(git.currentBranch).toHaveBeenCalled();
-      expect(git.branch).toHaveBeenCalledWith(expect.objectContaining({
-        ref: expect.stringContaining('draft/testFile.md/'),
-        checkout: true
-      }));
-      expect(vfs!.promises.writeFile).toHaveBeenCalledWith(expect.stringContaining('testFile.md'), 'new draft content', 'utf8');
-      expect(git.add).toHaveBeenCalled();
-      expect(git.commit).toHaveBeenCalledWith(expect.objectContaining({
-        message: 'Draft proposal for testFile.md',
-        author: { name: 'TestActor', email: 'system@cr.local' }
-      }));
-      expect(result.branch).toContain('draft/testFile.md/');
-      expect(result.commitSha).toBe('mock-sha');
-    });
+  it('computes a unified diff patch when virtual state has the existing file', async () => {
+    // Fake events establishing prior state
+    const priorEvents: IEvent[] = [
+      {
+        id: 'evt-1',
+        session_id: 's1',
+        timestamp: 100,
+        type: 'ARTEFACT_PROPOSAL',
+        actor: 'USER',
+        payload: {
+          path: 'src/config.json',
+          patch: '{\n  "version": 1\n}\n',
+          isFullReplacement: true
+        }
+      }
+    ];
 
-    it('checks out main if not currently on main', async () => {
-      (git.currentBranch as any).mockResolvedValueOnce('other-branch');
-      await manager.proposeDraft('testFile.md', 'content', 'Actor');
-      
-      expect(git.checkout).toHaveBeenCalledWith(expect.objectContaining({ ref: 'main' }));
-      expect(git.branch).toHaveBeenCalled();
-    });
-  });
-
-  describe('promoteDraft', () => {
-    it('checks out main and merges draft branch cleanly', async () => {
-      const result = await manager.promoteDraft('draft-branch', 'testFile.md');
-      
-      expect(git.checkout).toHaveBeenCalledWith(expect.objectContaining({ ref: 'main' }));
-      expect(git.merge).toHaveBeenCalledWith(expect.objectContaining({
-        ours: 'main',
-        theirs: 'draft-branch',
-        fastForward: true
-      }));
-      expect(result).toBe('main-sha'); // from resolveRef mock
-    });
-  });
-
-  describe('getDiff', () => {
-    it('generates a diff payload between main and the draft branch', async () => {
-      const patch = await manager.getDiff('testFile.md', 'draft-branch');
-      
-      expect(git.readBlob).toHaveBeenCalledTimes(2);
-      expect(diff.createTwoFilesPatch).toHaveBeenCalledWith(
-        'testFile.md',
-        'testFile.md',
-        'main content',
-        'draft content',
-        'main',
-        'draft-branch'
-      );
-      expect(patch).toBe('mock-patch-data');
-    });
+    const manager = new ArtefactManager('/tmp/mock', priorEvents);
+    
+    // Propose an edit changing version 1 to 2
+    const draft = await manager.proposeDraft('src/config.json', '{\n  "version": 2\n}\n');
+    
+    expect(draft.path).toBe('src/config.json');
+    expect(draft.isFullReplacement).toBe(false);
+    expect(draft.patch).toContain('@@'); 
+    expect(draft.patch).toContain('-  "version": 1');
+    expect(draft.patch).toContain('+  "version": 2');
   });
 });

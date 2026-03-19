@@ -5,7 +5,7 @@ export * from './hooks/useMultiplayerSync';
 export * from './services/CommandParser';
 export * from './services/GeminiService';
 export * from './services/SearchService';
-export * from './services/GitContextManager';
+export { Materializer } from './services/Materializer';
 export * from './services/ArtefactManager';
 
 export * from './interfaces/IAuthProvider';

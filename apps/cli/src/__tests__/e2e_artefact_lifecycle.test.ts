@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DatabaseEngine } from '../db/DatabaseEngine';
 import { ArtefactManager } from '@cr/core/src/services/ArtefactManager';
+import { Materializer } from '@cr/core/src/services/Materializer';
 import * as fs from 'fs';
 import * as path from 'path';
 import os from 'os';
@@ -41,22 +42,22 @@ describe('E2E: Artefact Lifecycle Compilation', () => {
     
     // 2. Chat loop mock handling files (simulating the execution in chat.ts)
     if (mockFilesResponse.files && Array.isArray(mockFilesResponse.files)) {
-      const manager = new ArtefactManager(sessionId, fs, tempDir);
+      const sessionEvents = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [sessionId]) as any[];
+      const manager = new ArtefactManager(tempDir, sessionEvents);
       for (const file of mockFilesResponse.files) {
-         const filepath = path.resolve(tempDir, file.path);
-         fs.mkdirSync(path.dirname(filepath), { recursive: true });
-         fs.writeFileSync(filepath, file.content);
+         // Simulate AI returning payload. We don't write to disk yet, because ArtefactManager Diff generator 
+         // needs to compare against current virtual/physical state which doesn't have this.
          
-         const draft = await manager.proposeDraft(file.path, file.content, 'coder');
-         expect(draft.branch).toBeDefined();
-         expect(draft.commitSha).toBeDefined();
+         const draft = await manager.proposeDraft(file.path, file.content);
+         expect(draft.patch).toBeDefined();
+         expect(draft.isFullReplacement).toBeDefined();
          
          lastEventId = db.appendEvent({
            session_id: sessionId,
            timestamp: Date.now(),
            actor: 'SYSTEM',
-           type: 'ARTEFACT_DRAFT',
-           payload: JSON.stringify({ path: file.path, branch: draft.branch, commitSha: draft.commitSha }),
+           type: 'ARTEFACT_PROPOSAL',
+           payload: JSON.stringify(draft),
            previous_event_id: lastEventId
          });
       }
@@ -65,20 +66,17 @@ describe('E2E: Artefact Lifecycle Compilation', () => {
     // 3. Assertions
 
     // Step A: Assert DB event stream correctly captures the generation
-    const events = db.query("SELECT * FROM events WHERE type = 'ARTEFACT_DRAFT' AND session_id = ?", [sessionId]) as any[];
+    const events = db.query("SELECT * FROM events WHERE type = 'ARTEFACT_PROPOSAL' AND session_id = ?", [sessionId]) as any[];
     expect(events.length).toBe(1);
     
     const payload = JSON.parse(events[0].payload);
     expect(payload.path).toBe("src/math.js");
-    expect(payload.branch).toMatch(/^draft\/src_math\.js\/\d+$/);
+    expect(payload.patch).toContain("+export function add");
     
-    // Step B: Assert Isomorphic Git successfully initialized, staged, and branched the proposal
-    const branches = await git.listBranches({ fs, dir: tempDir });
-    expect(branches).toContain(payload.branch);
-
-    const commits = await git.log({ fs, dir: tempDir, ref: payload.branch, depth: 1 });
-    expect(commits.length).toBeGreaterThan(0);
-    expect(commits[0].commit.message.trim()).toBe("Draft proposal for src/math.js");
-    expect(commits[0].commit.author.name).toBe("coder");
+    // Step B: Removed isomorphic-git check as ArtefactManager no longer performs local commits.
+    // Instead we can assert that the Materializer reconstructs the file.
+    const materializer = new Materializer(tempDir);
+    const virtualFiles = materializer.computeVirtualState(events);
+    expect(virtualFiles.get("src/math.js")).toContain("export function add");
   });
 });

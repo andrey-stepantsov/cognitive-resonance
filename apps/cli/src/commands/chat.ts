@@ -8,6 +8,7 @@ import { DatabaseEngine } from '../db/DatabaseEngine';
 import { parseCommand, CommandAction, parseMentions } from '@cr/core/src/services/CommandParser';
 import { GemProfiles } from '../services/GemRegistry';
 import { ArtefactManager } from '@cr/core/src/services/ArtefactManager';
+import { Materializer } from '@cr/core/src/services/Materializer';
 import { exec } from 'child_process';
 import * as vm from 'vm';
 import { runSyncDaemon } from './serve';
@@ -151,21 +152,20 @@ export function registerChatCommands(program: Command) {
           previous_event_id: lastEventId
         });
 
-        if (responsePayload.files && Array.isArray(responsePayload.files)) {
-          const manager = new ArtefactManager(sessionId, fs, workspaceDir);
-          for (const file of responsePayload.files) {
-             const filepath = path.resolve(workspaceDir, file.path);
-             fs.mkdirSync(path.dirname(filepath), { recursive: true });
-             fs.writeFileSync(filepath, file.content);
-             const draft = await manager.proposeDraft(file.path, file.content, options.model);
-             console.log(`\n[ArtefactManager] Draft proposed: ${draft.branch} for ${file.path}`);
+        if (responsePayload.files && Array.isArray(responsePayload.files) && responsePayload.files.length > 0) {
+          const sessionEvents = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [sessionId]) as any[];
+          const manager = new ArtefactManager(workspaceDir, sessionEvents);
+          const proposals = await manager.proposeDrafts(responsePayload.files);
+          
+          for (const proposal of proposals) {
+             console.log(`\n[ArtefactManager] Proposal drafted: virtual state for ${proposal.path}`);
              
              lastEventId = db.appendEvent({
                session_id: sessionId,
                timestamp: Date.now(),
                actor: 'SYSTEM',
-               type: 'ARTEFACT_DRAFT',
-               payload: JSON.stringify({ path: file.path, branch: draft.branch, commitSha: draft.commitSha }),
+               type: 'ARTEFACT_PROPOSAL',
+               payload: JSON.stringify(proposal),
                previous_event_id: lastEventId
              });
           }
@@ -292,9 +292,9 @@ export function registerChatCommands(program: Command) {
         const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
         console.log(`\n🤖 [@${ev.actor}] ${payload.text}\n`);
         chatHistory.push({ role: 'assistant', content: payload.text });
-      } else if (ev.type === 'ARTEFACT_DRAFT') {
+      } else if (ev.type === 'ARTEFACT_PROPOSAL') {
         const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
-        console.log(`[Remote Artefact] Draft proposed: ${payload.branch} for ${payload.path}`);
+        console.log(`[Remote Artefact] Proposal drafted for ${payload.path}`);
       } else if (ev.type === 'RUNTIME_OUTPUT') {
         const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
         console.log(`[Remote System Exec Output]:\n${payload.text}`);
@@ -356,11 +356,17 @@ export function registerChatCommands(program: Command) {
           rl.prompt();
         };
 
+        const sessionEvents = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [sessionId]) as any[];
+        const materializer = new Materializer(workspaceDir);
+        const sandboxDir = path.resolve(workspaceDir, '.cr', 'sandbox', sessionId);
+        
+        await materializer.computeAndMaterialize(sessionEvents, sandboxDir);
+
         if (cmd.startsWith('node ')) {
           const parts = cmd.split(' ');
           const scriptFile = parts[1];
           const scriptArgs = parts.slice(2);
-          const filepath = path.resolve(workspaceDir, scriptFile);
+          const filepath = path.resolve(sandboxDir, scriptFile);
           
           let output = '';
           try {
@@ -380,7 +386,7 @@ export function registerChatCommands(program: Command) {
              execEventId(`Error executing script natively in Isolate sandbox: ${err.message}`);
           }
         } else {
-          exec(cmd, { cwd: workspaceDir }, (error: any, stdout: string, stderr: string) => {
+          exec(cmd, { cwd: sandboxDir }, (error: any, stdout: string, stderr: string) => {
             let output = '';
             if (stdout) output += stdout;
             if (stderr) output += '\nError: ' + stderr;
@@ -463,20 +469,19 @@ export function registerChatCommands(program: Command) {
           });
           lastEventId = responseEventId;
 
-          if (response.files && Array.isArray(response.files)) {
-            const manager = new ArtefactManager(sessionId, fs, workspaceDir);
-            for (const file of response.files) {
-               const filepath = path.resolve(workspaceDir, file.path);
-               fs.mkdirSync(path.dirname(filepath), { recursive: true });
-               fs.writeFileSync(filepath, file.content);
-               const draft = await manager.proposeDraft(file.path, file.content, activeActor);
-               console.log(`[ArtefactManager] Draft proposed: ${draft.branch} for ${file.path}`);
+          if (response.files && Array.isArray(response.files) && response.files.length > 0) {
+            const sessionEvents = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [sessionId]) as any[];
+            const manager = new ArtefactManager(workspaceDir, sessionEvents);
+            const proposals = await manager.proposeDrafts(response.files);
+            
+            for (const proposal of proposals) {
+               console.log(`[ArtefactManager] Proposal drafted: virtual state for ${proposal.path}`);
                const draftEventId = db.appendEvent({
                  session_id: sessionId,
                  timestamp: Date.now(),
                  actor: 'SYSTEM',
-                 type: 'ARTEFACT_DRAFT',
-                 payload: JSON.stringify({ path: file.path, branch: draft.branch, commitSha: draft.commitSha }),
+                 type: 'ARTEFACT_PROPOSAL',
+                 payload: JSON.stringify(proposal),
                  previous_event_id: lastEventId
                });
                lastEventId = draftEventId;

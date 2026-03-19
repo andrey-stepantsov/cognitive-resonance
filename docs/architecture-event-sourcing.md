@@ -91,3 +91,20 @@ How does a team actually build an application from scratch in this model?
 ### Why this is powerful for AI
 When an AI agent is working on `AuthUtils.ts`, you do not need to feed it the entire repository as context. You simply pass it the Composite Entity it belongs to (`Backend Module`). If the AI changes the signature of `hash()`, the backend can automatically flag to the human: *"Warning: The `UserRouter` entity depends on `AuthUtils`; do you want to start a Session to update it?"* 
 Because the dependencies are explicit semantic links in the database (rather than implicit string imports in a flat filesystem), the system mathematically understands the blast radius of any change.
+
+## 7. Materialization & Execution (The Sandbox)
+
+While the event-sourced core strictly decouples *Process* from *State*, physical developer tools still require concrete files on disk to execute commands, run tests, or boot servers. To bridge this gap, Cognitive Resonance employs a dynamic **Materialization & Execution Sandbox**.
+
+When a user or an agent issues an execution command (e.g., `/exec npm test`), the system dynamically projects the theoretical event graph into a temporary, physical workspace. 
+
+### Strict Dependencies & Monorepo Linking
+The `Materializer` reads the entity graph and physically reconstructs it on disk. For complex Node.js or multi-package architectures, it automatically creates NPM workspace-like symlinks, mapping `node_modules` locally and resolving internal package dependencies dynamically. This allows distinct, database-backed Artefacts to function cohesively as if they were in a traditional monorepo.
+
+### Cross-Language Support
+Because the underlying storage is an event log of text and structural pointers, the topological sandbox is inherently language-agnostic. The `Materializer` can concurrently manifest Python scripts, Node.js packages, Go binaries, and shell scripts into the same execution environment, allowing cross-language processes to interact seamlessly within the same sandbox.
+
+### Multi-Agent Segregation & Concurrency
+A primary challenge of collaborative, multi-agent development is handling race conditions (e.g., two AI agents concurrently attempting to rewrite the same file). By materializing all code from a linear SQLite event array, these conflicts are mathematically eliminated:
+- **Linearization:** Every write operation is recorded as an immutable, chronologically ordered event in the database.
+- **Segregation:** The `Materializer` can instantly compute specific points in time or branch topologies, ensuring each agent operates on a perfectly deterministic snapshot of the repository. Concurrent writes never conflict on disk; they are resolved safely within the event-stream hierarchy.

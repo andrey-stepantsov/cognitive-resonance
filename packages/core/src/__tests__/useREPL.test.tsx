@@ -725,15 +725,7 @@ describe('useREPL', () => {
       mockCrOptions.input = '/sync';
       const { result } = setup();
       await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
-      
-      expect(mockCrOptions.ensureActiveSession).toHaveBeenCalled();
-      expect(mockGitContextManager.initRepo).toHaveBeenCalled();
-      expect(mockGitRemoteSync.pushToRemote).toHaveBeenCalledWith(
-        mockGitContextManager.fs,
-        mockGitContextManager.dir,
-        'main'
-      );
-      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Successfully pushed packfile to Cloudflare! 🎉' }));
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Model 2: Local push has been replaced by automatic background Event Sourcing Sync daemon.' }));
     });
 
     it('handles /sync when repo is empty', async () => {
@@ -742,82 +734,21 @@ describe('useREPL', () => {
       mockCrOptions.input = '/sync';
       const { result } = setup();
       await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
-      
-      expect(mockGitContextManager.stageFile).toHaveBeenCalledWith('VirtualContext.md', expect.any(String));
-      expect(mockGitContextManager.commitChange).toHaveBeenCalledWith('Initial repository state');
-      expect(mockGitRemoteSync.pushToRemote).toHaveBeenCalled();
-    });
-
-    it('handles /sync errors', async () => {
-      mockGitRemoteSync.pushToRemote.mockRejectedValueOnce(new Error('Sync failed'));
-      
-      mockCrOptions.input = '/sync';
-      const { result } = setup();
-      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
-      
-      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Failed to push to remote: Sync failed' }));
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Model 2: Local push has been replaced by automatic background Event Sourcing Sync daemon.' }));
     });
 
     it('handles /git pull', async () => {
       mockCrOptions.input = '/git pull';
       const { result } = setup();
       await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
-      
-      expect(mockCrOptions.ensureActiveSession).toHaveBeenCalled();
-      expect(mockGitContextManager.initRepo).toHaveBeenCalled();
-      expect(mockGitRemoteSync.pullFromRemote).toHaveBeenCalledWith(
-        mockGitContextManager.fs,
-        mockGitContextManager.dir,
-        'main'
-      );
-      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Successfully pulled from Cloudflare! 📥' }));
-    });
-
-    it('handles /git pull errors', async () => {
-      mockGitRemoteSync.pullFromRemote.mockRejectedValueOnce(new Error('Pull failed'));
-      
-      mockCrOptions.input = '/git pull';
-      const { result } = setup();
-      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
-      
-      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Failed to pull from remote: Pull failed' }));
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Model 2: Local pull has been replaced by automatic background Event Sourcing Sync daemon.' }));
     });
 
     it('handles /global sync', async () => {
       mockCrOptions.input = '/global sync';
       const { result } = setup();
       await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
-      
-      expect(mockCrOptions.ensureActiveSession).toHaveBeenCalled();
-      expect(mockGitContextManager.initGlobalRepo).toHaveBeenCalled();
-      expect(mockGitRemoteSync.pushToRemote).toHaveBeenCalledWith(
-        mockGitContextManager.fs,
-        mockGitContextManager.globalDir,
-        'main'
-      );
-      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Successfully pushed Global Workspace packfile! 🌍' }));
-    });
-
-    it('handles /global sync when global repo is empty', async () => {
-      mockGitContextManager.hasGlobalCommits.mockResolvedValue(false);
-      
-      mockCrOptions.input = '/global sync';
-      const { result } = setup();
-      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
-      
-      expect(mockGitContextManager.stageGlobalFile).toHaveBeenCalledWith('SystemPrompt.md', expect.any(String));
-      expect(mockGitContextManager.commitGlobalChange).toHaveBeenCalledWith('Initial global repository state');
-      expect(mockGitRemoteSync.pushToRemote).toHaveBeenCalled();
-    });
-
-    it('handles /global sync errors', async () => {
-      mockGitRemoteSync.pushToRemote.mockRejectedValueOnce(new Error('Global sync failed'));
-      
-      mockCrOptions.input = '/global sync';
-      const { result } = setup();
-      await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as any); });
-      
-      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Failed to push to global remote: Global sync failed' }));
+      expect(mockCrOptions.messages).toContainEqual(expect.objectContaining({ content: '[System]: Model 2: Global repository sync has been replaced by automatic background Event Sourcing Sync daemon.' }));
     });
 
     it('handles /global edit', async () => {

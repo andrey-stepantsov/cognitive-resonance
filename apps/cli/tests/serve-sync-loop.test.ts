@@ -4,19 +4,7 @@ import { DatabaseEngine } from '../src/db/DatabaseEngine';
 import * as http from 'http';
 import express from 'express';
 import { AddressInfo } from 'net';
-import { GitContextManager } from '@cr/core/src/services/GitContextManager';
-
-// Mock the Git Context Manager so we can spy on it and guarantee it doesn't infinite loop
-vi.mock('@cr/core/src/services/GitContextManager', () => {
-  return {
-    GitContextManager: vi.fn().mockImplementation(() => {
-      return {
-        getStatusMatrix: vi.fn().mockResolvedValue([]),
-        initRepo: vi.fn().mockResolvedValue(undefined),
-      };
-    })
-  };
-});
+// Removed GitContextManager mock as it's no longer used in the event-sourced sync loop
 
 describe('Focused Backend Sync Integration', () => {
   let centralDb: DatabaseEngine;
@@ -90,8 +78,7 @@ describe('Focused Backend Sync Integration', () => {
     // 4. Central Node syncs (should do nothing, since it IS the central node)
     await runSyncDaemon(centralDb, new Set(), mockLogger);
 
-    // 5. Ensure GitContextManager was NOT called for simple chat events
-    expect(GitContextManager).not.toHaveBeenCalled();
+    // 5. Ensure sync completes cleanly without git loops
     expect(mockLogger.error).not.toHaveBeenCalled();
   });
 
@@ -114,13 +101,13 @@ describe('Focused Backend Sync Integration', () => {
     expect(userAEvents.length).toBe(1);
     expect(userAEvents[0].type).toBe('MANUAL_OVERRIDE');
 
-    // Because it's an artefact event, it SHOULD bootstrap GitContextManager to check for status conflicts
-    expect(GitContextManager).toHaveBeenCalledTimes(1);
-
+    // It SHOULD log that it processed an event without looping
+    expect(mockLogger.error).not.toHaveBeenCalled();
+    
     // 3. Sync User A AGAIN. It should NOT pull new changes, and definitely should NOT loop.
     await runSyncDaemon(userADb, new Set(), mockLogger);
 
-    // GitContextManager should STILL only be 1, proving it doesn\'t infinitely re-process
-    expect(GitContextManager).toHaveBeenCalledTimes(1);
+    // Success implies we survived the double pull
+    expect(userADb.query('SELECT * FROM events').length).toBe(1);
   });
 });

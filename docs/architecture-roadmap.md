@@ -14,7 +14,7 @@ Before the UI can act on events, the `@cr/core` package must natively support th
 - Implement the Session Forking logic: Given a `sessionId` and an `eventId`, generate a new `sessionId` and duplicate the event array up to that point.
 
 **2. The Artefact/Git Manager (`packages/core/src/ArtefactManager.ts`)**
-- Create a dedicated class wrapping `isomorphic-git`.
+- Create a dedicated class wrapping the local Event Log.
 - Implement automated Git commits for AI-generated Drafts and Human Promotions.
 - Expose methods to generate simple patch/diff payloads for the PWA to consume.
 
@@ -93,7 +93,7 @@ To prove the architecture is sound before committing fully to the React UI, we w
 - The script spins up a *second* mocked sandbox (User B) and connects it to the Cloudflare Edge.
 - User B forks the original Session and manually edits the `Express` router file on disk.
 - The `syncDaemon` intercepts the FS change, pushes it to the Edge, and pulls it down to User A.
-- The test asserts that the immutable Event Log is identical in both databases and that the `isomorphic-git` tree correctly resolved the branch merge.
+- The test asserts that the immutable Event Log is identical in both databases and that the `Materializer` correctly resolved the branch merge.
 
 **3. The Live Multiplayer Co-Op Test**
 - Both User A and User B connect to the *same* Session simultaneously via the WebSocket mock.

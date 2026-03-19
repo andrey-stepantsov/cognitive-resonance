@@ -9,7 +9,6 @@ import chokidar from 'chokidar';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ArtefactManager } from '@cr/core/src/services/ArtefactManager';
-import { GitContextManager } from '@cr/core/src/services/GitContextManager';
 
 // removed the broken outer wrapper
 export function createServerApp(dbEngine: DatabaseEngine, clients: Set<WebSocket>) {
@@ -206,20 +205,10 @@ export async function runSyncDaemon(dbEngine: DatabaseEngine, clients: Set<WebSo
             for (const ev of incomingEvents) {
                let conflict = false;
                if (ev.type === 'MANUAL_OVERRIDE' || ev.type === 'ARTEFACT_PROMOTED') {
-                  const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
-                  const filepath = payload.filepath;
-                  
-                  if (filepath) {
-                     const gitManager = new GitContextManager(ev.session_id, fs, process.cwd());
-                     const statusMatrix = await gitManager.getStatusMatrix();
-                     
-                     // status format: [filepath, HEAD, WORKDIR, STAGE]
-                     // WORKDIR: 0 = absent, 1 = identical, 2 = modified
-                     const fileStatus = statusMatrix.find((row) => row[0] === filepath);
-                     if (fileStatus && fileStatus[1] === 1 && fileStatus[2] === 2) {
-                        conflict = true;
-                     }
-                  }
+                  // In Model 2 (Virtual Event Stream), we no longer compute merge conflicts against local Git HEAD during polling.
+                  // Instead, we just append the remote event, allowing the Materializer to resolve it virtually.
+                  // Over time, a more sophisticated virtual 3-way merge could be implemented here.
+                  conflict = false;
                }
                
                if (conflict) {
