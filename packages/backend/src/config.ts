@@ -1,4 +1,3 @@
-import { gitRemoteSync } from './services/GitRemoteSync';
 import { CloudflareStorageProvider } from './providers/CloudflareStorageProvider';
 
 export interface BackendConfig {
@@ -18,7 +17,6 @@ export function initBackendEnvironment(config: Partial<BackendConfig>) {
   Object.assign(globalBackendConfig, config);
 
   if (config.gitRemoteUrl) {
-    gitRemoteSync.configure(config.gitRemoteUrl, config.apiKey);
     cloudflareStorage.configure(config.gitRemoteUrl, config.apiKey);
   }
 }

@@ -96,7 +96,7 @@ export function useCognitiveResonance() {
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editSessionName, setEditSessionName] = useState('');
   const [markerViewMode, setMarkerViewMode] = useState<'graph' | 'list' | 'artifact'>('graph');
-  const [artifactContent, setArtifactContent] = useState('# Artifact context\n\nEdit this virtual file to persist changes into the local isomorphic-git repository.\nThe AI will automatically see your saved changes in its context window before every prompt.');
+  const [artifactContent, setArtifactContent] = useState('# Artifact context\n\nEdit this virtual file to persist changes into the local Event-Sourced Materializer.\nThe AI will automatically see your saved changes in its context window before every prompt.');
   const [markerSearchQuery, setMarkerSearchQuery] = useState('');
   const [mentionSearchQuery, setMentionSearchQuery] = useState<string | null>(null);
   const [mentionContext, setMentionContext] = useState<'peer' | 'gem' | 'turn' | 'dsl' | 'semantic' | null>(null);

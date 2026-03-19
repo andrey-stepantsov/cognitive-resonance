@@ -12,10 +12,7 @@ vi.mock('../hooks/useCognitiveResonance', async (importOriginal) => {
 });
 
 vi.mock('@cr/backend', () => ({
-  gitRemoteSync: {
-    pushToRemote: vi.fn(),
-    pullFromRemote: vi.fn(),
-  }
+  // Mocks for backend
 }));
 
 const mockGitContextManager = {
@@ -708,12 +705,9 @@ describe('useREPL', () => {
   });
 
   describe('git sync commands', () => {
-    let mockGitRemoteSync: any;
-    
     beforeEach(async () => {
       mockCrOptions.ensureActiveSession = vi.fn().mockReturnValue('session-123');
       const backendModule = await import('@cr/backend');
-      mockGitRemoteSync = backendModule.gitRemoteSync;
       vi.clearAllMocks();
       
       // Default to having commits so it just pushes

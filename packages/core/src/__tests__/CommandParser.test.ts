@@ -71,3 +71,81 @@ describe('CommandParser', () => {
     expect(parseCommand('/graph unknown')).toEqual({ action: CommandAction.UNKNOWN, args: ['unknown'], raw: '/graph unknown' });
   });
 });
+
+import { tokenizeLisp, parseLisp, parseDslRouting } from '../services/CommandParser';
+
+describe('DSL Lisp Parsing', () => {
+  it('tokenizes simple lisp structures correctly', () => {
+    expect(tokenizeLisp('(exec "npm test")')).toEqual(['(', 'exec', '"npm test"', ')']);
+    expect(tokenizeLisp('(  exec   "npm test --coverage"  )')).toEqual(['(', 'exec', '"npm test --coverage"', ')']);
+    expect(tokenizeLisp('(get-context :from 5 :to 10)')).toEqual(['(', 'get-context', ':from', '5', ':to', '10', ')']);
+  });
+
+  it('builds valid AST arrays from tokens', () => {
+    expect(parseLisp('(exec "npm test")')).toEqual(['exec', 'npm test']);
+    expect(parseLisp('(get-context :from 5)')).toEqual(['get-context', ':from', '5']);
+    expect(parseLisp('(do (exec "a") (exec "b"))')).toEqual(['do', ['exec', 'a'], ['exec', 'b']]);
+  });
+});
+
+describe('DSL Routing Extractor', () => {
+  it('parses full explicit routing', () => {
+    const result = parseDslRouting('@steve:coder@MacBook#42(exec "npm test")');
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      actor: 'steve',
+      agent: 'coder',
+      host: 'MacBook',
+      turn: 42,
+      ast: ['exec', 'npm test'],
+      rawCommand: '@steve:coder@MacBook#42(exec "npm test")'
+    });
+  });
+
+  it('parses host shorthand', () => {
+    const result = parseDslRouting('Here is my request @@LinuxCI(exec "make test")');
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      actor: null,
+      agent: null,
+      host: 'LinuxCI',
+      turn: null,
+      ast: ['exec', 'make test'],
+      rawCommand: '@@LinuxCI(exec "make test")'
+    });
+  });
+
+  it('parses agent shorthand', () => {
+    const result = parseDslRouting('Can you @coder(get-context) check this?');
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      actor: null,
+      agent: 'coder',
+      host: null,
+      turn: null,
+      ast: ['get-context'],
+      rawCommand: '@coder(get-context)'
+    });
+  });
+
+  it('handles strings with multiple references', () => {
+    const text = '@steve:coder(foo) and @@Node1(bar)';
+    const result = parseDslRouting(text);
+    expect(result).toHaveLength(2);
+    expect(result[0].agent).toBe('coder');
+    expect(result[0].host).toBeNull();
+    expect(result[0].ast).toEqual(['foo']);
+
+    expect(result[1].agent).toBeNull();
+    expect(result[1].host).toBe('Node1');
+    expect(result[1].ast).toEqual(['bar']);
+  });
+
+  it('safely handles malformed Lisp ASTs', () => {
+    const result = parseDslRouting('@@Server(exec "missing quote)');
+    expect(result).toHaveLength(1);
+    expect(result[0].host).toBe('Server');
+    expect(result[0].ast).toBeNull(); // Parser should catch error and return null ast
+  });
+});
+

@@ -57,7 +57,7 @@ This walkthrough outlines a demonstration flow for presenting the real-time mult
 **3. Git-Backed Context Tweaking (The Virtual File)**
 *   _Narrative:_ "What if the AI's response isn't quite right? Usually you have to explain everything again. In Cognitive Resonance, we use Git-backed Virtual Context."
 *   _Action (Browser A):_ Open the `VirtualContext.md` side panel. Type: `"Rule: Always use async/await, no raw promises or callbacks."`
-*   _Action (Browser A):_ Click "Save to Context" (Session Workspace). Under the hood, this uses isomorphic-git to commit the file to an R2-backed repository.
+*   _Action (Browser A):_ Click "Save to Context" (Session Workspace). Under the hood, this uses the Event-Sourced Materializer to persist the file.
 *   _Action (Browser B):_ In the chat, simply say: `"Rewrite that function."`
 *   _Result:_ The AI sees the synchronized Git status matrix pushed by Browser A, complies with the new async/await rule, and outputs the refactored code for both users to see in real-time.
 

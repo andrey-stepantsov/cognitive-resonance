@@ -24,7 +24,6 @@
     "cors": "^2.8.6",
     "dotenv": "^16.4.5",
     "express": "^5.2.1",
-    "isomorphic-git": "^1.37.4",
     "memfs": "^4.56.11",
     "pino": "^10.3.1",
     "pino-roll": "^4.0.0",

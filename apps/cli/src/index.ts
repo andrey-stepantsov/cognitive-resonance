@@ -10,7 +10,6 @@ import { registerSimulateCommand } from './commands/simulate';
 import { registerAssertCommand } from './commands/assert';
 import { registerUserCommands } from './commands/user';
 import { registerPortabilityCommands } from './commands/portability';
-import { registerGitCommands } from './commands/git';
 import { registerServeCommand } from './commands/serve';
 
 // Path to store the CLI authentication token
@@ -36,7 +35,6 @@ registerSimulateCommand(program);
 registerAssertCommand(program);
 registerUserCommands(program);
 registerPortabilityCommands(program);
-registerGitCommands(program);
 registerChatCommands(program);
 registerObserveCommands(program);
 registerServeCommand(program);

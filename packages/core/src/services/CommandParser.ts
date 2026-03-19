@@ -105,7 +105,8 @@ export interface CommandIntent {
 }
 
 /**
- * Parses a raw string for @ mentions
+ * Parses a raw string for simple @ mentions.
+ * Note: Use parseDslRouting for the fully qualified Lisp DSL metadata extraction.
  */
 export function parseMentions(input: string): string[] {
   const mentions: string[] = [];
@@ -115,6 +116,146 @@ export function parseMentions(input: string): string[] {
     mentions.push(match[2].toLowerCase());
   }
   return mentions;
+}
+
+export type LispASTNode = string | LispASTNode[];
+
+export interface DslCommandIntent {
+  actor: string | null;      // user id from @user:ai
+  agent: string | null;      // agent id from @user:ai or @ai
+  host: string | null;       // host id from @@host or @ai@host
+  turn: number | null;       // sequence index from #turn
+  ast: LispASTNode | null;   // The parsed S-expression e.g. ["exec", "npm test"]
+  rawCommand: string;
+}
+
+/**
+ * Tokenizes a string into Lisp syntactic elements: (, ), "strings", and symbols
+ */
+export function tokenizeLisp(input: string): string[] {
+  const tokens: string[] = [];
+  let current = '';
+  let inString = false;
+  
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+    
+    if (inString) {
+      current += char;
+      if (char === '"' && input[i-1] !== '\\') {
+        inString = false;
+        tokens.push(current);
+        current = '';
+      }
+      continue;
+    }
+    
+    if (char === '"') {
+      if (current.trim()) tokens.push(current.trim());
+      current = '"';
+      inString = true;
+      continue;
+    }
+    
+    if (char === '(' || char === ')') {
+      if (current.trim()) tokens.push(current.trim());
+      tokens.push(char);
+      current = '';
+      continue;
+    }
+    
+    if (/\s/.test(char)) {
+      if (current.trim()) tokens.push(current.trim());
+      current = '';
+      continue;
+    }
+    
+    current += char;
+  }
+  
+  if (current.trim()) tokens.push(current.trim());
+  return tokens;
+}
+
+/**
+ * Parses tokenized Lisp strings into an AST.
+ */
+export function parseLisp(tokens: string[] | string): LispASTNode {
+  if (typeof tokens === 'string') {
+    tokens = tokenizeLisp(tokens);
+  }
+  
+  if (tokens.length === 0) {
+    throw new Error('Unexpected end of input');
+  }
+  
+  const token = tokens.shift()!;
+  
+  if (token === '(') {
+    const list: LispASTNode[] = [];
+    while (tokens[0] !== ')') {
+      if (tokens.length === 0) {
+        throw new Error('Missing closing parenthesis');
+      }
+      list.push(parseLisp(tokens));
+    }
+    tokens.shift(); // remove ')'
+    return list;
+  } else if (token === ')') {
+    throw new Error('Unexpected closing parenthesis');
+  } else {
+    // Evaluates string literals or bare symbols
+    if (token.startsWith('"') && token.endsWith('"')) {
+      return token.slice(1, -1).replace(/\\"/g, '"');
+    }
+    return token;
+  }
+}
+
+/**
+ * Parses Lisp DSL routing directives from chat text.
+ * e.g. @@MacBook(exec "npm test"), @steve:coder@MacBook#42
+ */
+export function parseDslRouting(input: string): DslCommandIntent[] {
+  const results: DslCommandIntent[] = [];
+  
+  // This regex matches:
+  // 1. @@host
+  // 2. @user:ai@host OR @user:ai OR @ai@host OR @ai
+  // Followed by optional #turn and optional (lisp_expression)
+  const regex = /(?:^|\s)(?:@@(?<hostOnly>\w+)|@(?:(?<user>\w+):)?(?<ai>\w+)(?:@(?<host>\w+))?)(?:#(?<turn>\d+))?\s*(?:\((?<lisp>.*?)\))?/g;
+  
+  let match;
+  while ((match = regex.exec(input)) !== null) {
+      if (!match[0].trim()) continue;
+      
+      const host = match.groups?.hostOnly || match.groups?.host || null;
+      const ai = match.groups?.ai || null;
+      const user = match.groups?.user || null;
+      const turn = match.groups?.turn ? parseInt(match.groups.turn, 10) : null;
+      const lispText = match.groups?.lisp || null;
+      
+      let ast: LispASTNode | null = null;
+      if (lispText) {
+          try {
+             ast = parseLisp(`(${lispText})`);
+          } catch (e) {
+             console.warn(`[CommandParser] Failed to parse Lisp block: ${lispText}`);
+             ast = null;
+          }
+      }
+      
+      results.push({
+          actor: user,
+          agent: ai,
+          host,
+          turn,
+          ast,
+          rawCommand: match[0].trim()
+      });
+  }
+  
+  return results;
 }
 
 /**

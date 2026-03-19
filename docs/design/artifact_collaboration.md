@@ -46,7 +46,7 @@ In a multiplayer session or when branching timelines, the system utilizes Git co
 1. **Parallel Timelines:** User A decides to start an independent Session (`S2`) specifically to refactor `auth.ts` (currently `Artefact A5`), bringing that Artefact into their contextual lens. Simultaneously, User B does the same in Session `S3`.
 2. **Divergent Drafts:** User A and User B both work with the AI independently, generating their own **Draft Artefacts**.
 3. **The Merge Protocol:** When User A promotes their Draft to `Artefact A6`, Entity `auth.ts` points to `A6`. If User B subsequently attempts to promote their Draft, the system detects a conflict.
-4. **Conflict Resolution:** The `isomorphic-git` subsystem natively handles these collisions by treating Artefact lineages as Git graphs. If User A's edits and User B's edits cleanly apply to different sections, the merge creates `Artefact A7` seamlessly. If they conflict, standard Git conflict markers (`<<<<<<< HEAD`) appear in a new Draft, and the users can resolve them collaboratively (or ask the AI to resolve its own merge conflict!).
+4. **Conflict Resolution:** The Materializer subsystem natively handles these collisions by treating Artefact lineages as Git graphs. If User A's edits and User B's edits cleanly apply to different sections, the merge creates `Artefact A7` seamlessly. If they conflict, standard Git conflict markers (`<<<<<<< HEAD`) appear in a new Draft, and the users can resolve them collaboratively (or ask the AI to resolve its own merge conflict!).
 
 ## 5. End-to-End Example: Developing a Component
 To solidify this concept, here is an example of developing a new software component (e.g., the `SyncDaemon`) from conception to completion.

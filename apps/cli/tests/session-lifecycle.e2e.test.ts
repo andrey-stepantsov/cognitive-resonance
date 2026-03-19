@@ -4,7 +4,6 @@ import { DatabaseEngine } from '../src/db/DatabaseEngine';
 import { registerChatCommands } from '../src/commands/chat';
 import { registerPortabilityCommands } from '../src/commands/portability';
 import { registerObserveCommands } from '../src/commands/observe';
-import { registerGitCommands } from '../src/commands/git';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
@@ -189,7 +188,6 @@ describe('In-Process E2E: Session Lifecycle & Commands', () => {
         program.option('-d, --db <path>', 'Database path', 'cr.sqlite');
         registerObserveCommands(program);
         registerPortabilityCommands(program);
-        registerGitCommands(program);
 
         const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
         const exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: number) => { return undefined as never; });
@@ -200,11 +198,12 @@ describe('In-Process E2E: Session Lifecycle & Commands', () => {
 
         // Obtain a valid event ID for the artefact constraint
         const validEventId = db.query('SELECT id FROM events WHERE session_id = ? LIMIT 1', [sid])[0].id;
-        db.close();
-
-        // Ensure entity is present for packing by natively cloning it!
+        // Ensure entity is present for packing
         const repoUrl = 'https://github.com/octocat/Hello-World.git';
-        await program.parseAsync(['node', 'cr.js', 'git-clone', repoUrl, '-d', dbPath]);
+        const artId = db.createArtefact(sid, validEventId, 'COMPOSITE', JSON.stringify({"README.md": validEventId}), 1);
+        db.promoteEntity(repoUrl, artId);
+        
+        db.close();
 
         // Evaluate observe commands
         await program.parseAsync(['node', 'cr.js', '-d', dbPath, 'turns', sid]);

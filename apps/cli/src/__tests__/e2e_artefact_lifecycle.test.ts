@@ -5,7 +5,6 @@ import { Materializer } from '@cr/core/src/services/Materializer';
 import * as fs from 'fs';
 import * as path from 'path';
 import os from 'os';
-import git from 'isomorphic-git';
 
 describe('E2E: Artefact Lifecycle Compilation', () => {
   let db: DatabaseEngine;

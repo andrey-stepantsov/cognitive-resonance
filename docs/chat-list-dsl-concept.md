@@ -29,6 +29,20 @@ Here is the foundational dictionary of your DSL, categorized by operational doma
 | **Metadata Extraction** | `(get-markers [target])` | A polymorphic function. If passed a `Turn`, it yields markers for that turn. If passed a `Chat` or a `get-context` slice, it aggregates markers across the sequence. |
 | **Actor Routing** | `(request 'actor-name :input [data] :expect 'type)` | Implements the Actor Model. Routes a payload to a specific agent (e.g., `'tech-writer`) and enforces a structured output schema (e.g., `'artefact`). |
 | **Session Management** | `(fork-chat :at-turn n)` | Manages state. Creates a cloned `Chat` object inheriting the original participants and history up to `n`, allowing parallel execution trees. |
+| **Remote Execution** | `(exec "command")` | Safely evaluates physical shell commands on a materialized sandbox. Takes a string to prevent tokenizer errors on shell flags (no macro resolution required). |
+
+---
+
+### 3. Actor & Host Routing Syntax
+
+To cleanly target specific AI agents or physical materialization hosts (daemons), the system extracts explicit intent from a specialized prefix schema before processing the Lisp block itself:
+
+* **Full Explicit Routing:** `@<user>:<ai>@<host>#<turn>(<lisp-expression>)`
+  * Example: `@steve:coder@MacBook#42(exec "npm test")`
+* **Agent Shorthand:** `@<ai>` (Defaults to the current user and local interface).
+  * Example: `@coder(get-context)`
+* **Host Shorthand:** `@@<host>` (Instantly routes execution to the specified physical daemon using default actor identities).
+  * Example: `@@LinuxCI(exec "make test")`
 
 ---
 
