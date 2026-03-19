@@ -85,18 +85,29 @@ git clone --depth 1 https://github.com/http-party/http-server.git .
 ### Step 3: Resonance Import
 Import the physical tree into a localized Cognitive Resonance virtual session. The CLI uses `ignore` package semantics to skip the `.git/` history objects and any downloaded dependencies.
 ```bash
-node /path/to/cognitive-resonance/apps/cli/dist/index.js import /tmp/cr-manual-test/source-repo -s manual-test-session
+node /Users/stepants/dev/cognitive-resonance/apps/cli/bin/cr.js import /tmp/cr-manual-test/source-repo -s manual-test-session
 ```
 *Note: A SQLite database (`.cr/central.sqlite`) will automatically track that `/tmp/cr-manual-test/source-repo` belongs to `manual-test-session`.*
 
-### Step 4: Resonance Export
-Export the materialized session back to a completely blank secondary physical directory:
-```bash
-node /path/to/cognitive-resonance/apps/cli/dist/index.js export /tmp/cr-manual-test/export-repo -s manual-test-session
-```
-*At this point, the core files of `http-server` should have been synthesized from the virtual database back out to the physical `/export-repo` filesystem!*
+### Step 4: Session Modification via AI (The Magic)
+Now that the physical files are materialized inside the Virtual Event DB, let's boot up the interactive CLI and ask our AI agent to modify the source code!
 
-### Step 5: Runtime Verification
+```bash
+node /Users/stepants/dev/cognitive-resonance/apps/cli/bin/cr.js chat -s manual-test-session
+```
+Once the chat boots, type the following prompt to the agent:
+> *"Please modify `public/index.html` and change the `<h1>` header text to read: 'Serving up files from Cognitive Resonance!' "*
+
+The Agent will emit an `ARTEFACT_PROPOSAL` modifying the virtual state. Once it finishes, press `Ctrl+C` to exit the session.
+
+### Step 5: Resonance Export
+Export the materialized, AI-modified session back to a completely blank secondary physical directory:
+```bash
+node /Users/stepants/dev/cognitive-resonance/apps/cli/bin/cr.js export /tmp/cr-manual-test/export-repo -s manual-test-session
+```
+*At this point, the core files of `http-server` (including our newly modified HTML file) synthesize from the virtual database back out to the physical `/export-repo` filesystem!*
+
+### Step 6: Runtime Verification
 Because the `cr import` skipped explicitly ignored patterns (like `node_modules`), we must install dependencies before executing the binary. This proves our `package.json` and internal code survived zero-corruption.
 
 ```bash

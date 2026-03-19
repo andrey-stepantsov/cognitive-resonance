@@ -286,10 +286,12 @@ export function registerChatCommands(program: Command) {
       
       if (ev.type === 'USER_PROMPT') {
         const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
+        // TODO: [UX] Use a vibrant chalk color for the remote user nick specifically, to distinguish from standard logging.
         console.log(`\x1b[36m[Remote User @${ev.actor}]\x1b[0m ${payload.text}`);
         chatHistory.push({ role: 'user', content: payload.text });
       } else if (ev.type === 'AI_RESPONSE') {
         const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
+        // TODO: [UX] Colorize the AI Response explicitly, and format markdown snippets natively using libraries like `cli-markdown` or `marked-terminal`.
         console.log(`\n🤖 [@${ev.actor}] ${payload.text}\n`);
         chatHistory.push({ role: 'assistant', content: payload.text });
       } else if (ev.type === 'ARTEFACT_PROPOSAL') {

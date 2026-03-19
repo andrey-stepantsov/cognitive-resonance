@@ -66,6 +66,7 @@ export function registerImportExportCommands(program: Command) {
             walk(absolutePath);
 
             // 4. Emit Events
+            // TODO: [UX] Use chalk.yellow or cli-table3 here to display the exact list of files identified for import.
             logger.info(`Importing ${filesToImport.length} files...`);
             let lastEventId: string | null = null;
             for (const file of filesToImport) {
@@ -87,8 +88,7 @@ export function registerImportExportCommands(program: Command) {
                     payload: JSON.stringify(payload),
                     previous_event_id: lastEventId
                 };
-                lastEventId = dbEngine.appendEvent(ev).toString(); // Wait, appendEvent returns number -> string. Actually let's just pass null to avoid string casting issues if it's returning integer ID.
-                dbEngine.appendEvent(ev);
+                lastEventId = dbEngine.appendEvent(ev).toString();
             }
 
             logger.info(`Materialized repository footprint successfully bound to session ${sessionId}.`);
@@ -145,6 +145,7 @@ export function registerImportExportCommands(program: Command) {
                  }
             }
 
+            // TODO: [UX] Use a colorful cli-table3 or formatted chalk block here to summarize the Export footprint vs Physical state exactly like `git status`.
             logger.info(`Export finished. Materialized footprint with ${deletedCount} explicit unlinks. Safe local states and mtimes preserved.`);
         });
 }

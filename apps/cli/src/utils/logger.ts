@@ -17,6 +17,7 @@ const fileLogger = pino({ level: 'trace' }, fileTransport);
 
 export const logger = {
   info: (msg: string, obj?: any) => {
+    // TODO: [UX] Integrate `chalk` here to provide vibrant log levels (e.g. chalk.blue(msg)) when outputting to the console.
     if (isServeCommand) {
       if (obj) fileLogger.info(obj, msg);
       else fileLogger.info(msg);
