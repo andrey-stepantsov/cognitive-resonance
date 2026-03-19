@@ -64,12 +64,19 @@ export function registerChatCommands(program: Command) {
     .option('-f, --format <type>', 'Output format (e.g., json, markdown)', 'markdown')
     .option('-m, --model <model>', 'The Gemini model to use', 'gemini-2.5-flash')
     .option('-s, --session <id>', 'Load and append to an existing session ID')
+    .option('-w, --workspace <path>', 'Workspace directory for context and artefacts', process.cwd())
     .action(async (message, options) => {
-      const defaultDbPath = path.join(path.resolve(process.cwd(), '.cr'), 'cr.sqlite');
-      const dbPath = program.opts().db || defaultDbPath;
+      const workspaceDir = path.resolve(process.cwd(), options.workspace);
       
-      if (dbPath === defaultDbPath && !fs.existsSync(path.resolve(process.cwd(), '.cr'))) {
-          fs.mkdirSync(path.resolve(process.cwd(), '.cr'), { recursive: true });
+      const defaultDbPath = path.join(path.resolve(workspaceDir, '.cr'), 'cr.sqlite');
+      const dbPath = program.opts().db ? path.resolve(process.cwd(), program.opts().db) : defaultDbPath;
+      
+      if (!fs.existsSync(workspaceDir)) {
+          fs.mkdirSync(workspaceDir, { recursive: true });
+      }
+      
+      if (dbPath === defaultDbPath && !fs.existsSync(path.resolve(workspaceDir, '.cr'))) {
+          fs.mkdirSync(path.resolve(workspaceDir, '.cr'), { recursive: true });
       }
       
       const db = new DatabaseEngine(dbPath);
@@ -145,9 +152,9 @@ export function registerChatCommands(program: Command) {
         });
 
         if (responsePayload.files && Array.isArray(responsePayload.files)) {
-          const manager = new ArtefactManager(sessionId, fs, process.cwd());
+          const manager = new ArtefactManager(sessionId, fs, workspaceDir);
           for (const file of responsePayload.files) {
-             const filepath = path.resolve(process.cwd(), file.path);
+             const filepath = path.resolve(workspaceDir, file.path);
              fs.mkdirSync(path.dirname(filepath), { recursive: true });
              fs.writeFileSync(filepath, file.content);
              const draft = await manager.proposeDraft(file.path, file.content, options.model);
@@ -175,7 +182,8 @@ export function registerChatCommands(program: Command) {
         } else {
           console.log('\n🤖 Cognitive Resonance');
           console.log('---------------------');
-          console.log(responsePayload.reply);
+          const formattedReply = responsePayload.reply.replace(/\\n/g, '\n');
+          console.log(formattedReply);
           console.log(`\n[Dissonance: ${responsePayload.dissonanceScore}/100]`);
         }
         return;
@@ -352,7 +360,7 @@ export function registerChatCommands(program: Command) {
           const parts = cmd.split(' ');
           const scriptFile = parts[1];
           const scriptArgs = parts.slice(2);
-          const filepath = path.resolve(process.cwd(), scriptFile);
+          const filepath = path.resolve(workspaceDir, scriptFile);
           
           let output = '';
           try {
@@ -372,7 +380,7 @@ export function registerChatCommands(program: Command) {
              execEventId(`Error executing script natively in Isolate sandbox: ${err.message}`);
           }
         } else {
-          exec(cmd, { cwd: process.cwd() }, (error: any, stdout: string, stderr: string) => {
+          exec(cmd, { cwd: workspaceDir }, (error: any, stdout: string, stderr: string) => {
             let output = '';
             if (stdout) output += stdout;
             if (stderr) output += '\nError: ' + stderr;
@@ -440,7 +448,8 @@ export function registerChatCommands(program: Command) {
 
         try {
           const response = await generateResponse(currentModel, chatHistory, systemPrompt, schema, undefined, false);
-          console.log(`\n🤖 [@${activeActor}] ${response.reply}\n`);
+          const formattedReply = response.reply.replace(/\\n/g, '\n');
+          console.log(`\n🤖 [@${activeActor}] ${formattedReply}\n`);
           chatHistory.push({ role: 'model', content: response.reply });
 
           // Record response
@@ -455,9 +464,9 @@ export function registerChatCommands(program: Command) {
           lastEventId = responseEventId;
 
           if (response.files && Array.isArray(response.files)) {
-            const manager = new ArtefactManager(sessionId, fs, process.cwd());
+            const manager = new ArtefactManager(sessionId, fs, workspaceDir);
             for (const file of response.files) {
-               const filepath = path.resolve(process.cwd(), file.path);
+               const filepath = path.resolve(workspaceDir, file.path);
                fs.mkdirSync(path.dirname(filepath), { recursive: true });
                fs.writeFileSync(filepath, file.content);
                const draft = await manager.proposeDraft(file.path, file.content, activeActor);
