@@ -55,3 +55,62 @@ To implement Phase 1 and Phase 3 safely, we need to guarantee that user data is 
     4. Inject synthetic AI events modifying `README.md` and explicitly deleting another tracked file.
     5. Run `cr export`.
     6. Assert using `fs` that `README.md` evolved, the target file deleted, *and* `secret.txt` remains entirely untouched.
+
+---
+
+## Tutorial: Manual Real-World Repository Import & Export
+
+This tutorial demonstrates how to verify the Cognitive Resonance `cr import` and `cr export` pipeline manually using a popular, real-world Node.js repository (`http-party/http-server`). This tests that the platform successfully serializes physical files into the virtual event graph, ignores dependencies appropriately, and materializes safely back to disk.
+
+### Prerequisites
+Make sure you have built the CLI locally:
+```bash
+npm run build --workspace=apps/cli
+```
+
+### Step 1: Provision
+Create two isolated physical directories to serve as your testing bounds:
+```bash
+mkdir -p /tmp/cr-manual-test/source-repo
+mkdir -p /tmp/cr-manual-test/export-repo
+```
+
+### Step 2: Acquire the Target
+Clone the real repository into the source directory. We use `http-server` as it has a robust `.gitignore` and deterministic runtime:
+```bash
+cd /tmp/cr-manual-test/source-repo
+git clone --depth 1 https://github.com/http-party/http-server.git .
+```
+
+### Step 3: Resonance Import
+Import the physical tree into a localized Cognitive Resonance virtual session. The CLI uses `ignore` package semantics to skip the `.git/` history objects and any downloaded dependencies.
+```bash
+node /path/to/cognitive-resonance/apps/cli/dist/index.js import /tmp/cr-manual-test/source-repo -s manual-test-session
+```
+*Note: A SQLite database (`.cr/central.sqlite`) will automatically track that `/tmp/cr-manual-test/source-repo` belongs to `manual-test-session`.*
+
+### Step 4: Resonance Export
+Export the materialized session back to a completely blank secondary physical directory:
+```bash
+node /path/to/cognitive-resonance/apps/cli/dist/index.js export /tmp/cr-manual-test/export-repo -s manual-test-session
+```
+*At this point, the core files of `http-server` should have been synthesized from the virtual database back out to the physical `/export-repo` filesystem!*
+
+### Step 5: Runtime Verification
+Because the `cr import` skipped explicitly ignored patterns (like `node_modules`), we must install dependencies before executing the binary. This proves our `package.json` and internal code survived zero-corruption.
+
+```bash
+cd /tmp/cr-manual-test/export-repo
+npm install --production
+```
+
+Boot the server:
+```bash
+node bin/http-server -p 18081
+```
+
+In a second terminal, verify it bounded successfully and serves HTTP correctly:
+```bash
+curl http://localhost:18081
+```
+*You should receive a `200 OK` response with the directory's index HTML payload, proving the codebase successfully transported across the virtual horizon intact!*

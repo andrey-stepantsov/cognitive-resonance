@@ -11,7 +11,14 @@ export type EventType =
   | 'PWA_SNAPSHOT' // Kept in type enum, but skipped in reducers based on user request
   | 'ARTEFACT_PROPOSAL'
   | 'ARTEFACT_KEYFRAME'
-  | 'PROJECT_CONFIG';
+  | 'PROJECT_CONFIG'
+  | 'ENVIRONMENT_JOINED'
+  | 'PRESENCE_UPDATE'
+  | 'EXECUTION_REQUESTED'
+  | 'RUNTIME_OUTPUT'
+  | 'TERMINAL_SPAWN'
+  | 'TERMINAL_INPUT'
+  | 'TERMINAL_OUTPUT';
 
 export interface IEvent {
   event_id?: string;

@@ -66,6 +66,14 @@ export class Materializer {
             console.warn(`[Materializer] Error applying patch to ${payload.path}:`, e);
           }
         }
+      } else if (evt.type === 'FILE_DELETED' || evt.type === 'PWA_DELETE') {
+         const payload = typeof evt.payload === 'string'
+           ? JSON.parse(evt.payload)
+           : evt.payload;
+         const targetPath = payload.path || payload.target;
+         if (targetPath) {
+             vfs.delete(targetPath);
+         }
       }
     }
 
@@ -204,6 +212,11 @@ export class Materializer {
               currentContent = result;
             }
           }
+        }
+      } else if (evt.type === 'FILE_DELETED' || evt.type === 'PWA_DELETE') {
+        const payload = typeof evt.payload === 'string' ? JSON.parse(evt.payload) : evt.payload;
+        if ((payload.path || payload.target) === filePath) {
+            currentContent = ''; // Truncate content for deleted baseline projections
         }
       }
     }

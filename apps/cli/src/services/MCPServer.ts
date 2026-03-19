@@ -58,6 +58,30 @@ export class CognitiveMCPServer {
               required: ["projectId", "basePath", "dependencies"],
             },
           },
+          {
+            name: "send_terminal_input",
+            description: "Send an interactive string (like a command or prompt response) to a stateful PTY on a host",
+            inputSchema: {
+              type: "object",
+              properties: {
+                targetHost: { type: "string", description: "The node name or 'all'" },
+                inputString: { type: "string", description: "The text to inject into the terminal, usually ending in \\n" },
+              },
+              required: ["targetHost", "inputString"],
+            },
+          },
+          {
+            name: "read_terminal_output",
+            description: "Read the recent output buffer from a host's PTY",
+            inputSchema: {
+              type: "object",
+              properties: {
+                targetHost: { type: "string" },
+                limit: { type: "number", description: "Max number of recent events to read (default 50)" }
+              },
+              required: ["targetHost"],
+            },
+          },
         ],
       };
     });
@@ -67,48 +91,71 @@ export class CognitiveMCPServer {
       if (request.params.name === "registerProject" || request.params.name === "updateProjectDependencies") {
         const payload = request.params.arguments;
         
-        // Ensure required fields are present
-        if (!payload || typeof payload !== 'object') {
-           return { toolResult: "Invalid arguments" };
-        }
+        if (!payload || typeof payload !== 'object') return { toolResult: "Invalid arguments" };
         
         const projectId = (payload as any).projectId;
         const basePath = (payload as any).basePath;
         const dependencies = (payload as any).dependencies;
 
         try {
-          // Find the last event ID for this session
           const lastEventRow = this.db.get('SELECT id FROM events WHERE session_id = ? ORDER BY timestamp DESC LIMIT 1', [this.sessionId]);
-          const lastEventId = lastEventRow ? lastEventRow.id : null;
-
           const eventId = this.db.appendEvent({
             session_id: this.sessionId,
             timestamp: Date.now(),
-            actor: 'SYSTEM', // The MCP tool acts as the system
+            actor: 'SYSTEM',
             type: 'PROJECT_CONFIG',
-            payload: JSON.stringify({
-              projectId,
-              basePath,
-              dependencies: dependencies || []
-            }),
-            previous_event_id: lastEventId
+            payload: JSON.stringify({ projectId, basePath, dependencies: dependencies || [] }),
+            previous_event_id: lastEventRow ? lastEventRow.id : null
           });
 
-          return {
-            content: [{
-               type: "text",
-               text: `Successfully injected PROJECT_CONFIG event into stream. Event ID: ${eventId}`
-            }]
-          };
+          return { content: [{ type: "text", text: `Successfully injected PROJECT_CONFIG event into stream. Event ID: ${eventId}` }] };
         } catch (err: any) {
-          return {
-            content: [{
-               type: "text",
-               text: `Error applying config: ${err.message}`
-            }],
-            isError: true
-          };
+          return { content: [{ type: "text", text: `Error applying config: ${err.message}` }], isError: true };
         }
+      }
+
+      if (request.params.name === "send_terminal_input") {
+        const payload = request.params.arguments;
+        if (!payload || typeof payload !== 'object') return { toolResult: "Invalid arguments" };
+        try {
+           const lastEventRow = this.db.get('SELECT id FROM events WHERE session_id = ? ORDER BY timestamp DESC LIMIT 1', [this.sessionId]);
+           const eventId = this.db.appendEvent({
+               session_id: this.sessionId,
+               timestamp: Date.now(),
+               actor: 'Agent',
+               type: 'TERMINAL_INPUT',
+               payload: JSON.stringify({ target: (payload as any).targetHost, input: (payload as any).inputString }),
+               previous_event_id: lastEventRow ? lastEventRow.id : null
+           });
+           
+           return { content: [{ type: "text", text: `Terminal Input sent via Event ID: ${eventId}` }] };
+        } catch (err: any) {
+           return { content: [{ type: "text", text: `Error sending terminal input: ${err.message}` }], isError: true };
+        }
+      }
+
+      if (request.params.name === "read_terminal_output") {
+         const payload = request.params.arguments;
+         if (!payload || typeof payload !== 'object') return { toolResult: "Invalid arguments" };
+         
+         const targetHost = (payload as any).targetHost;
+         const limit = (payload as any).limit || 50;
+         
+         const events = this.db.query(
+             'SELECT payload, timestamp FROM events WHERE session_id = ? AND type = ? AND actor = ? ORDER BY timestamp DESC LIMIT ?', 
+             [this.sessionId, 'TERMINAL_OUTPUT', targetHost, limit]
+         ) as any[];
+         
+         // Outputs are returned descending by timestamp, reverse them to be chronological 
+         events.reverse();
+         const bufferedText = events.map(e => {
+             const parsed = JSON.parse(e.payload);
+             return parsed.text || '';
+         }).join('');
+         
+         return {
+             content: [{ type: "text", text: bufferedText || '(No terminal output found for host)' }]
+         };
       }
 
       throw new Error(`Unknown tool: ${request.params.name}`);

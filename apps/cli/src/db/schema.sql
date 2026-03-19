@@ -44,3 +44,8 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'active'
 );
+
+CREATE TABLE IF NOT EXISTS local_workspaces (
+    path TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL
+);

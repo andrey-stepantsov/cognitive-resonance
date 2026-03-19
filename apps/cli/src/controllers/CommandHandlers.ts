@@ -118,6 +118,67 @@ export async function handleInteractiveCommand(ctx: CLIControllerContext): Promi
       break;
     }
 
+    case CommandAction.HOST_LS: {
+      console.log('\n[System] Active Global Presence Map (Hosts):');
+      try {
+         const rows = db.query("SELECT actor, payload, timestamp FROM events WHERE type IN ('ENVIRONMENT_JOINED', 'PRESENCE_UPDATE') ORDER BY timestamp DESC") as any[];
+         const hosts = new Map<string, any>();
+         for (const r of rows) {
+            if (!hosts.has(r.actor)) hosts.set(r.actor, r);
+         }
+         
+         if (hosts.size === 0) {
+            console.log('  No hosts have announced presence yet.');
+         } else {
+            console.log('  HOST IDENTITY       | OS / ARCH     | CAPABILITIES        | LAST SEEN');
+            console.log('  -----------------------------------------------------------------------------------------');
+            for (const r of hosts.values()) {
+               try {
+                  const p = JSON.parse(r.payload);
+                  const caps = p.capabilities || {};
+                  const osArch = `${caps.os || '?'}/${caps.arch || '?'}`;
+                  const tools = [];
+                  if (caps.node) tools.push('Node');
+                  if (caps.python) tools.push('Python');
+                  const capStr = tools.join(',');
+                  const dateStr = new Date(r.timestamp).toISOString();
+                  console.log(`  ${r.actor.padEnd(19)} | ${osArch.padEnd(13)} | ${capStr.padEnd(19)} | ${dateStr}`);
+               } catch (e) {}
+            }
+         }
+      } catch (err: any) {
+         console.log(`  Failed to retrieve hosts: ${err.message}`);
+      }
+      console.log('');
+      break;
+    }
+
+    case CommandAction.HOST_INFO: {
+      const target = command.args[0];
+      if (!target) {
+         console.log('[System] Usage: /host info <target>');
+         break;
+      }
+      try {
+         const rows = db.query("SELECT * FROM events WHERE type IN ('ENVIRONMENT_JOINED', 'PRESENCE_UPDATE') AND actor = ? ORDER BY timestamp DESC LIMIT 1", [target]) as any[];
+         if (rows.length === 0) {
+            console.log(`[System] Unknown host: ${target}`);
+         } else {
+            const r = rows[0];
+            const p = JSON.parse(r.payload);
+            console.log(`\n[Host Info: ${target}]`);
+            console.log(`  Last Seen:    ${new Date(r.timestamp).toISOString()}`);
+            console.log(`  OS / Arch:    ${p.capabilities?.os} / ${p.capabilities?.arch}`);
+            console.log(`  Node Support: ${p.capabilities?.node ? 'Yes' : 'No'}`);
+            console.log(`  Python Supp:  ${p.capabilities?.python ? 'Yes' : 'No'}`);
+            console.log('');
+         }
+      } catch(e: any) {
+         console.log(`[System] Error retrieving host: ${e.message}`);
+      }
+      break;
+    }
+
     case CommandAction.INVITE:
       console.log('[System] Invite is a PWA cloud feature (not supported in local SQLite yet).');
       break;

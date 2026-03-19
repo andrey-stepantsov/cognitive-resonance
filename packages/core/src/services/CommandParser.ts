@@ -54,6 +54,10 @@ export type CommandAction =
   | 'GLOBAL_SYNC'
   | 'GLOBAL_EDIT'
   
+  // Host & Presence
+  | 'HOST_LS'
+  | 'HOST_INFO'
+
   // Fallback
   | 'UNKNOWN';
 
@@ -95,6 +99,8 @@ export const CommandAction = {
   SYSTEM: 'SYSTEM' as CommandAction,
   GLOBAL_SYNC: 'GLOBAL_SYNC' as CommandAction,
   GLOBAL_EDIT: 'GLOBAL_EDIT' as CommandAction,
+  HOST_LS: 'HOST_LS' as CommandAction,
+  HOST_INFO: 'HOST_INFO' as CommandAction,
   UNKNOWN: 'UNKNOWN' as CommandAction,
 };
 
@@ -348,6 +354,11 @@ export function parseCommand(input: string): CommandIntent | null {
   if (namespace === 'global') {
     if (verb === 'sync') return { action: CommandAction.GLOBAL_SYNC, args, raw: input };
     if (verb === 'edit') return { action: CommandAction.GLOBAL_EDIT, args, raw: input };
+  }
+
+  if (namespace === 'host') {
+    if (verb === 'ls') return { action: CommandAction.HOST_LS, args, raw: input };
+    if (verb === 'info') return { action: CommandAction.HOST_INFO, args, raw: input };
   }
 
   return { action: CommandAction.UNKNOWN, args: parts.slice(1), raw: input };

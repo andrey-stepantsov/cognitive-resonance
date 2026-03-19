@@ -164,6 +164,10 @@ export class DatabaseEngine {
     return this.db.prepare(sql).all(...params);
   }
   
+  exec(sql: string, params: any[] = []): void {
+    this.db.prepare(sql).run(...params);
+  }
+  
   get(sql: string, params: any[] = []): any {
     return this.db.prepare(sql).get(...params);
   }

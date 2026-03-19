@@ -11,6 +11,7 @@ import { registerAssertCommand } from './commands/assert';
 import { registerUserCommands } from './commands/user';
 import { registerPortabilityCommands } from './commands/portability';
 import { registerServeCommand } from './commands/serve';
+import { registerImportExportCommands } from './commands/importExport';
 
 // Path to store the CLI authentication token
 const TOKEN_FILE_PATH = path.resolve(process.cwd(), '.cr-cli-token');
@@ -39,6 +40,7 @@ registerChatCommands(program);
 registerObserveCommands(program);
 registerServeCommand(program);
 registerMcpCommand(program);
+registerImportExportCommands(program);
 
 program.parseAsync(process.argv).catch(err => {
   console.error('Fatal CLI Error:', err);

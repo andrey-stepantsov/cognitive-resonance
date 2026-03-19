@@ -24,7 +24,9 @@
     "cors": "^2.8.6",
     "dotenv": "^16.4.5",
     "express": "^5.2.1",
+    "ignore": "^7.0.5",
     "memfs": "^4.56.11",
+    "node-pty": "^1.1.0",
     "pino": "^10.3.1",
     "pino-roll": "^4.0.0",
     "ws": "^8.19.0"
@@ -37,8 +39,6 @@
     "@types/supertest": "^7.2.0",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^1.6.1",
-    "node-git-server": "^1.0.0",
-    "node-pty": "^1.1.0",
     "supertest": "^7.2.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.3",

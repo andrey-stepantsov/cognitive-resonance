@@ -8,7 +8,14 @@ import { logger } from '../utils/logger';
 import chokidar from 'chokidar';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
+import { exec } from 'child_process';
 import { ArtefactManager } from '@cr/core/src/services/ArtefactManager';
+import { Materializer } from '@cr/core/src/services/Materializer';
+import * as pty from 'node-pty';
+
+const activeTerminals = new Map<string, pty.IPty>();
+const terminalBuffers = new Map<string, { buffer: string, timeout: NodeJS.Timeout | null }>();
 
 // removed the broken outer wrapper
 export function createServerApp(dbEngine: DatabaseEngine, clients: Set<WebSocket>) {
@@ -114,6 +121,7 @@ export function registerServeCommand(program: Command) {
     .command('serve')
     .description('Start a local HTTP/WebSocket event-sourced server for the monorepo')
     .option('-p, --port <port>', 'Port to listen on', '3000')
+    .option('-n, --name <name>', 'Explicit semantic host name')
     .action((options, command) => {
       const globalOpts = command.parent?.opts() || {};
       const defaultDbPath = path.join(path.resolve(process.cwd(), '.cr'), 'central.sqlite');
@@ -146,16 +154,36 @@ export function registerServeCommand(program: Command) {
         // Initialize File Watcher - Disabled for Central Edge Server to prevent infinite fs.writeFile mtime loops
         logger.info(`[Cognitive Resonance] File watcher disabled for edge node.`);
 
+        const hostName = options.name || process.env.CR_HOST_NAME || `${os.platform()}-${os.userInfo().username}`;
+        
+        const capabilities = {
+           os: os.platform(),
+           arch: os.arch(),
+           node: true,
+           python: (() => { try { require('child_process').execSync('python3 --version', { stdio: 'ignore' }); return true; } catch { return false; } })()
+        };
+
+        dbEngine.appendEvent({
+           session_id: 'SYSTEM',
+           timestamp: Date.now(),
+           actor: hostName,
+           type: 'ENVIRONMENT_JOINED',
+           payload: JSON.stringify({ host: hostName, capabilities }),
+           previous_event_id: null
+        });
+
+        logger.info(`[Cognitive Resonance] Semantic host identity: ${hostName}`);
+
         // Start Background Sync Daemon
         const syncIntervalMs = 5000;
         logger.info(`[Cognitive Resonance] Starting background Edge Sync daemon (interval: ${syncIntervalMs}ms)`);
         
-        setInterval(() => runSyncDaemon(dbEngine, clients, logger), syncIntervalMs);
+        setInterval(() => runSyncDaemon(dbEngine, clients, logger, hostName), syncIntervalMs);
       });
     });
 }
 
-export async function runSyncDaemon(dbEngine: DatabaseEngine, clients: Set<WebSocket>, logger: any) {
+export async function runSyncDaemon(dbEngine: DatabaseEngine, clients: Set<WebSocket>, logger: any, hostName: string = 'unknown-host') {
    try {
       const fs = require('fs');
       const path = require('path');
@@ -224,6 +252,94 @@ export async function runSyncDaemon(dbEngine: DatabaseEngine, clients: Set<WebSo
                   break; // halt the loop
                } else {
                   dbEngine.insertRemoteEvent(ev);
+                  
+                  // Handle Remote Execution Routing
+                  if (ev.type === 'EXECUTION_REQUESTED') {
+                     const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
+                     if (payload.target === hostName || payload.target === 'all') {
+                        logger.info(`[Sync Daemon] Received execution request for this host: ${payload.command}`);
+                        const sessionEvents = dbEngine.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [ev.session_id]) as any[];
+                        const workspaceDir = process.cwd();
+                        const materializer = new Materializer(workspaceDir);
+                        const sandboxDir = path.resolve(workspaceDir, '.cr', 'sandbox', ev.session_id);
+                        
+                        materializer.computeAndMaterialize(sessionEvents, sandboxDir).then(() => {
+                            exec(payload.command, { cwd: sandboxDir }, (error: any, stdout: string, stderr: string) => {
+                               let output = '';
+                               if (stdout) output += stdout;
+                               if (stderr) output += '\nError: ' + stderr;
+                               if (error) output += '\nExit Code: ' + error.code;
+                               
+                               dbEngine.appendEvent({
+                                  session_id: ev.session_id,
+                                  timestamp: Date.now(),
+                                  actor: hostName,
+                                  type: 'RUNTIME_OUTPUT',
+                                  payload: JSON.stringify({ text: output.trim() || '(No output)' }),
+                                  previous_event_id: ev.id
+                               });
+                            });
+                        }).catch(err => {
+                            logger.error(`[Sync Daemon] Failed to materialize sandbox: ${err.message}`);
+                        });
+                     }
+                  }
+
+                   // Handle Terminal Interactive Spawning
+                   if (ev.type === 'TERMINAL_SPAWN') {
+                      const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
+                      if (payload.target === hostName || payload.target === 'all') {
+                         const workspaceDir = process.cwd();
+                         const sandboxDir = path.resolve(workspaceDir, '.cr', 'sandbox', ev.session_id);
+                         const materializer = new Materializer(workspaceDir);
+                         
+                         materializer.computeAndMaterialize(dbEngine.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [ev.session_id]) as any[], sandboxDir).then(() => {
+                             if (!activeTerminals.has(ev.session_id)) {
+                                 logger.info(`[Sync Daemon] Spawning new PTY terminal for session ${ev.session_id}`);
+                                 const shell = process.env.SHELL || (os.platform() === 'win32' ? 'powershell.exe' : 'bash');
+                                 const ptyProcess = pty.spawn(shell, [], {
+                                     name: 'xterm-color',
+                                     cols: 80,
+                                     rows: 24,
+                                     cwd: sandboxDir,
+                                     env: process.env as any
+                                 });
+                                 
+                                 terminalBuffers.set(ev.session_id, { buffer: '', timeout: null });
+                                 
+                                 ptyProcess.onData((data: string) => {
+                                     const state = terminalBuffers.get(ev.session_id)!;
+                                     state.buffer += data;
+                                     if (!state.timeout) {
+                                         state.timeout = setTimeout(() => {
+                                             dbEngine.appendEvent({
+                                                session_id: ev.session_id,
+                                                timestamp: Date.now(),
+                                                actor: hostName,
+                                                type: 'TERMINAL_OUTPUT',
+                                                payload: JSON.stringify({ text: state.buffer }),
+                                                previous_event_id: null
+                                             });
+                                             state.buffer = '';
+                                             state.timeout = null;
+                                         }, 100);
+                                     }
+                                 });
+                                 activeTerminals.set(ev.session_id, ptyProcess);
+                             }
+                         }).catch(err => logger.error(`[Sync Daemon] Failed to materialize sandbox for PTY: ${err.message}`));
+                      }
+                   }
+
+                   // Handle Interactive Terminal Input Routing
+                   if (ev.type === 'TERMINAL_INPUT') {
+                      const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
+                      const term = activeTerminals.get(ev.session_id);
+                      if (term && (payload.target === hostName || payload.target === 'all')) {
+                         term.write(payload.input);
+                      }
+                   }
+
                   const message = JSON.stringify({ type: 'event', event: ev });
                   for (const client of clients) {
                      if (client.readyState === WebSocket.OPEN) {

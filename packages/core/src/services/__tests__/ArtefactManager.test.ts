@@ -19,16 +19,17 @@ describe('ArtefactManager', () => {
     // Fake events establishing prior state
     const priorEvents: IEvent[] = [
       {
-        id: 'evt-1',
+        event_id: 'evt-1',
         session_id: 's1',
         timestamp: 100,
         type: 'ARTEFACT_PROPOSAL',
         actor: 'USER',
-        payload: {
+        payload: JSON.stringify({
           path: 'src/config.json',
           patch: '{\n  "version": 1\n}\n',
           isFullReplacement: true
-        }
+        }),
+        previous_event_id: null
       }
     ];
 

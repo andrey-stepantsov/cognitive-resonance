@@ -5,7 +5,7 @@ import type { IEvent, ArtefactProposalPayload } from '../interfaces/IEvents';
 export class ArtefactManager {
   private materializer: Materializer;
 
-  constructor(private workspaceDir: string, private sessionEvents: IEvent[]) {
+  constructor(workspaceDir: string, private sessionEvents: IEvent[]) {
     this.materializer = new Materializer(workspaceDir);
   }
 

@@ -707,7 +707,7 @@ describe('useREPL', () => {
   describe('git sync commands', () => {
     beforeEach(async () => {
       mockCrOptions.ensureActiveSession = vi.fn().mockReturnValue('session-123');
-      const backendModule = await import('@cr/backend');
+      await import('@cr/backend');
       vi.clearAllMocks();
       
       // Default to having commits so it just pushes

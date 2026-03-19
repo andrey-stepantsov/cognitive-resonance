@@ -1,6 +1,5 @@
 import { useCognitiveResonance, type Message } from './useCognitiveResonance';
 import { CommandAction, parseCommand } from '../services/CommandParser';
-import { gitRemoteSync } from '@cr/backend';
 import Fuse from 'fuse.js';
 import { useState } from 'react';
 

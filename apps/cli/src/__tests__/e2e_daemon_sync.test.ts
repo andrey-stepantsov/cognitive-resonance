@@ -1,9 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { DatabaseEngine } from '../db/DatabaseEngine';
 import { runSyncDaemon } from '../commands/serve';
+import { Materializer } from '@cr/core/src/services/Materializer';
 import * as fs from 'fs';
 import * as path from 'path';
 import os from 'os';
+
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>();
+  return {
+    ...actual,
+    exec: vi.fn((cmd, opts, cb) => cb(null, 'mocked execution output via test intercept', ''))
+  };
+});
 
 describe('E2E: Daemon Sync Offline Queuing', () => {
   let db: DatabaseEngine;
@@ -19,6 +28,7 @@ describe('E2E: Daemon Sync Offline Queuing', () => {
     
     // Silence random logger rate limiting to guarantee error capture
     vi.spyOn(Math, 'random').mockReturnValue(0.01);
+    vi.spyOn(Materializer.prototype, 'computeAndMaterialize').mockResolvedValue(true as any);
   });
 
   afterEach(() => {
@@ -69,5 +79,36 @@ describe('E2E: Daemon Sync Offline Queuing', () => {
     pending = db.getPendingEvents();
     expect(pending.length).toBe(0);
     expect(mockOnlineFetch).toHaveBeenCalled();
+  });
+
+  it('intercepts EXECUTION_REQUESTED events and dispatches materializer shell hooks locally', async () => {
+    const sessionId = db.createSession('E2E_USER');
+    
+    // Simulate CLOUDFLARE API returning an EXECUTION_REQUESTED event tailored for this fake host identity
+    const mockOnlineFetch = vi.fn().mockImplementation((url: URL | string) => {
+      const urlStr = String(url);
+      if (urlStr.includes('since=')) {
+         return Promise.resolve({ ok: true, json: async () => ({
+             events: [
+                { id: 'remote-20', session_id: sessionId, timestamp: Date.now(), type: 'EXECUTION_REQUESTED', actor: 'REMOTE_CLI', payload: JSON.stringify({ target: 'test-node-1', command: 'npm test' }), previous_event_id: null }
+             ]
+         }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ events: [] }) });
+    });
+    global.fetch = mockOnlineFetch as any;
+
+    await runSyncDaemon(db, new Set(), mockLogger, 'test-node-1');
+
+    // Yield macro-task queue for async fs/materializer hooks to resolve the mocked exec child process callback
+    await new Promise(r => setTimeout(r, 200));
+
+    // Assert that a RUNTIME_OUTPUT event was securely appended to sqlite queue 
+    const capturedOutputEvents = db.query('SELECT * FROM events WHERE type = ?', ['RUNTIME_OUTPUT']) as any[];
+    expect(capturedOutputEvents.length).toBe(1);
+    
+    const outputPayload = JSON.parse(capturedOutputEvents[0].payload);
+    expect(outputPayload.text).toBe('mocked execution output via test intercept');
+    expect(capturedOutputEvents[0].actor).toBe('test-node-1');
   });
 });

@@ -63,6 +63,11 @@ describe('CommandParser', () => {
     expect(parseCommand('/graph cluster y')).toEqual({ action: CommandAction.GRAPH_CLUSTER, args: ['y'], raw: '/graph cluster y' });
   });
 
+  it('parses host commands', () => {
+    expect(parseCommand('/host ls')).toEqual({ action: CommandAction.HOST_LS, args: [], raw: '/host ls' });
+    expect(parseCommand('/host info my-mac')).toEqual({ action: CommandAction.HOST_INFO, args: ['my-mac'], raw: '/host info my-mac' });
+  });
+
   it('returns UNKNOWN for unmapped commands', () => {
     expect(parseCommand('/unknown command')).toEqual({ action: CommandAction.UNKNOWN, args: ['command'], raw: '/unknown command' });
     expect(parseCommand('/fake_undefined_command')).toEqual({ action: CommandAction.UNKNOWN, args: [], raw: '/fake_undefined_command' });

@@ -133,9 +133,30 @@ describe('CognitiveMCPServer', () => {
   it('lists available tools natively', async () => {
     const listHandler = handlers[0];
     const result = await listHandler({});
-    expect(result.tools.length).toBe(2);
+    expect(result.tools.length).toBe(4);
     expect(result.tools[0].name).toBe('registerProject');
     expect(result.tools[1].name).toBe('updateProjectDependencies');
+    expect(result.tools[2].name).toBe('send_terminal_input');
+    expect(result.tools[3].name).toBe('read_terminal_output');
+  });
+
+  it('generates TERMINAL_INPUT events natively', async () => {
+    const callHandler = handlers[1];
+    const req = {
+       params: {
+         name: 'send_terminal_input',
+         arguments: { targetHost: 'ubuntu-dev', inputString: 'ls -la\n' }
+       }
+    };
+    
+    const result = await callHandler(req);
+    expect(result.isError).toBeUndefined();
+    
+    const events = db.query("SELECT * FROM events WHERE type = 'TERMINAL_INPUT' AND session_id = ?", [sessionId]) as any[];
+    expect(events.length).toBe(1);
+    const payload = JSON.parse(events[0].payload);
+    expect(payload.target).toBe('ubuntu-dev');
+    expect(payload.input).toBe('ls -la\n');
   });
 
   it('connects via stdio during start', async () => {
