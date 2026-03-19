@@ -11,44 +11,9 @@ import { ArtefactManager } from '@cr/core/src/services/ArtefactManager';
 import { exec } from 'child_process';
 import * as vm from 'vm';
 import { runSyncDaemon } from './serve';
-
-// Path to store the CLI authentication token
-const CR_DIR = path.resolve(process.cwd(), '.cr');
-const TOKEN_FILE_PATH = path.join(CR_DIR, 'token');
-
-// Helper to reliably read from stdin if piped
-async function readStdin(): Promise<string> {
-  if (process.stdin.isTTY) {
-    return ''; // No data piped in
-  }
-  return new Promise((resolve, reject) => {
-    let data = '';
-    process.stdin.setEncoding('utf-8');
-    process.stdin.on('data', chunk => { data += chunk; });
-    process.stdin.on('end', () => { resolve(data.trim()); });
-    process.stdin.on('error', err => { reject(err); });
-  });
-}
-
-function getCliToken(): string | null {
-  try { if (fs.existsSync(TOKEN_FILE_PATH)) return fs.readFileSync(TOKEN_FILE_PATH, 'utf-8').trim(); } catch (e) {} return null;
-}
-function saveCliToken(token: string) {
-  try { 
-     if (!fs.existsSync(CR_DIR)) fs.mkdirSync(CR_DIR, { recursive: true });
-     fs.writeFileSync(TOKEN_FILE_PATH, token, { mode: 0o600 }); 
-  } catch (e) { console.error('[Error] Failed to save authentication token:', e); }
-}
-
-async function backendFetch(endpoint: string, options: RequestInit = {}): Promise<Response> {
-  const backendUrl = process.env.CR_CLOUD_URL || process.env.VITE_CLOUDFLARE_WORKER_URL || 'http://localhost:8787';
-  const url = `${backendUrl.replace(/\/$/, '')}${endpoint}`;
-  const headers = new Headers(options.headers as any);
-  headers.set('Content-Type', 'application/json');
-  const token = getCliToken();
-  if (token) headers.set('Authorization', `Bearer ${token}`);
-  return fetch(url, { ...options, headers });
-}
+import { backendFetch } from '../utils/api';
+import { readStdin, hookStdoutMute } from '../utils/prompt';
+import { handleInteractiveCommand, CLIRuntimeState } from '../controllers/CommandHandlers';
 
 // Helper to rehydrate chat history from the database
 function loadSessionFromDB(db: DatabaseEngine, sessionId: string): { role: string; content: string }[] {
@@ -228,6 +193,13 @@ export function registerChatCommands(program: Command) {
 
       console.log(`Welcome to Cognitive Resonance! Type /help for commands, or hit Ctrl+C to exit. (DB: ${dbPath}, Session: ${sessionId})`);
     
+    let availableModels: string[] = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.5-flash-8b'];
+    fetchModels().then(models => {
+       if (models && models.length > 0) {
+          availableModels = models.map(m => m.name.replace('models/', ''));
+       }
+    }).catch(() => {});
+
     const schema = {
       type: 'OBJECT',
       properties: { 
@@ -257,7 +229,11 @@ export function registerChatCommands(program: Command) {
       const currentWord = words[words.length - 1];
       let hits: string[] = [];
 
-      if (currentWord.startsWith('@')) {
+      if (line.startsWith('/model use ')) {
+         const term = currentWord.toLowerCase();
+         hits = availableModels.filter(m => m.toLowerCase().startsWith(term));
+         return [hits, currentWord];
+      } else if (currentWord.startsWith('@')) {
          const term = currentWord.substring(1).toLowerCase();
          const gemNames = Object.keys(GemProfiles);
          hits = gemNames.filter(name => name.toLowerCase().startsWith(term)).map(n => `@${n}`);
@@ -293,13 +269,7 @@ export function registerChatCommands(program: Command) {
        .catch(() => {});
 
     // Intercept stdout once to prevent echoing keystrokes during secure password entry
-    // @ts-ignore
-    rl._writeToOutput = function _writeToOutput(stringToWrite: string) {
-       // @ts-ignore
-       if (rl.stdoutMuted && stringToWrite !== '\r\n' && stringToWrite !== '\n') return;
-       // @ts-ignore
-       readline.Interface.prototype._writeToOutput.call(this, stringToWrite);
-    };
+    hookStdoutMute(rl);
     
     // Non-blocking native rendering for incoming events
     const handleIncomingLiveEvent = (ev: any) => {
@@ -416,172 +386,24 @@ export function registerChatCommands(program: Command) {
 
       const command = parseCommand(text);
 
-      const askSecure = (query: string): Promise<string> => {
-        return new Promise((resolve) => {
-           rl.question(query, (password) => {
-              // @ts-ignore
-              rl.stdoutMuted = false;
-              console.log(''); // newline after entry
-              resolve(password);
-           });
-           
-           // Mute stdout AFTER the question text has been written to the console
-           // @ts-ignore
-           rl.stdoutMuted = true;
-        });
-      };
-
       if (command) {
-         switch (command.action) {
-          case CommandAction.SESSION_CLEAR:
-            chatHistory = [];
-            console.log('[System] Session history cleared.');
-            break;
-          case CommandAction.MODEL_USE:
-            if (command.args[0] === 'ls') {
-               process.stdout.write('\n[System] Fetching available models from Google... ');
-               try {
-                  const models = await fetchModels();
-                  console.log('Done.\n');
-                  for (const m of models) {
-                     console.log(`  - \x1b[36m${m.name.replace('models/', '')}\x1b[0m (${m.displayName})`);
-                  }
-                  console.log('\nTip: Use /model use <model_name> to switch.\n');
-               } catch (err: any) {
-                  console.log(`Failed. ${err.message}`);
-               }
-            } else if (command.args[0]) {
-              currentModel = command.args[0];
-              console.log(`[System] Switched to model: ${currentModel}`);
-            } else {
-              console.log(`[System] Current model: ${currentModel}`);
-            }
-            break;
-          case CommandAction.LOGIN: {
-            const email = command.args[0]; 
-            if (!email) { console.log('[System] Usage: /login <email> [password]'); break; }
-            let password = command.args[1];
-            if (!password) password = await askSecure('Password: ');
-            if (!password) { console.log('[System] Password cannot be empty.'); break; }
-            
-            try {
-              process.stdout.write('[System] Logging in... ');
-              const res = await backendFetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
-              const data = await res.json() as any;
-              if (res.ok && data.token) { 
-                 saveCliToken(data.token); 
-                 const nick = data.user?.name || email.split('@')[0];
-                 updatePrompt(nick);
-                 console.log(`Success! Logged in as ${nick}`);
-              }
-              else console.log(`Failed. ${data.error || 'Invalid credentials'}`);
-            } catch (err: any) { console.log(`Failed. Network error: ${err.message}`); }
-            break;
-          }
-          case CommandAction.SIGNUP: {
-             const email = command.args[0]; 
-             if (!email) { console.log('[System] Usage: /signup <email> [password] [name]'); break; }
-             let password = command.args[1];
-             let name = command.args.slice(2).join(' ');
-             
-             if (!password) {
-                 password = await askSecure('Choose a Password: ');
-                 if (!password) { console.log('[System] Password cannot be empty.'); break; }
-                 name = await new Promise(res => rl.question('Display Name (optional): ', (ans) => res(ans.trim() || email.split('@')[0])));
-             } else if (!name) {
-                 name = email.split('@')[0];
-             }
+        const state: CLIRuntimeState = { sessionId, currentModel, lastEventId, chatHistory };
+        await handleInteractiveCommand({
+          state,
+          db,
+          rl,
+          text,
+          command,
+          updatePrompt,
+          loadSessionFromDB
+        });
+        
+        // Unpack potentially mutated state
+        sessionId = state.sessionId;
+        currentModel = state.currentModel;
+        lastEventId = state.lastEventId;
+        chatHistory = state.chatHistory;
 
-             try {
-                process.stdout.write('[System] Signing up... ');
-                const res = await backendFetch('/api/auth/signup', { method: 'POST', body: JSON.stringify({ email, password, name }) });
-                const data = await res.json() as any;
-                if (res.ok && data.token) { 
-                   saveCliToken(data.token); 
-                   updatePrompt(name);
-                   console.log(`Success! Account created for ${email}`); 
-                }
-                else console.log(`Failed. ${data.error || 'Could not create account'}`);
-             } catch (err: any) { console.log(`Failed. Network error: ${err.message}`); }
-             break;
-          }
-          case CommandAction.WHOAMI: {
-             try {
-                process.stdout.write('[System] Checking authentication... ');
-                const res = await backendFetch('/api/auth/me', { method: 'GET' });
-                const data = await res.json() as any;
-                if (res.ok && data.user) {
-                   console.log(`\n  ✅ Logged in as: \x1b[36m${data.user.name}\x1b[0m (${data.user.email})`);
-                } else {
-                   console.log(`\n  ❌ Not logged in. Please use /login or /signup.`);
-                }
-             } catch (err: any) { console.log(`Failed. Network error: ${err.message}`); }
-             break;
-          }
-          case CommandAction.INVITE:
-             console.log('[System] Invite is a PWA cloud feature (not supported in local SQLite yet).');
-             break;
-          case CommandAction.SESSION_DELETE:
-             console.log('[System] Hard deletion is disabled. Please use /archive instead.');
-             break;
-          case CommandAction.UNKNOWN:
-             if (text === '/archive') {
-                 db.appendEvent({ session_id: sessionId, timestamp: Date.now(), actor: 'SYSTEM', type: 'PWA_ARCHIVE_TOGGLE', payload: JSON.stringify({ archived: true }), previous_event_id: lastEventId });
-                 console.log(`[System] Session ${sessionId} archived.`);
-             } else if (text === '/recover') {
-                 db.appendEvent({ session_id: sessionId, timestamp: Date.now(), actor: 'SYSTEM', type: 'PWA_ARCHIVE_TOGGLE', payload: JSON.stringify({ archived: false }), previous_event_id: lastEventId });
-                 console.log(`[System] Session ${sessionId} recovered.`);
-             } else if (text === '/clone') {
-                 const newSessionId = db.createSession('LOCAL_USER');
-                 const events = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [sessionId]) as any[];
-                 let previousId = null;
-                 for (const ev of events) {
-                     previousId = db.appendEvent({ session_id: newSessionId, timestamp: ev.timestamp, actor: ev.actor, type: ev.type, payload: ev.payload, previous_event_id: previousId });
-                 }
-                 sessionId = newSessionId;
-                 lastEventId = previousId;
-                 console.log(`[System] Session cloned. You are now communicating in the new cloned session: ${sessionId}`);
-             } else if (text.startsWith('/session ')) {
-                 const newId = text.split(' ')[1];
-                 if (newId) {
-                     sessionId = newId;
-                     chatHistory = loadSessionFromDB(db, sessionId);
-                     // Set lastEventId accurately
-                     const events = db.query('SELECT id FROM events WHERE session_id = ? ORDER BY timestamp DESC LIMIT 1', [sessionId]);
-                     if (events.length > 0) lastEventId = events[0].id;
-                     else lastEventId = null;
-                 } else console.log('[System] Usage: /session <id>');
-             } else if (text === '/ls' || text === '/sessions') {
-                 console.log('\n[System] Available Sessions (Archived sessions hidden):');
-                 // A sophisticated query to get the last activity and check if the latest PWA_ARCHIVE_TOGGLE is true
-                 // For SQLite local CLI, we'll just do a simpler grouped query and filter in memory for robustness
-                 const sessionRows = db.query('SELECT session_id, type, payload, timestamp FROM events ORDER BY timestamp ASC');
-                 const sessions = new Map<string, { last_activity: number, archived: boolean }>();
-                 
-                 for (const row of sessionRows) {
-                     if (!sessions.has(row.session_id)) sessions.set(row.session_id, { last_activity: row.timestamp, archived: false });
-                     const s = sessions.get(row.session_id)!;
-                     s.last_activity = row.timestamp;
-                     if (row.type === 'PWA_ARCHIVE_TOGGLE') {
-                         try { s.archived = JSON.parse(row.payload).archived; } catch(e){}
-                     }
-                 }
-                 
-                 const activeSessions = Array.from(sessions.entries()).filter(([id, data]) => !data.archived).sort((a,b) => b[1].last_activity - a[1].last_activity).slice(0, 20);
-                 
-                 for (const [id, data] of activeSessions) {
-                     console.log(`  - \x1b[36m${id}\x1b[0m (Last Active: ${new Date(data.last_activity).toISOString()})`);
-                 }
-                 if (activeSessions.length === 0) console.log('  No active sessions found.');
-                 console.log('');
-             } else {
-                 console.log(`[System] Unrecognized command: ${command.raw}`);
-             }
-            break;
-          default:
-            console.log(`[System] Unrecognized command: ${command.raw}`);
-            break;
-        }
         rl.prompt();
         return;
       }

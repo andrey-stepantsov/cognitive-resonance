@@ -17,7 +17,8 @@ vi.mock('@cr/core/src/services/GeminiService', () => ({
         reply: 'Mocked AI Response',
         dissonanceScore: 42,
         nodes: []
-    })
+    }),
+    fetchModels: vi.fn().mockResolvedValue([])
 }));
 
 // Mock readline to intercept stream inputs

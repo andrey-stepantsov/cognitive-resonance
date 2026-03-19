@@ -13,6 +13,7 @@ export * from './interfaces/IStorageProvider';
 
 export * from './providers/CognitivePlatformContext';
 export * from './providers/LocalNodeStorageProvider';
+export * from './providers/RemoteStorageProvider';
 
 export * from './interfaces/IEvents';
 export * from './services/EventReducers';

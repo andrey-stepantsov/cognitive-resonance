@@ -10,6 +10,7 @@ import { twMerge } from 'tailwind-merge';
 import { useREPL, useVoiceToDSL, translateToDSL, useCognitivePlatform, GitContextManager } from '@cr/core';
 import { clearApiKey } from '@cr/backend';
 import { Intercom } from './components/Intercom';
+import { ArtefactRenderer } from './components/ArtefactRenderer';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
@@ -494,7 +495,12 @@ export default function App() {
                         #{idx + 1}
                       </span>
                     </div>
-                    {(msg.role === 'model' || msg.role === 'peer') && !msg.isError ? <MarkdownRenderer content={msg.content} /> : msg.content}
+                    {(msg.role === 'model' || msg.role === 'peer') && !msg.isError ? (
+                       <>
+                         <MarkdownRenderer content={msg.content} />
+                         <ArtefactRenderer content={msg.content} sessionId={app.activeSessionId || undefined} />
+                       </>
+                    ) : msg.content}
                   </div>
                 )}
                 {msg.role === 'model' && msg.modelTurnIndex !== undefined && !msg.isError && (

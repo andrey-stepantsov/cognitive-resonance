@@ -10,7 +10,8 @@ import * as path from 'path';
 // Mock gemini to force exception
 vi.mock('@cr/core/src/services/GeminiService', () => ({
     initGemini: vi.fn(),
-    generateResponse: vi.fn().mockRejectedValue(new Error('Simulated API Crash'))
+    generateResponse: vi.fn().mockRejectedValue(new Error('Simulated API Crash')),
+    fetchModels: vi.fn().mockResolvedValue([])
 }));
 
 vi.mock('readline', () => ({

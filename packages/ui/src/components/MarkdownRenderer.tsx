@@ -96,27 +96,6 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
           );
         },
         p({ node, children, ...props }: any) {
-          const text = String(children);
-          const match = text.match(/^\[Remote Artefact\] Draft proposed: (.+) for (.+)$/);
-          if (match) {
-             const [, branch, path] = match;
-             return (
-               <div className="my-4 border border-indigo-500/30 bg-indigo-500/10 rounded-xl p-4 flex items-center gap-4 shadow-sm">
-                  <div className="p-2.5 bg-indigo-500/20 rounded-lg shrink-0">
-                    <Check className="w-5 h-5 text-indigo-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-indigo-300">Remote Artefact Generated</p>
-                    <p className="text-[11px] text-zinc-400 truncate mt-0.5">
-                      Saved to <code className="text-indigo-300 bg-black/20 px-1 py-0.5 rounded font-mono">{path}</code> on branch <code className="text-indigo-300 bg-black/20 px-1 py-0.5 rounded font-mono">{branch}</code>
-                    </p>
-                  </div>
-                  <button className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium rounded-lg transition-colors shrink-0 shadow shadow-indigo-500/20">
-                    View
-                  </button>
-               </div>
-             );
-          }
           return <p {...props}>{children}</p>;
         }
       }}
