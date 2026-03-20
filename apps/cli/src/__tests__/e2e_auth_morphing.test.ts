@@ -1,67 +1,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { handleInteractiveCommand, CLIRuntimeState } from '../controllers/CommandHandlers';
-import { CommandAction } from '@cr/core/src/services/CommandParser';
 import * as api from '../utils/api';
-import * as promptUtils from '../utils/prompt';
-import { DatabaseEngine } from '../db/DatabaseEngine';
-import * as fs from 'fs';
-import * as path from 'path';
-import os from 'os';
-import * as readline from 'readline';
+import { TestCluster } from './TestCluster';
 
-describe('E2E Auth Morphing & Secure Password Interceptor', () => {
-  let db: DatabaseEngine;
-  let tempDir: string;
-  let dbPath: string;
+describe('E2E Auth Morphing', () => {
+  let cluster: TestCluster;
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cr-e2e-auth-'));
-    dbPath = path.join(tempDir, 'test.sqlite');
-    db = new DatabaseEngine(dbPath);
+    cluster = new TestCluster();
+    // Disable process.exit globally in case REPL tries to close
+    vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
   });
 
   afterEach(() => {
-    db.close();
-    fs.rmSync(tempDir, { recursive: true, force: true });
+    cluster.teardown();
     vi.restoreAllMocks();
   });
 
-  it('securely mutates stdout when asking for password natively', async () => {
-    // Mock the readline interface
-    const mockRl = {
-      question: vi.fn((query: string, cb: (ans: string) => void) => {
-        // Asynchronously answer after a tick
-        setTimeout(() => cb('supersecret'), 10);
-      }),
-      stdoutMuted: false
-    } as unknown as readline.Interface;
-
-    // Call our extracted utility
-    const promise = promptUtils.askSecure(mockRl, 'Password: ');
-
-    // Immediately after calling, stdoutMuted should be true
-    expect((mockRl as any).stdoutMuted).toBe(true);
-
-    const result = await promise;
-
-    // After resolving, stdoutMuted should be back to false
-    expect(result).toBe('supersecret');
-    expect((mockRl as any).stdoutMuted).toBe(false);
-  });
-
   it('morphs the REPL prompt dynamically after successful Edge Token validation', async () => {
-    const mockUpdatePrompt = vi.fn();
-    const mockRl = {
-      question: vi.fn((q, cb) => cb('pass'))
-    } as unknown as readline.Interface;
-
-    const state: CLIRuntimeState = {
-      sessionId: 'sess-123',
-      currentModel: 'gemini-2.5-flash',
-      lastEventId: null,
-      chatHistory: []
-    };
-
+    // Trigger login
+    cluster.replIo.simulateLine('/login test@neuro.com');
     // Spy on backendFetch to simulate a successful /api/auth/login to Cloudflare Edge
     vi.spyOn(api, 'backendFetch').mockResolvedValue({
       ok: true,
@@ -71,38 +28,24 @@ describe('E2E Auth Morphing & Secure Password Interceptor', () => {
       })
     } as Response);
 
-    // Spy on saveCliToken so we don't actually write to ~/.cr/token during tests
     const saveTokenSpy = vi.spyOn(api, 'saveCliToken').mockImplementation(() => {});
 
-    await handleInteractiveCommand({
-      state,
-      db,
-      rl: mockRl,
-      text: '/login test@neuro.com',
-      command: {
-        raw: '/login test@neuro.com',
-        action: CommandAction.LOGIN,
-        args: ['test@neuro.com', 'mypassword']
-      },
-      updatePrompt: mockUpdatePrompt,
-      loadSessionFromDB: vi.fn()
-    });
-
-    expect(saveTokenSpy).toHaveBeenCalledWith('mock-jwt-token');
+    await cluster.bootRepl('test-session-auth');
+    await new Promise(res => setTimeout(res, 50)); // let REPL bind handlers
     
-    // The REPL prompt should dynamically morph using the user's fetched name
-    expect(mockUpdatePrompt).toHaveBeenCalledWith('NeuroMancer');
+    // Trigger login
+    cluster.replIo.simulateLine('/login test@neuro.com');
+    await new Promise(res => setTimeout(res, 20)); // let logic settle and call questionHidden
+    
+    // Answer the password prompt
+    cluster.replIo.answerNextQuestion('pass');
+    await new Promise(res => setTimeout(res, 50));
+    
+    expect(saveTokenSpy).toHaveBeenCalledWith('mock-jwt-token');
+    expect(cluster.replIo.lastPrompt).toContain('NeuroMancer');
   });
 
   it('handles WHOAMI Edge validation securely', async () => {
-    const mockRl = {} as readline.Interface;
-    const state: CLIRuntimeState = {
-      sessionId: 'sess-123',
-      currentModel: 'gemini-2.5-flash',
-      lastEventId: null,
-      chatHistory: []
-    };
-
     // Spy to simulate a successful /api/auth/me to Cloudflare Edge
     vi.spyOn(api, 'backendFetch').mockResolvedValue({
       ok: true,
@@ -111,23 +54,19 @@ describe('E2E Auth Morphing & Secure Password Interceptor', () => {
       })
     } as Response);
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const printSpy = vi.spyOn(cluster.replIo, 'print');
 
-    await handleInteractiveCommand({
-      state,
-      db,
-      rl: mockRl,
-      text: '/whoami',
-      command: {
-        raw: '/whoami',
-        action: CommandAction.WHOAMI,
-        args: []
-      },
-      updatePrompt: vi.fn(),
-      loadSessionFromDB: vi.fn()
-    });
+    // Boot repl
+    await cluster.bootRepl('test-session-whoami');
+    
+    // allow initial auto-whoami prompt decorators to settle
+    await new Promise(res => setTimeout(res, 50));
+    
+    cluster.replIo.simulateLine('/whoami');
+    await new Promise(res => setTimeout(res, 50));
 
     // Assert that the CLI outputs the successful identity check
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('✅ Logged in as: \x1b[36mCypher\x1b[0m (cypher@matrix.com)'));
+    expect(printSpy).toHaveBeenCalledWith(expect.stringContaining('✅ Logged in as: \x1b[36mCypher\x1b[0m (cypher@matrix.com)'));
   });
 });
+

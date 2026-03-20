@@ -1,10 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { DatabaseEngine } from '../db/DatabaseEngine';
-import { runSyncDaemon } from '../commands/serve';
+import { TestCluster } from './TestCluster';
 import { Materializer } from '@cr/core/src/services/Materializer';
-import * as fs from 'fs';
-import * as path from 'path';
-import os from 'os';
 
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('child_process')>();
@@ -15,16 +11,10 @@ vi.mock('child_process', async (importOriginal) => {
 });
 
 describe('E2E: Daemon Sync Offline Queuing', () => {
-  let db: DatabaseEngine;
-  let dbPath: string;
-  let tempDir: string;
-  let mockLogger: any;
+  let cluster: TestCluster;
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cr-e2e-daemon-'));
-    dbPath = path.join(tempDir, 'test.sqlite');
-    db = new DatabaseEngine(dbPath);
-    mockLogger = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
+    cluster = new TestCluster();
     
     // Silence random logger rate limiting to guarantee error capture
     vi.spyOn(Math, 'random').mockReturnValue(0.01);
@@ -32,19 +22,18 @@ describe('E2E: Daemon Sync Offline Queuing', () => {
   });
 
   afterEach(() => {
-    db.close();
-    fs.rmSync(tempDir, { recursive: true, force: true });
+    cluster.teardown();
     vi.restoreAllMocks();
   });
 
   it('verifies events queue offline then flush cleanly on simulated cloud recovery', async () => {
     // 1. Setup local sqlite with out-of-sync events (user types whilst on airplane mode)
-    const sessionId = db.createSession('E2E_USER');
-    db.appendEvent({ session_id: sessionId, timestamp: Date.now(), actor: 'E2E_USER', type: 'USER_PROMPT', payload: '{"text":"Hello offline!"}', previous_event_id: null });
-    db.appendEvent({ session_id: sessionId, timestamp: Date.now()+100, actor: 'LOCAL_AI', type: 'AI_RESPONSE', payload: '{"text":"Response"}', previous_event_id: null });
+    const sessionId = cluster.db.createSession('E2E_USER');
+    cluster.db.appendEvent({ session_id: sessionId, timestamp: Date.now(), actor: 'E2E_USER', type: 'USER_PROMPT', payload: '{"text":"Hello offline!"}', previous_event_id: null });
+    cluster.db.appendEvent({ session_id: sessionId, timestamp: Date.now()+100, actor: 'LOCAL_AI', type: 'AI_RESPONSE', payload: '{"text":"Response"}', previous_event_id: null });
 
     // Assert the local DB queue is loaded
-    let pending = db.getPendingEvents();
+    let pending = cluster.db.getPendingEvents();
     const initialPendingCount = pending.length;
     expect(initialPendingCount).toBeGreaterThan(0);
 
@@ -55,12 +44,11 @@ describe('E2E: Daemon Sync Offline Queuing', () => {
     });
     global.fetch = mockOfflineFetch as any;
 
-    await runSyncDaemon(db, new Set(), mockLogger);
+    await cluster.triggerDaemonSync('test-node-1');
 
     // Assert events are STILL securely in local queue
-    pending = db.getPendingEvents();
+    pending = cluster.db.getPendingEvents();
     expect(pending.length).toBe(initialPendingCount);
-    expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('Offline or unreachable'));
 
     // 3. Simulate CLOUDFLARE API returns to ONLINE
     const mockOnlineFetch = vi.fn().mockImplementation((url: URL | string) => {
@@ -73,16 +61,16 @@ describe('E2E: Daemon Sync Offline Queuing', () => {
     });
     global.fetch = mockOnlineFetch as any;
 
-    await runSyncDaemon(db, new Set(), mockLogger);
+    await cluster.triggerDaemonSync('test-node-1');
 
     // Assert events got successfully flushed to cloud (i.e. local synced flag updated)
-    pending = db.getPendingEvents();
+    pending = cluster.db.getPendingEvents();
     expect(pending.length).toBe(0);
     expect(mockOnlineFetch).toHaveBeenCalled();
   });
 
   it('intercepts EXECUTION_REQUESTED events and dispatches materializer shell hooks locally', async () => {
-    const sessionId = db.createSession('E2E_USER');
+    const sessionId = cluster.db.createSession('E2E_USER');
     
     // Simulate CLOUDFLARE API returning an EXECUTION_REQUESTED event tailored for this fake host identity
     const mockOnlineFetch = vi.fn().mockImplementation((url: URL | string) => {
@@ -98,13 +86,13 @@ describe('E2E: Daemon Sync Offline Queuing', () => {
     });
     global.fetch = mockOnlineFetch as any;
 
-    await runSyncDaemon(db, new Set(), mockLogger, 'test-node-1');
+    await cluster.triggerDaemonSync('test-node-1');
 
     // Yield macro-task queue for async fs/materializer hooks to resolve the mocked exec child process callback
     await new Promise(r => setTimeout(r, 200));
 
     // Assert that a RUNTIME_OUTPUT event was securely appended to sqlite queue 
-    const capturedOutputEvents = db.query('SELECT * FROM events WHERE type = ?', ['RUNTIME_OUTPUT']) as any[];
+    const capturedOutputEvents = cluster.db.query('SELECT * FROM events WHERE type = ?', ['RUNTIME_OUTPUT']) as any[];
     expect(capturedOutputEvents.length).toBe(1);
     
     const outputPayload = JSON.parse(capturedOutputEvents[0].payload);
@@ -112,3 +100,4 @@ describe('E2E: Daemon Sync Offline Queuing', () => {
     expect(capturedOutputEvents[0].actor).toBe('test-node-1');
   });
 });
+

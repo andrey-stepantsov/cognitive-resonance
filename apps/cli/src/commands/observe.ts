@@ -5,8 +5,9 @@ import chalk from 'chalk';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Materializer } from '@cr/core/src/services/Materializer';
+import { IoAdapter, DefaultIoAdapter } from '../utils/IoAdapter';
 
-export function registerObserveCommands(program: Command) {
+export function registerObserveCommands(program: Command, io: IoAdapter = new DefaultIoAdapter()) {
   program
     .command('turns [sessionId]')
     .description('Retrieve the raw interaction history (turns) for a session')
@@ -14,19 +15,19 @@ export function registerObserveCommands(program: Command) {
     .action(async (sessionId, options) => {
       const db = new DatabaseEngine(options.db);
       if (!sessionId) {
-        listSessions(db);
+        listSessions(db, io);
         db.close();
         return;
       }
       
       const events = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [sessionId]) as EventRecord[];
       if (events.length === 0) {
-        console.log(`No events found for session: ${sessionId}`);
+        io.print(`No events found for session: ${sessionId}`);
         db.close();
         return;
       }
 
-      printTurns(events);
+      printTurns(events, io);
       db.close();
     });
 
@@ -39,7 +40,7 @@ export function registerObserveCommands(program: Command) {
       const db = new DatabaseEngine(options.db);
       const limit = parseInt(options.lines, 10) * 2; // roughly 2 events per turn (USER, AI)
       const events = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC LIMIT ?', [sessionId, limit]) as EventRecord[];
-      printTurns(events);
+      printTurns(events, io);
       db.close();
     });
 
@@ -56,7 +57,7 @@ export function registerObserveCommands(program: Command) {
           SELECT * FROM events WHERE session_id = ? ORDER BY timestamp DESC LIMIT ?
         ) ORDER BY timestamp ASC
       `, [sessionId, limit]) as EventRecord[];
-      printTurns(events);
+      printTurns(events, io);
       db.close();
     });
 
@@ -71,13 +72,13 @@ export function registerObserveCommands(program: Command) {
       if (!targetSession) {
          const latestObj = db.get('SELECT session_id FROM events ORDER BY timestamp DESC LIMIT 1') as { session_id: string } | undefined;
          if (!latestObj) {
-            console.log('No sessions found.');
+            io.print('No sessions found.');
             return;
          }
          targetSession = latestObj.session_id;
       }
       
-      console.log(`Watching session ${targetSession}... (Press Ctrl+C to stop)`);
+      io.print(`Watching session ${targetSession}... (Press Ctrl+C to stop)`);
       
       // Print historical context tail first
       const tailLimit = 10;
@@ -87,17 +88,17 @@ export function registerObserveCommands(program: Command) {
         ) ORDER BY timestamp ASC
       `, [targetSession, tailLimit]) as EventRecord[];
       
-      if (events.length > 0) printTurns(events);
-      else console.log(`No prior history.`);
+      if (events.length > 0) printTurns(events, io);
+      else io.print(`No prior history.`);
 
       let lastTimestamp = events.length > 0 ? events[events.length - 1].timestamp : 0;
 
       // Enter polling loop
-      setInterval(() => {
+      io.setInterval(() => {
         const newEvents = db.query('SELECT * FROM events WHERE session_id = ? AND timestamp > ? ORDER BY timestamp ASC', [targetSession, lastTimestamp]) as EventRecord[];
         
         if (newEvents.length > 0) {
-          printTurns(newEvents);
+          printTurns(newEvents, io);
           lastTimestamp = newEvents[newEvents.length - 1].timestamp;
         }
       }, 500);
@@ -117,13 +118,13 @@ export function registerObserveCommands(program: Command) {
       if (!targetSession) {
          const latestObj = db.get('SELECT session_id FROM events ORDER BY timestamp DESC LIMIT 1') as { session_id: string } | undefined;
          if (!latestObj) {
-            console.log('No sessions found.');
+            io.print('No sessions found.');
             return;
          }
          targetSession = latestObj.session_id;
       }
       
-      console.log(`Watching execution logs for session ${targetSession}... (Press Ctrl+C to stop)`);
+      io.print(`Watching execution logs for session ${targetSession}... (Press Ctrl+C to stop)`);
       
       const tailLimit = 20;
       let events = db.query(`
@@ -132,16 +133,16 @@ export function registerObserveCommands(program: Command) {
         ) ORDER BY timestamp ASC
       `, [targetSession, tailLimit]) as EventRecord[];
       
-      if (events.length > 0) printTurns(events);
-      else console.log(`No prior execution logs.`);
+      if (events.length > 0) printTurns(events, io);
+      else io.print(`No prior execution logs.`);
 
       let lastTimestamp = events.length > 0 ? events[events.length - 1].timestamp : 0;
 
-      setInterval(() => {
+      io.setInterval(() => {
         const newEvents = db.query(`SELECT * FROM events WHERE session_id = ? AND timestamp > ? AND type IN ('RUNTIME_OUTPUT', 'TERMINAL_OUTPUT') ORDER BY timestamp ASC`, [targetSession, lastTimestamp]) as EventRecord[];
         
         if (newEvents.length > 0) {
-          printTurns(newEvents);
+          printTurns(newEvents, io);
           lastTimestamp = newEvents[newEvents.length - 1].timestamp;
         }
       }, 500);
@@ -160,18 +161,18 @@ export function registerObserveCommands(program: Command) {
       if (!targetSession) {
          const latestObj = db.get('SELECT session_id FROM events ORDER BY timestamp DESC LIMIT 1') as { session_id: string } | undefined;
          if (!latestObj) {
-            console.log(chalk.red('No sessions found in the database.'));
+            io.print(chalk.red('No sessions found in the database.'));
             return;
          }
          targetSession = latestObj.session_id;
       }
 
-      console.log(chalk.blue(`\nAuditing Session: ${targetSession}\n`));
+      io.print(chalk.blue(`\nAuditing Session: ${targetSession}\n`));
 
       const events = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [targetSession]) as EventRecord[];
       
       if (events.length === 0) {
-        console.log(chalk.yellow('No events found for this session.'));
+        io.print(chalk.yellow('No events found for this session.'));
         return;
       }
 
@@ -225,16 +226,16 @@ export function registerObserveCommands(program: Command) {
         }
       }
 
-      console.log(table.toString());
+      io.print(table.toString());
 
-      console.log(chalk.magenta('\\n=== Mermaid Graph ===\\n'));
-      console.log(mermaidGraph);
-      console.log(chalk.magenta('=====================\\n'));
+      io.print(chalk.magenta('\\n=== Mermaid Graph ===\\n'));
+      io.print(mermaidGraph);
+      io.print(chalk.magenta('=====================\\n'));
 
       if (orphanedCount === 0 && invalidJsonCount === 0) {
-         console.log(chalk.green.bold('Audit Passed: Graph is mathematically contiguous and payloads are valid.\\n'));
+         io.print(chalk.green.bold('Audit Passed: Graph is mathematically contiguous and payloads are valid.\\n'));
       } else {
-         console.log(chalk.red.bold(`Audit Failed: Found ${orphanedCount} temporal paradoxes and ${invalidJsonCount} invalid payloads.\\n`));
+         io.print(chalk.red.bold(`Audit Failed: Found ${orphanedCount} temporal paradoxes and ${invalidJsonCount} invalid payloads.\\n`));
       }
 
       db.close();
@@ -250,14 +251,14 @@ export function registerObserveCommands(program: Command) {
       
       const latestObj = db.get('SELECT session_id FROM events ORDER BY timestamp DESC LIMIT 1') as { session_id: string } | undefined;
       if (!latestObj) {
-         console.log(chalk.yellow('No events found, nothing to diff.'));
+         io.print(chalk.yellow('No events found, nothing to diff.'));
          return;
       }
       const sessionId = latestObj.session_id;
       const events = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [sessionId]) as EventRecord[];
       
       const materializer = new Materializer(process.cwd());
-      console.log(chalk.blue(`\\nComputing virtual state for session ${sessionId}...\\n`));
+      io.print(chalk.blue(`\\nComputing virtual state for session ${sessionId}...\\n`));
       
       const vfs = materializer.computeVirtualState(events);
       
@@ -302,9 +303,9 @@ export function registerObserveCommands(program: Command) {
       }
 
       if (diffCount === 0) {
-         console.log(chalk.green('Virtual state is strictly identical to physical state. No drift.'));
+         io.print(chalk.green('Virtual state is strictly identical to physical state. No drift.'));
       } else {
-         console.log(table.toString());
+         io.print(table.toString());
       }
 
       db.close();
@@ -322,7 +323,7 @@ export function registerObserveCommands(program: Command) {
       if (!targetSession) {
          const latestObj = db.get('SELECT session_id FROM events ORDER BY timestamp DESC LIMIT 1') as { session_id: string } | undefined;
          if (!latestObj) {
-            console.log(chalk.yellow('No events found.'));
+            io.print(chalk.yellow('No events found.'));
             return;
          }
          targetSession = latestObj.session_id;
@@ -331,13 +332,13 @@ export function registerObserveCommands(program: Command) {
       const events = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [targetSession]) as EventRecord[];
       const materializer = new Materializer(process.cwd());
       
-      console.log(chalk.blue(`\nVirtual Workspace Tree for session ${targetSession}\n`));
+      io.print(chalk.blue(`\nVirtual Workspace Tree for session ${targetSession}\n`));
       const vfs = materializer.computeVirtualState(events);
       
       const filePaths = Array.from(vfs.keys()).sort();
       
       if (filePaths.length === 0) {
-         console.log(chalk.gray('(Empty virtual workspace)'));
+         io.print(chalk.gray('(Empty virtual workspace)'));
       } else {
          interface TreeNode {
              children: Record<string, TreeNode>;
@@ -372,7 +373,7 @@ export function registerObserveCommands(program: Command) {
                  const prefixExt = isLast ? '    ' : '│   ';
                  
                  const coloredName = childNode.isFile ? chalk.green(name) : chalk.cyan(name);
-                 console.log(`${prefix}${connector}${coloredName}`);
+                 io.print(`${prefix}${connector}${coloredName}`);
                  
                  if (!childNode.isFile) {
                      printTree(childNode, prefix + prefixExt);
@@ -380,50 +381,50 @@ export function registerObserveCommands(program: Command) {
              }
          };
 
-         console.log(chalk.cyan('.'));
+         io.print(chalk.cyan('.'));
          printTree(root, '');
-         console.log(`\n${filePaths.length} virtual files/directories`);
+         io.print(`\n${filePaths.length} virtual files/directories`);
       }
 
       db.close();
     });
 }
 
-function listSessions(db: DatabaseEngine) {
-  console.log('Available Sessions:');
+function listSessions(db: DatabaseEngine, io: IoAdapter) {
+  io.print('Available Sessions:');
   const sessionIds = db.query('SELECT DISTINCT session_id FROM events ORDER BY timestamp DESC');
   for (const row of sessionIds) {
-    console.log(`  - ${row.session_id}`);
+    io.print(`  - ${row.session_id}`);
   }
 }
 
-function printTurns(events: EventRecord[]) {
+function printTurns(events: EventRecord[], io: IoAdapter) {
   for (const ev of events) {
     if (ev.type === 'USER_PROMPT') {
       try {
         const payload = JSON.parse(ev.payload);
-        console.log(`\x1b[36m[${ev.actor}]\x1b[0m: ${payload.text}`);
+        io.print(`\x1b[36m[${ev.actor}]\x1b[0m: ${payload.text}`);
       } catch (e) {
-        console.log(`\x1b[36m[${ev.actor}]\x1b[0m: [Unparseable User Data]`);
+        io.print(`\x1b[36m[${ev.actor}]\x1b[0m: [Unparseable User Data]`);
       }
     } else if (ev.type === 'AI_RESPONSE') {
       try {
         const payload = JSON.parse(ev.payload);
-        console.log(`\x1b[33m[${ev.actor}]\x1b[0m (Dissonance: ${payload.dissonance}): ${payload.text}`);
+        io.print(`\x1b[33m[${ev.actor}]\x1b[0m (Dissonance: ${payload.dissonance}): ${payload.text}`);
       } catch (e) {
-         console.log(`\x1b[33m[${ev.actor}]\x1b[0m: [Unparseable AI Data]`);
+         io.print(`\x1b[33m[${ev.actor}]\x1b[0m: [Unparseable AI Data]`);
       }
     } else if (ev.type === 'RUNTIME_OUTPUT' || ev.type === 'TERMINAL_OUTPUT') {
       try {
         const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
         const color = ev.type === 'RUNTIME_OUTPUT' ? '\x1b[35m' : '\x1b[32m'; // Magenta for Runtime, Green for Terminal
-        console.log(`${color}[${ev.actor} - ${ev.type}]\x1b[0m\n${payload.text}`);
+        io.print(`${color}[${ev.actor} - ${ev.type}]\x1b[0m\n${payload.text}`);
       } catch (e) {
-        console.log(`\x1b[35m[${ev.actor} - ${ev.type}]\x1b[0m: [Unparseable Output Data]`);
+        io.print(`\x1b[35m[${ev.actor} - ${ev.type}]\x1b[0m: [Unparseable Output Data]`);
       }
     } else {
         // Fallback for metadata events like PWA configuration chunks
-        console.log(`\x1b[90m[System Event]\x1b[0m ${ev.type} @ ${ev.timestamp}`);
+        io.print(`\x1b[90m[System Event]\x1b[0m ${ev.type} @ ${ev.timestamp}`);
     }
   }
 }

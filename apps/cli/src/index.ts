@@ -29,6 +29,7 @@ program
 
 import { registerChatCommands } from './commands/chat';
 import { registerObserveCommands } from './commands/observe';
+import { DefaultIoAdapter } from './utils/IoAdapter';
 import { registerMcpCommand } from './commands/mcp';
 
 // Register model 2 commands
@@ -36,9 +37,10 @@ registerSimulateCommand(program);
 registerAssertCommand(program);
 registerUserCommands(program);
 registerPortabilityCommands(program);
-registerChatCommands(program);
-registerObserveCommands(program);
-registerServeCommand(program);
+const io = new DefaultIoAdapter();
+registerChatCommands(program, io);
+registerObserveCommands(program, io);
+registerServeCommand(program, io);
 registerMcpCommand(program);
 registerImportExportCommands(program);
 

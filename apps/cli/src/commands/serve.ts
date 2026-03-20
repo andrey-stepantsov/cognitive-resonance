@@ -16,6 +16,7 @@ import { parseDslRouting } from '@cr/core/src/services/CommandParser';
 import { DynamicDispatch } from '@cr/core/src/services/DynamicDispatch';
 import { generateSubWorker } from '@cr/core/src/utils/SubWorkerTemplate';
 import * as pty from 'node-pty';
+import { IoAdapter, DefaultIoAdapter } from '../utils/IoAdapter';
 
 const activeTerminals = new Map<string, pty.IPty>();
 const terminalBuffers = new Map<string, { buffer: string, timeout: NodeJS.Timeout | null }>();
@@ -145,7 +146,7 @@ export function createServerApp(dbEngine: DatabaseEngine, clients: Set<WebSocket
   return app;
 }
 
-export function registerServeCommand(program: Command) {
+export function registerServeCommand(program: Command, io: IoAdapter = new DefaultIoAdapter()) {
   program
     .command('serve')
     .description('Start a local HTTP/WebSocket event-sourced server for the monorepo')
@@ -208,7 +209,7 @@ export function registerServeCommand(program: Command) {
         const syncIntervalMs = 5000;
         logger.info(`[Cognitive Resonance] Starting background Edge Sync daemon (interval: ${syncIntervalMs}ms)`);
         
-        setInterval(() => runSyncDaemon(dbEngine, clients, logger, hostName), syncIntervalMs);
+        io.setInterval(() => runSyncDaemon(dbEngine, clients, logger, hostName), syncIntervalMs);
       });
     });
 }

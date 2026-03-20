@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import * as readline from 'readline';
+import { IoAdapter, DefaultIoAdapter } from '../utils/IoAdapter';
 import { initGemini, generateResponse, fetchModels } from '@cr/core/src/services/GeminiService';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -12,14 +12,15 @@ import { Materializer } from '@cr/core/src/services/Materializer';
 import { exec } from 'child_process';
 import chalk from 'chalk';
 import { highlight } from 'cli-highlight';
+const markdown = require('cli-markdown');
 import * as vm from 'vm';
 import { runSyncDaemon } from './serve';
 import { backendFetch } from '../utils/api';
-import { readStdin, hookStdoutMute } from '../utils/prompt';
+import { readStdin } from '../utils/prompt';
 import { handleInteractiveCommand, CLIRuntimeState } from '../controllers/CommandHandlers';
 
 // Helper to rehydrate chat history from the database
-function loadSessionFromDB(db: DatabaseEngine, sessionId: string): { role: string; content: string }[] {
+function loadSessionFromDB(db: DatabaseEngine, sessionId: string, io: IoAdapter): { role: string; content: string }[] {
   const events = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [sessionId]) as any[];
   const history: { role: string; content: string }[] = [];
   
@@ -43,24 +44,24 @@ function loadSessionFromDB(db: DatabaseEngine, sessionId: string): { role: strin
   }
 
   if (history.length > 0) {
-    console.log(`\n[System] Rehydrated Session: ${sessionId}`);
-    console.log(`[System] Context: loaded ${userCount} user prompts and ${aiCount} AI responses.`);
+    io.print(`\n[System] Rehydrated Session: ${sessionId}`);
+    io.print(`[System] Context: loaded ${userCount} user prompts and ${aiCount} AI responses.`);
     
     // Print the last turn for context
     const lastUser = history.filter(h => h.role === 'user').pop();
     const lastAI = history.filter(h => h.role === 'model').pop();
-    console.log('\n--- Last Interaction ---');
-    if (lastUser) console.log(`\x1b[36m[User]\x1b[0m ${lastUser.content.substring(0, 100)}${lastUser.content.length > 100 ? '...' : ''}`);
-    if (lastAI) console.log(`\x1b[33m[AI]\x1b[0m   ${lastAI.content.substring(0, 100)}${lastAI.content.length > 100 ? '...' : ''}`);
-    console.log('------------------------\n');
+    io.print('\n--- Last Interaction ---');
+    if (lastUser) io.print(`\x1b[36m[User]\x1b[0m ${lastUser.content.substring(0, 100)}${lastUser.content.length > 100 ? '...' : ''}`);
+    if (lastAI) io.print(`\x1b[33m[AI]\x1b[0m   ${lastAI.content.substring(0, 100)}${lastAI.content.length > 100 ? '...' : ''}`);
+    io.print('------------------------\n');
   } else {
-    console.log(`\n[System] Session ${sessionId} is empty or does not exist. Starting fresh.`);
+    io.print(`\n[System] Session ${sessionId} is empty or does not exist. Starting fresh.`);
   }
 
   return history;
 }
 
-export function registerChatCommands(program: Command) {
+export function registerChatCommands(program: Command, io: IoAdapter = new DefaultIoAdapter()) {
   program
     .command('chat [message]')
     .description('Interactive REPL or headless one-off message to the AI')
@@ -85,13 +86,13 @@ export function registerChatCommands(program: Command) {
       const db = new DatabaseEngine(dbPath);
       
       const apiKey = process.env.CR_GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-      if (!apiKey) console.warn('Warning: CR_GEMINI_API_KEY or VITE_GEMINI_API_KEY is not set.');
+      if (!apiKey) io.printError('Warning: CR_GEMINI_API_KEY or VITE_GEMINI_API_KEY is not set.');
       else { try { initGemini(apiKey); } catch (err: any) {} }
 
       // Headless Mode
       if (message) {
         const sessionId = options.session || db.createSession('LOCAL_USER');
-        let chatHistory = options.session ? loadSessionFromDB(db, sessionId) : [];
+        let chatHistory = options.session ? loadSessionFromDB(db, sessionId, io) : [];
         let lastEventId: string | null = null;
         if (options.session) {
           const events = db.query('SELECT id FROM events WHERE session_id = ? ORDER BY timestamp DESC LIMIT 1', [sessionId]);
@@ -149,11 +150,11 @@ export function registerChatCommands(program: Command) {
 
         let responsePayload: any;
         try {
-          if (options.format !== 'json') process.stdout.write('Thinking...\n');
+          if (options.format !== 'json') io.write('Thinking...\n');
           responsePayload = await generateResponse(options.model, chatHistory, systemPromptHeadless, schema, undefined, false);
         } catch (err: any) {
-          if (options.format === 'json') console.error(JSON.stringify({ error: err.message }));
-          else console.error(`\nAPI Error: ${err.message}`);
+          if (options.format === 'json') io.printError(JSON.stringify({ error: err.message }));
+          else io.printError(`\nAPI Error: ${err.message}`);
           process.exit(1);
           return;
         }
@@ -173,7 +174,7 @@ export function registerChatCommands(program: Command) {
           const proposals = await manager.proposeDrafts(responsePayload.files);
           
           for (const proposal of proposals) {
-             console.log(`\n[ArtefactManager] Proposal drafted: virtual state for ${proposal.path}`);
+             io.print(`\n[ArtefactManager] Proposal drafted: virtual state for ${proposal.path}`);
              
              lastEventId = db.appendEvent({
                session_id: sessionId,
@@ -189,17 +190,19 @@ export function registerChatCommands(program: Command) {
         db.close();
 
         if (options.format === 'json') {
-          console.log(JSON.stringify({
+          io.print(JSON.stringify({
              role: 'model',
              content: responsePayload.reply,
              metadata: { dissonanceScore: responsePayload.dissonanceScore, nodes: responsePayload.nodes }
           }));
         } else {
-          console.log('\n🤖 Cognitive Resonance');
-          console.log('---------------------');
-          const formattedReply = responsePayload.reply.replace(/\\n/g, '\n');
-          console.log(formattedReply);
-          console.log(`\n[Dissonance: ${responsePayload.dissonanceScore}/100]`);
+          io.print('\n🤖 Cognitive Resonance');
+          io.print('---------------------');
+          let rendered = '';
+          try { rendered = markdown(responsePayload.reply); }
+          catch(e) { rendered = responsePayload.reply.replace(/\\n/g, '\n'); }
+          io.print(rendered);
+          io.print(`\n[Dissonance: ${responsePayload.dissonanceScore}/100]`);
         }
         return;
       }
@@ -207,14 +210,14 @@ export function registerChatCommands(program: Command) {
       // Interactive REPL Mode
       let sessionId = options.session || db.createSession('LOCAL_USER');
       let currentModel = options.model;
-      let chatHistory = options.session ? loadSessionFromDB(db, sessionId) : [];
+      let chatHistory = options.session ? loadSessionFromDB(db, sessionId, io) : [];
       let lastEventId: string | null = null;
       if (options.session) {
         const events = db.query('SELECT id FROM events WHERE session_id = ? ORDER BY timestamp DESC LIMIT 1', [sessionId]);
         if (events.length > 0) lastEventId = events[0].id;
       }
 
-      console.log(`Welcome to Cognitive Resonance! Type /help for commands, or hit Ctrl+C to exit. (DB: ${dbPath}, Session: ${sessionId})`);
+      io.print(`Welcome to Cognitive Resonance! Type /help for commands, or hit Ctrl+C to exit. (DB: ${dbPath}, Session: ${sessionId})`);
     
     let availableModels: string[] = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.5-flash-8b'];
     fetchModels().then(models => {
@@ -256,27 +259,36 @@ export function registerChatCommands(program: Command) {
       if (line.startsWith('/model use ')) {
          const term = currentWord.toLowerCase();
          hits = availableModels.filter(m => m.toLowerCase().startsWith(term));
-         return [hits, currentWord];
+         return [hits, currentWord] as [string[], string];
       } else if (currentWord.startsWith('@')) {
          const term = currentWord.substring(1).toLowerCase();
          const gemNames = Object.keys(GemProfiles);
          hits = gemNames.filter(name => name.toLowerCase().startsWith(term)).map(n => `@${n}`);
-         return [hits, currentWord];
+         return [hits, currentWord] as [string[], string];
       } else if (line.startsWith('/')) {
          hits = shellCommands.filter(c => c.startsWith(line));
-         return [hits, line];
+         return [hits, line] as [string[], string];
       }
 
-      return [[], line];
+      return [[], line] as [string[], string];
     };
 
     // TODO: [UX] Implement persistent up-arrow command history across REPL restarts by seeding `rl.history` from the `events` table for this session.
-    const rl = readline.createInterface({ 
-      input: process.stdin, 
-      output: process.stdout, 
-      prompt: 'cr> ',
-      completer 
-    });
+    const rl = io.createInteractive(completer);
+    
+    // Seed readline history from the virtual event table
+    try {
+       const userPromptEvents = db.query("SELECT payload FROM events WHERE session_id = ? AND type = 'USER_PROMPT' ORDER BY timestamp DESC", [sessionId]) as any[];
+       const historyStrings = userPromptEvents.map(ev => {
+          try {
+             const p = JSON.parse(ev.payload);
+             return p.text;
+          } catch(e) { return null; }
+       }).filter(Boolean);
+       if (historyStrings.length > 0) {
+           (rl as any).history = historyStrings;
+       }
+    } catch (e: any) { }
 
     const updatePrompt = (nick: string) => {
        rl.setPrompt(`\x1b[35mcr@${nick}\x1b[0m> `);
@@ -294,29 +306,32 @@ export function registerChatCommands(program: Command) {
        .catch(() => {});
 
     // Intercept stdout once to prevent echoing keystrokes during secure password entry
-    hookStdoutMute(rl);
+    // hookStdoutMute removed
     
     // Non-blocking native rendering for incoming events
     const handleIncomingLiveEvent = (ev: any) => {
-      readline.clearLine(process.stdout, 0);
-      readline.cursorTo(process.stdout, 0);
+      rl.clearLine();
+      rl.cursorTo(0);
       
       if (ev.type === 'USER_PROMPT') {
         const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
         // TODO: [UX] Use a vibrant chalk color for the remote user nick specifically, to distinguish from standard logging.
-        console.log(`\x1b[36m[Remote User @${ev.actor}]\x1b[0m ${payload.text}`);
+        io.print(`${chalk.cyanBright(`[Remote User @${ev.actor}]`)} ${payload.text}`);
         chatHistory.push({ role: 'user', content: payload.text });
       } else if (ev.type === 'AI_RESPONSE') {
         const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
         // TODO: [UX] Colorize the AI Response explicitly, and format markdown snippets natively using libraries like `cli-markdown` or `marked-terminal`.
-        console.log(`\n🤖 [@${ev.actor}] ${payload.text}\n`);
+        let rendered = '';
+        try { rendered = markdown(payload.text); }
+        catch(e) { rendered = payload.text; }
+        io.print(`\n🤖 [@${ev.actor}]\n${rendered}\n`);
         chatHistory.push({ role: 'assistant', content: payload.text });
       } else if (ev.type === 'ARTEFACT_PROPOSAL') {
         const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
-        console.log(`[Remote Artefact] Proposal drafted for ${payload.path}`);
+        io.print(`[Remote Artefact] Proposal drafted for ${payload.path}`);
       } else if (ev.type === 'RUNTIME_OUTPUT') {
         const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
-        console.log(`[Remote System Exec Output]:\n${payload.text}`);
+        io.print(`[Remote System Exec Output]:\n${payload.text}`);
       }
       
       if (!lastEventId || ev.id > lastEventId) {
@@ -341,20 +356,33 @@ export function registerChatCommands(program: Command) {
     
     const silentLogger = {
       info: () => {},
-      error: (msg: string) => { console.error(`\x1b[31m${msg}\x1b[0m`); }
+      error: (msg: string) => { io.printError(`\x1b[31m${msg}\x1b[0m`); }
     };
 
-    console.log(`[System] Background Sync Daemon started. Connecting to Edge...`);
+    io.print(`[System] Background Sync Daemon started. Connecting to Edge...`);
     // Run immediately once, then interval
     runSyncDaemon(db, mockClients, silentLogger);
-    const syncIntervalId = setInterval(() => runSyncDaemon(db, mockClients, silentLogger), 5000);
+    const syncIntervalId = io.setInterval(() => runSyncDaemon(db, mockClients, silentLogger), 5000);
 
     rl.prompt();
 
-    rl.on('line', async (line) => {
+    rl.onLine(async (line) => {
       const text = line.trim();
       if (!text) { rl.prompt(); return; }
       if (text === '/exit' || text === '/quit') { rl.close(); return; }
+      if (text === '/help') {
+         io.print(chalk.yellow('\n--- Cognitive Resonance Commands ---'));
+         io.print(chalk.green('  /login <email>   ') + '- Authenticate with Edge');
+         io.print(chalk.green('  /session ls      ') + '- View active sessions');
+         io.print(chalk.green('  /session <id>    ') + '- Switch to session');
+         io.print(chalk.green('  /model use <name>') + '- Switch active Gemini model');
+         io.print(chalk.green('  /read <file>     ') + '- Inject file content into context');
+         io.print(chalk.green('  /cat <file>      ') + '- Print file from VFS');
+         io.print(chalk.green('  /exec <cmd>      ') + '- Execute shell command in sandbox');
+         io.print(chalk.cyanBright('  @@TargetName(exec "...") ') + '- Dispatch execution to a specific host over Edge middleware\n');
+         rl.prompt();
+         return;
+      }
 
       if (text.startsWith('/cat ')) {
         const filePath = text.slice(5).trim();
@@ -364,11 +392,11 @@ export function registerChatCommands(program: Command) {
         const content = await materializer.getVirtualFileContent(filePath, sessionEvents);
         if (content) {
           const ext = filePath.split('.').pop() || 'txt';
-          console.log(`\n--- ${filePath} ---`);
-          console.log(highlight(content, { language: ext, ignoreIllegals: true }));
-          console.log('--- EOF ---\n');
+          io.print(`\n--- ${filePath} ---`);
+          io.print(highlight(content, { language: ext, ignoreIllegals: true }));
+          io.print('--- EOF ---\n');
         } else {
-          console.log(`[System] File not found or empty in virtual state: ${filePath}`);
+          io.print(`[System] File not found or empty in virtual state: ${filePath}`);
         }
         rl.prompt();
         return;
@@ -393,9 +421,9 @@ export function registerChatCommands(program: Command) {
             previous_event_id: lastEventId
           });
           
-          console.log(chalk.gray(`[System] Injected ${filePath} into AI Context.`));
+          io.print(chalk.gray(`[System] Injected ${filePath} into AI Context.`));
         } else {
-          console.log(chalk.yellow(`[System] Could not read ${filePath} from virtual state.`));
+          io.print(chalk.yellow(`[System] Could not read ${filePath} from virtual state.`));
         }
         rl.prompt();
         return;
@@ -403,10 +431,10 @@ export function registerChatCommands(program: Command) {
 
       if (text.startsWith('/exec ')) {
         const cmd = text.slice(6).trim();
-        console.log(`[System] Executing: ${cmd}`);
+        io.print(`[System] Executing: ${cmd}`);
         
         const execEventId = (outputStr: string) => {
-          console.log(outputStr);
+          io.print(outputStr);
           chatHistory.push({ role: 'user', content: `[System Exec Output]:\n${outputStr}` });
           const newId = db.appendEvent({
             session_id: sessionId,
@@ -466,7 +494,7 @@ export function registerChatCommands(program: Command) {
 
       if (command) {
         const state: CLIRuntimeState = { sessionId, currentModel, lastEventId, chatHistory };
-        await handleInteractiveCommand({
+        await handleInteractiveCommand({ io,
           state,
           db,
           rl,
@@ -492,7 +520,7 @@ export function registerChatCommands(program: Command) {
       for (const intent of userDslIntents) {
           if (intent.host && intent.ast && Array.isArray(intent.ast) && intent.ast[0] === 'exec') {
               const cmd = intent.ast.slice(1).join(' ');
-              console.log(`[System] Routing remote execution to @@${intent.host}...`);
+              io.print(`[System] Routing remote execution to @@${intent.host}...`);
               
               const execEventId = db.appendEvent({
                   session_id: sessionId,
@@ -558,12 +586,14 @@ export function registerChatCommands(program: Command) {
             systemPrompt += vfsContext;
         }
 
-        process.stdout.write(`Thinking (@${activeActor})...\n`);
+        io.write(`Thinking (@${activeActor})...\n`);
 
         try {
           const response = await generateResponse(currentModel, chatHistory, systemPrompt, schema, undefined, false);
-          const formattedReply = response.reply.replace(/\\n/g, '\n');
-          console.log(`\n🤖 [@${activeActor}] ${formattedReply}\n`);
+          let rendered = '';
+          try { rendered = markdown(response.reply); }
+          catch(e) { rendered = response.reply.replace(/\\n/g, '\n'); }
+          io.print(`\n🤖 [@${activeActor}]\n${rendered}\n`);
           chatHistory.push({ role: 'model', content: response.reply });
 
           // Record response
@@ -583,7 +613,7 @@ export function registerChatCommands(program: Command) {
             const proposals = await manager.proposeDrafts(response.files);
             
             for (const proposal of proposals) {
-               console.log(`[ArtefactManager] Proposal drafted: virtual state for ${proposal.path}`);
+               io.print(`[ArtefactManager] Proposal drafted: virtual state for ${proposal.path}`);
                const draftEventId = db.appendEvent({
                  session_id: sessionId,
                  timestamp: Date.now(),
@@ -601,7 +631,7 @@ export function registerChatCommands(program: Command) {
           for (const intent of aiDslIntents) {
               if (intent.host && intent.ast && Array.isArray(intent.ast) && intent.ast[0] === 'exec') {
                   const cmd = intent.ast.slice(1).join(' ');
-                  console.log(`[System] AI requested remote execution on @@${intent.host}...`);
+                  io.print(`[System] AI requested remote execution on @@${intent.host}...`);
                   const execEventId = db.appendEvent({
                       session_id: sessionId,
                       timestamp: Date.now(),
@@ -619,7 +649,7 @@ export function registerChatCommands(program: Command) {
           const nextTargetGem = responseMentions.find(m => GemProfiles[m] && m !== activeActor);
           
           if (nextTargetGem) {
-            console.log(`[System] Handoff to @${nextTargetGem} detected.`);
+            io.print(`[System] Handoff to @${nextTargetGem} detected.`);
             nextInput = `[System] @${activeActor} called @${nextTargetGem}. Please proceed based on their output.`;
             explicitTarget = nextTargetGem;
             isFirstTurn = false;
@@ -627,15 +657,16 @@ export function registerChatCommands(program: Command) {
             break; // No more handoffs
           }
         } catch (err: any) {
-          console.error(`\nAPI Error: ${err.message}\n`);
+          io.printError(`\nAPI Error: ${err.message}\n`);
           chatHistory.pop();
           break;
         }
       }
       rl.prompt();
-    }).on('close', () => {
-      clearInterval(syncIntervalId);
-      console.log('\nSession ended.');
+    });
+    rl.onClose(() => {
+      io.clearInterval(syncIntervalId);
+      io.print('\nSession ended.');
       db.close();
       process.exit(0);
     });

@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import ignore from 'ignore';
 import { logger } from '../utils/logger';
 import { Materializer } from '@cr/core/src/services/Materializer';
+import Table from 'cli-table3';
 
 export function registerImportExportCommands(program: Command) {
     program
@@ -68,12 +69,24 @@ export function registerImportExportCommands(program: Command) {
             // 4. Emit Events
             // TODO: [UX] Use chalk.yellow or cli-table3 here to display the exact list of files identified for import.
             logger.info(`Importing ${filesToImport.length} files...`);
+            
+            const table = new Table({
+                head: ['Status', 'Virtual Path', 'Bytes'],
+                colWidths: [10, 50, 15]
+            });
+            
             let lastEventId: string | null = null;
+            let importedCount = 0;
             for (const file of filesToImport) {
                 const content = fs.readFileSync(path.join(absolutePath, file), 'utf8');
                 // Skip binary files naively for now (if content contains lots of null chars)
-                if (content.indexOf('\0') !== -1) continue;
+                if (content.indexOf('\0') !== -1) {
+                    table.push(['SKIPPED', file, 'Binary']);
+                    continue;
+                }
 
+                table.push(['IMPORTED', file, Buffer.byteLength(content, 'utf8') + ' B']);
+                importedCount++;
                 const payload = {
                     path: file,
                     patch: content,
@@ -91,7 +104,8 @@ export function registerImportExportCommands(program: Command) {
                 lastEventId = dbEngine.appendEvent(ev).toString();
             }
 
-            logger.info(`Materialized repository footprint successfully bound to session ${sessionId}.`);
+            console.log('\n' + table.toString() + '\n');
+            logger.info(`Materialized repository footprint (${importedCount} tracked files) successfully bound to session ${sessionId}.`);
         });
 
     program
@@ -130,6 +144,11 @@ export function registerImportExportCommands(program: Command) {
 
             // Phase 3 Deletion Constraint: Clean up physical files that were explicitly deleted AND are absent from final virtual state
             let deletedCount = 0;
+            const exportTable = new Table({
+                head: ['Change Type', 'Physical File'],
+                colWidths: [20, 60]
+            });
+
             for (const ev of sessionEvents) {
                  if (ev.type === 'FILE_DELETED' || ev.type === 'PWA_DELETE' || (ev.type === 'ARTEFACT_PROPOSAL' && JSON.parse(ev.payload).isFullReplacement && JSON.parse(ev.payload).patch === '')) {
                      const payload = JSON.parse(ev.payload);
@@ -138,14 +157,20 @@ export function registerImportExportCommands(program: Command) {
                          const physicalFile = path.join(absolutePath, targetPath);
                          if (fs.existsSync(physicalFile)) {
                              fs.unlinkSync(physicalFile);
+                             exportTable.push(['REMOVED', targetPath]);
                              deletedCount++;
                              logger.info(`Materializer export safely unlinked explicitly tombstoned file: ${targetPath}`);
                          }
                      }
                  }
             }
+            
+            for (const [vPath, _] of virtualState.entries()) {
+                 exportTable.push(['MATERIALIZED', vPath]);
+            }
 
             // TODO: [UX] Use a colorful cli-table3 or formatted chalk block here to summarize the Export footprint vs Physical state exactly like `git status`.
-            logger.info(`Export finished. Materialized footprint with ${deletedCount} explicit unlinks. Safe local states and mtimes preserved.`);
+            console.log('\n--- Export Synthesis Summary ---\n' + exportTable.toString() + '\n');
+            logger.info(`Export finished. Materialized ${virtualState.size} items with ${deletedCount} explicit unlinks. Safe local states and mtimes preserved.`);
         });
 }
