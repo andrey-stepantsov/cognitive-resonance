@@ -61,13 +61,23 @@ export function registerObserveCommands(program: Command) {
     });
 
   program
-    .command('follow <sessionId>')
+    .command('follow [sessionId]')
     .description('Observe and follow a session live as events stream in')
     .option('-d, --db <path>', 'Database path', 'cr.sqlite')
     .action(async (sessionId, options) => {
       const db = new DatabaseEngine(options.db);
       
-      console.log(`Watching session ${sessionId}... (Press Ctrl+C to stop)`);
+      let targetSession = sessionId;
+      if (!targetSession) {
+         const latestObj = db.get('SELECT session_id FROM events ORDER BY timestamp DESC LIMIT 1') as { session_id: string } | undefined;
+         if (!latestObj) {
+            console.log('No sessions found.');
+            return;
+         }
+         targetSession = latestObj.session_id;
+      }
+      
+      console.log(`Watching session ${targetSession}... (Press Ctrl+C to stop)`);
       
       // Print historical context tail first
       const tailLimit = 10;
@@ -75,7 +85,7 @@ export function registerObserveCommands(program: Command) {
         SELECT * FROM (
           SELECT * FROM events WHERE session_id = ? ORDER BY timestamp DESC LIMIT ?
         ) ORDER BY timestamp ASC
-      `, [sessionId, tailLimit]) as EventRecord[];
+      `, [targetSession, tailLimit]) as EventRecord[];
       
       if (events.length > 0) printTurns(events);
       else console.log(`No prior history.`);
@@ -84,7 +94,7 @@ export function registerObserveCommands(program: Command) {
 
       // Enter polling loop
       setInterval(() => {
-        const newEvents = db.query('SELECT * FROM events WHERE session_id = ? AND timestamp > ? ORDER BY timestamp ASC', [sessionId, lastTimestamp]) as EventRecord[];
+        const newEvents = db.query('SELECT * FROM events WHERE session_id = ? AND timestamp > ? ORDER BY timestamp ASC', [targetSession, lastTimestamp]) as EventRecord[];
         
         if (newEvents.length > 0) {
           printTurns(newEvents);
@@ -93,6 +103,48 @@ export function registerObserveCommands(program: Command) {
       }, 500);
 
       // We do not close db here because setInterval runs indefinitely until Ctrl+C
+    });
+
+  program
+    .command('logs [sessionId]')
+    .description('Observe and follow live execution logs for a session')
+    .option('-d, --db <path>', 'Database path', '.cr/central.sqlite')
+    .action(async (sessionId, options, command) => {
+      const dbPath = options.db !== '.cr/central.sqlite' ? options.db : (command.parent?.opts().db || options.db);
+      const db = new DatabaseEngine(dbPath);
+      
+      let targetSession = sessionId;
+      if (!targetSession) {
+         const latestObj = db.get('SELECT session_id FROM events ORDER BY timestamp DESC LIMIT 1') as { session_id: string } | undefined;
+         if (!latestObj) {
+            console.log('No sessions found.');
+            return;
+         }
+         targetSession = latestObj.session_id;
+      }
+      
+      console.log(`Watching execution logs for session ${targetSession}... (Press Ctrl+C to stop)`);
+      
+      const tailLimit = 20;
+      let events = db.query(`
+        SELECT * FROM (
+          SELECT * FROM events WHERE session_id = ? AND type IN ('RUNTIME_OUTPUT', 'TERMINAL_OUTPUT') ORDER BY timestamp DESC LIMIT ?
+        ) ORDER BY timestamp ASC
+      `, [targetSession, tailLimit]) as EventRecord[];
+      
+      if (events.length > 0) printTurns(events);
+      else console.log(`No prior execution logs.`);
+
+      let lastTimestamp = events.length > 0 ? events[events.length - 1].timestamp : 0;
+
+      setInterval(() => {
+        const newEvents = db.query(`SELECT * FROM events WHERE session_id = ? AND timestamp > ? AND type IN ('RUNTIME_OUTPUT', 'TERMINAL_OUTPUT') ORDER BY timestamp ASC`, [targetSession, lastTimestamp]) as EventRecord[];
+        
+        if (newEvents.length > 0) {
+          printTurns(newEvents);
+          lastTimestamp = newEvents[newEvents.length - 1].timestamp;
+        }
+      }, 500);
     });
 
   program
@@ -360,6 +412,14 @@ function printTurns(events: EventRecord[]) {
         console.log(`\x1b[33m[${ev.actor}]\x1b[0m (Dissonance: ${payload.dissonance}): ${payload.text}`);
       } catch (e) {
          console.log(`\x1b[33m[${ev.actor}]\x1b[0m: [Unparseable AI Data]`);
+      }
+    } else if (ev.type === 'RUNTIME_OUTPUT' || ev.type === 'TERMINAL_OUTPUT') {
+      try {
+        const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
+        const color = ev.type === 'RUNTIME_OUTPUT' ? '\x1b[35m' : '\x1b[32m'; // Magenta for Runtime, Green for Terminal
+        console.log(`${color}[${ev.actor} - ${ev.type}]\x1b[0m\n${payload.text}`);
+      } catch (e) {
+        console.log(`\x1b[35m[${ev.actor} - ${ev.type}]\x1b[0m: [Unparseable Output Data]`);
       }
     } else {
         // Fallback for metadata events like PWA configuration chunks

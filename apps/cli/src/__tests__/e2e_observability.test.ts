@@ -106,4 +106,40 @@ describe('E2E: Observability and Health Checks', () => {
     expect(output).toContain('Modified (Drift)');
     expect(output).toContain('Pending Create (Virtual Only)');
   });
+
+  it('streams isolated execution logs via cr logs command', async () => {
+    const sessionId = db.createSession('E2E_USER', 'test-session-logs');
+    
+    db.appendEvent({ session_id: sessionId, timestamp: Date.now(), actor: 'SYSTEM', type: 'PROJECT_CONFIG', payload: '{}', previous_event_id: null });
+    db.appendEvent({ session_id: sessionId, timestamp: Date.now()+100, actor: 'AI', type: 'AI_RESPONSE', payload: '{"text":"some ai message","dissonance":0.1}', previous_event_id: null });
+    db.appendEvent({ session_id: sessionId, timestamp: Date.now()+200, actor: 'MacOS-Worker', type: 'RUNTIME_OUTPUT', payload: '{"text":"test passed"}', previous_event_id: null });
+    db.appendEvent({ session_id: sessionId, timestamp: Date.now()+300, actor: 'Linux-Worker', type: 'TERMINAL_OUTPUT', payload: '{"text":"npm install done"}', previous_event_id: null });
+    
+    db.close();
+
+    const { spawn } = require('child_process');
+    const child = spawn('node', [cliPath, 'logs', sessionId, '-d', dbPath], { cwd: tempDir, encoding: 'utf8' });
+    
+    let output = '';
+    await new Promise<void>((resolve) => {
+       child.stdout.on('data', (data: any) => {
+          output += data.toString();
+          if (output.includes('test passed') && output.includes('npm install done')) {
+             resolve();
+          }
+       });
+       // Fallback timeout in case output isn't flushed in 2 seconds
+       setTimeout(() => resolve(), 2000);
+    });
+    
+    child.kill('SIGKILL');
+    
+    expect(output).toContain('Watching execution logs for session test-session-logs');
+    expect(output).toContain('[MacOS-Worker - RUNTIME_OUTPUT]');
+    expect(output).toContain('test passed');
+    expect(output).toContain('[Linux-Worker - TERMINAL_OUTPUT]');
+    expect(output).toContain('npm install done');
+    expect(output).not.toContain('PROJECT_CONFIG');
+    expect(output).not.toContain('some ai message');
+  });
 });

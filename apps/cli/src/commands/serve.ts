@@ -12,6 +12,9 @@ import * as os from 'os';
 import { exec } from 'child_process';
 import { ArtefactManager } from '@cr/core/src/services/ArtefactManager';
 import { Materializer } from '@cr/core/src/services/Materializer';
+import { parseDslRouting } from '@cr/core/src/services/CommandParser';
+import { DynamicDispatch } from '@cr/core/src/services/DynamicDispatch';
+import { generateSubWorker } from '@cr/core/src/utils/SubWorkerTemplate';
 import * as pty from 'node-pty';
 
 const activeTerminals = new Map<string, pty.IPty>();
@@ -147,7 +150,8 @@ export function registerServeCommand(program: Command) {
     .command('serve')
     .description('Start a local HTTP/WebSocket event-sourced server for the monorepo')
     .option('-p, --port <port>', 'Port to listen on', '3000')
-    .option('-n, --name <name>', 'Explicit semantic host name')
+    .option('-n, --name <name>', 'Explicit semantic host name (deprecated, use --identity)')
+    .option('-i, --identity <identity>', 'Explicit semantic host identity')
     .action((options, command) => {
       const globalOpts = command.parent?.opts() || {};
       const defaultDbPath = path.join(path.resolve(process.cwd(), '.cr'), 'central.sqlite');
@@ -180,7 +184,7 @@ export function registerServeCommand(program: Command) {
         // Initialize File Watcher - Disabled for Central Edge Server to prevent infinite fs.writeFile mtime loops
         logger.info(`[Cognitive Resonance] File watcher disabled for edge node.`);
 
-        const hostName = options.name || process.env.CR_HOST_NAME || `${os.platform()}-${os.userInfo().username}`;
+        const hostName = options.identity || options.name || process.env.CR_HOST_NAME || `${os.platform()}-${os.userInfo().username}`;
         
         const capabilities = {
            os: os.platform(),
@@ -282,15 +286,95 @@ export async function runSyncDaemon(dbEngine: DatabaseEngine, clients: Set<WebSo
                   // Handle Remote Execution Routing
                   if (ev.type === 'EXECUTION_REQUESTED') {
                      const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
-                     if (payload.target === hostName || payload.target === 'all') {
-                        logger.info(`[Sync Daemon] Received execution request for this host: ${payload.command}`);
+                     
+                     let explicitTarget = payload.target;
+                     let execCommand = payload.command;
+                     let isCloudflareDeploy = false;
+                     let isCloudflareTeardown = false;
+                     let cloudflareTargetName = '';
+
+                     try {
+                        const intents = parseDslRouting(payload.command || '');
+                        if (intents.length > 0) {
+                           const intent = intents[0];
+                           explicitTarget = intent.host || intent.agent || explicitTarget;
+                           
+                           if (explicitTarget === 'CloudflareEdge' && intent.ast && Array.isArray(intent.ast)) {
+                               if (intent.ast[0] === 'deploy') {
+                                   isCloudflareDeploy = true;
+                                   cloudflareTargetName = intent.ast[1] as string;
+                               } else if (intent.ast[0] === 'teardown') {
+                                   isCloudflareTeardown = true;
+                                   cloudflareTargetName = intent.ast[1] as string;
+                               }
+                           } else if (intent.ast && Array.isArray(intent.ast) && intent.ast[0] === 'exec') {
+                              execCommand = intent.ast[1] as string;
+                           }
+                        }
+                     } catch(e) {}
+
+                     console.log("SERVE ROUTER:", { payload, explicitTarget, isCloudflareDeploy, cloudflareTargetName });
+
+                     if (isCloudflareDeploy || isCloudflareTeardown) {
+                         logger.info(`[Sync Daemon] Orchestrating Cloudflare Edge deployment for: ${cloudflareTargetName}`);
+                         const workspaceDir = process.cwd();
+                         
+                         let dispatcher: DynamicDispatch;
+                         try {
+                            dispatcher = new DynamicDispatch();
+                         } catch (err: any) {
+                            logger.error(`[Sync Daemon] Cloudflare deploy aborted: ${err.message}`);
+                            continue;
+                         }
+
+                         if (isCloudflareTeardown) {
+                             dispatcher.teardown(cloudflareTargetName).then(() => {
+                                 const ts = Date.now();
+                                 const msg = `[Edge] Successfully destroyed sub-worker: ${cloudflareTargetName}`;
+                                 dbEngine.appendEvent({ session_id: ev.session_id, timestamp: ts, actor: 'CloudflareEdge', type: 'RUNTIME_OUTPUT', payload: JSON.stringify({ text: msg }), previous_event_id: ev.id });
+                             }).catch((err: any) => {
+                                 logger.error(`[Sync Daemon] Cloudflare teardown failed: ${err.message}`);
+                             });
+                         } else if (isCloudflareDeploy) {
+                             const sessionEvents = dbEngine.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [ev.session_id]) as any[];
+                             const materializer = new Materializer(workspaceDir);
+                             const sandboxDir = path.resolve(workspaceDir, '.cr', 'sandbox', ev.session_id);
+                             
+                             materializer.computeAndMaterialize(sessionEvents, sandboxDir).then(() => {
+                                 const targetFilePath = path.join(sandboxDir, cloudflareTargetName + '.ts');
+                                 let sourceCode = '';
+                                 try {
+                                     sourceCode = fs.readFileSync(targetFilePath, 'utf8');
+                                 } catch(e) {
+                                     sourceCode = `export default { fetch: () => new Response("Module code not found for ${cloudflareTargetName}.ts") }`;
+                                 }
+                                 
+                                 // Auto-wrap into default export if raw script
+                                 if (!sourceCode.includes('export default')) {
+                                     sourceCode = generateSubWorker(sourceCode);
+                                 }
+
+                                 dispatcher.deploy(cloudflareTargetName, sourceCode, workspaceDir).then((url: string) => {
+                                     const ts = Date.now();
+                                     const msg = `[Edge] Successfully deployed to ${url}`;
+                                     dbEngine.appendEvent({ session_id: ev.session_id, timestamp: ts, actor: 'CloudflareEdge', type: 'RUNTIME_OUTPUT', payload: JSON.stringify({ text: msg, url }), previous_event_id: ev.id });
+                                 }).catch((err: any) => {
+                                     logger.error(`[Sync Daemon] Cloudflare deploy failed: ${err.message}`);
+                                 });
+                             });
+                         }
+                         continue;
+                     }
+
+                     if (explicitTarget === hostName || explicitTarget === 'all') {
+                        logger.info(`[Sync Daemon] Received execution request for this host: ${execCommand}`);
                         const sessionEvents = dbEngine.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [ev.session_id]) as any[];
                         const workspaceDir = process.cwd();
                         const materializer = new Materializer(workspaceDir);
                         const sandboxDir = path.resolve(workspaceDir, '.cr', 'sandbox', ev.session_id);
                         
                         materializer.computeAndMaterialize(sessionEvents, sandboxDir).then(() => {
-                            exec(payload.command, { cwd: sandboxDir }, (error: any, stdout: string, stderr: string) => {
+                            exec(execCommand, { cwd: sandboxDir }, (error: any, stdout: string, stderr: string) => {
                                let output = '';
                                if (stdout) output += stdout;
                                if (stderr) output += '\nError: ' + stderr;

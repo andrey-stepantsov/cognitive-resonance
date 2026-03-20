@@ -44,6 +44,15 @@ To cleanly target specific AI agents or physical materialization hosts (daemons)
 * **Host Shorthand:** `@@<host>` (Instantly routes execution to the specified physical daemon using default actor identities).
   * Example: `@@LinuxCI(exec "make test")`
 
+#### Edge-Native Execution (Cloudflare Target)
+
+To execute serverless edge modules directly inside the Cloudflare backend (bypassing native OS daemons), the DSL supports specialized WebAssembly and V8 Isolate evaluation directly under the edge target.
+
+* **TypeScript Evaluation:** `(eval-ts "code")`
+  * Example: `@@CloudflareEdge(eval-ts "export default { fetch: () => new Response('Hello') }")`
+* **Python (Pyodide Wasm) Evaluation:** `(eval-py "code")`
+  * Example: `@@CloudflareEdge(eval-py "sum([1, 2, 3])")`
+
 ---
 
 ### 3. Core Design Principles

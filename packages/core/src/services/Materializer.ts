@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { applyPatch } from 'diff';
+import { execSync } from 'child_process';
 import type { IEvent, ArtefactProposalPayload, ArtefactKeyframePayload, ProjectConfigPayload } from '../interfaces/IEvents';
 
 export class Materializer {
@@ -156,6 +157,32 @@ export class Materializer {
               console.warn(`[Materializer] Failed to synthesize cross-project link for ${depId} in ${project.basePath}:`, err);
             }
          }
+       }
+    }
+
+    // 4. Cross-Language Environment Initialization
+    for (const project of this.projects.values()) {
+       const targetProjectDir = path.join(targetDir, project.basePath);
+       try {
+          const files = await fs.promises.readdir(targetProjectDir);
+          const hasPythonFiles = files.some(f => f.endsWith('.py'));
+          const hasRequirements = files.includes('requirements.txt');
+          
+          if (hasPythonFiles || hasRequirements) {
+             console.log(`[Materializer] Initializing Python venv for ${project.projectId}`);
+             try {
+                execSync('python3 -m venv venv', { cwd: targetProjectDir, stdio: 'ignore' });
+                if (hasRequirements) {
+                   console.log(`[Materializer] Installing pip dependencies for ${project.projectId}`);
+                   // Prefer venv/bin/pip, fallback to whatever works if it didn't create properly, but venv/bin/pip should exist.
+                   execSync('venv/bin/pip install -r requirements.txt', { cwd: targetProjectDir, stdio: 'ignore' });
+                }
+             } catch (err: any) {
+                console.warn(`[Materializer] Failed to initialize Python environment for ${project.projectId}:`, err.message);
+             }
+          }
+       } catch (e) {
+          // Directory might not exist or be empty, skip
        }
     }
   }
