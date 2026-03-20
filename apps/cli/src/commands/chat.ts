@@ -247,7 +247,7 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
       '/help', '/login', '/signup', '/whoami', '/session', '/session ls', '/session new', 
       '/session clear', '/history', '/model', '/model use', '/model ls', '/gem ls', 
       '/graph ls', '/graph search', '/graph stats', '/clear', '/archive',
-      '/recover', '/clone', '/exec', '/exit', '/quit', '/cat', '/read'
+      '/recover', '/clone', '/exec', '/exit', '/quit', '/cat', '/read', '/ls', '/tree'
     ];
     
     // TODO: [UX] All CLI commands must provide help and a brief description (ideally with auto-complete style using TAB).
@@ -265,6 +265,22 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
          const gemNames = Object.keys(GemProfiles);
          hits = gemNames.filter(name => name.toLowerCase().startsWith(term)).map(n => `@${n}`);
          return [hits, currentWord] as [string[], string];
+      } else if (line.startsWith('/cat ') || line.startsWith('/read ') || line.startsWith('/ls ')) {
+          const prefix = line.split(' ').slice(1).join(' ');
+          let fileHits: string[] = [];
+          try {
+             const fileEvents = db.query("SELECT payload FROM events WHERE session_id = ? AND type = 'ARTEFACT_PROPOSAL'", [sessionId]) as any[];
+             const files = new Set<string>();
+             for (const ev of fileEvents) {
+                 try {
+                    const p = JSON.parse(ev.payload);
+                    if (p.path) files.add(p.path);
+                    if (p.target) files.add(p.target);
+                 } catch(e) {}
+             }
+             fileHits = Array.from(files).filter(f => f.startsWith(prefix));
+          } catch(e) {}
+          return [fileHits.map(h => line.split(' ')[0] + ' ' + h), line] as [string[], string];
       } else if (line.startsWith('/')) {
          hits = shellCommands.filter(c => c.startsWith(line));
          return [hits, line] as [string[], string];
@@ -376,6 +392,8 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
          io.print(chalk.green('  /session ls      ') + '- View active sessions');
          io.print(chalk.green('  /session <id>    ') + '- Switch to session');
          io.print(chalk.green('  /model use <name>') + '- Switch active Gemini model');
+         io.print(chalk.green('  /ls [dir]        ') + '- List files in Virtual FS');
+         io.print(chalk.green('  /tree            ') + '- Tree view of Virtual FS');
          io.print(chalk.green('  /read <file>     ') + '- Inject file content into context');
          io.print(chalk.green('  /cat <file>      ') + '- Print file from VFS');
          io.print(chalk.green('  /exec <cmd>      ') + '- Execute shell command in sandbox');
@@ -427,6 +445,58 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
         }
         rl.prompt();
         return;
+      }
+
+      if (text === '/ls' || text.startsWith('/ls ')) {
+          if (text === '/ls --all' || text === '/ls -a') { /* Let CommandHandlers route to `/session ls` if needed, although we are shadowing now. Better to avoid intercepting `ls` args meant for session, but user explicitly asked for VFS ls */ }
+          const dir = text.startsWith('/ls ') ? text.slice(4).trim() : '';
+          const sessionEvents = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [sessionId]) as any[];
+          const materializer = new Materializer(options.workspace || process.cwd());
+          const virtualState = materializer.computeVirtualState(sessionEvents);
+          const files = Array.from(virtualState.keys());
+          
+          io.print(`\n📁 Virtual Directory: /${dir}`);
+          let count = 0;
+          const distinct = new Set<string>();
+          for (const f of files) {
+              if (f.startsWith(dir)) {
+                  let remainder = dir ? f.slice(dir.length) : f;
+                  if (remainder.startsWith('/')) remainder = remainder.slice(1);
+                  const firstLevel = remainder.split('/')[0];
+                  if (firstLevel) distinct.add(firstLevel);
+              }
+          }
+          const sorted = Array.from(distinct).sort();
+          for (const d of sorted) {
+             io.print(`  - \x1b[36m${d}\x1b[0m`);
+             count++;
+          }
+          if (count === 0) io.print(`  (empty)`);
+          io.print('');
+          rl.prompt();
+          return;
+      }
+
+      if (text === '/tree') {
+          const sessionEvents = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [sessionId]) as any[];
+          const materializer = new Materializer(options.workspace || process.cwd());
+          const virtualState = materializer.computeVirtualState(sessionEvents);
+          const files = Array.from(virtualState.keys()).sort();
+          
+          io.print(`\n🌳 Virtual Filesystem Tree:`);
+          if (files.length === 0) {
+             io.print(`  (empty)`);
+          } else {
+             for (const f of files) {
+                const parts = f.split('/');
+                const name = parts.pop();
+                const indent = '  '.repeat(parts.length);
+                io.print(`${indent}├── \x1b[36m${name}\x1b[0m`);
+             }
+          }
+          io.print('');
+          rl.prompt();
+          return;
       }
 
       if (text.startsWith('/exec ')) {

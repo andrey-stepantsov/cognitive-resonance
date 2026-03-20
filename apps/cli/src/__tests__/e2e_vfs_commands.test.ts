@@ -63,4 +63,44 @@ describe('E2E VirtualFS REPL Commands', () => {
     expect(payload.text).toContain('[System] Injected context for docs/arch.md');
     expect(payload.text).toContain('# Architecture');
   });
+
+  it('navigates the VirtualFS structure using /ls and /tree', async () => {
+    const sessionId = cluster.db.createSession('TEST_USER');
+    
+    // Inject multiple artefact proposals across nested directories
+    cluster.db.appendEvent({ session_id: sessionId, timestamp: Date.now(), actor: 'System', type: 'ARTEFACT_PROPOSAL', payload: JSON.stringify({ path: 'src/index.ts', patch: '//', isFullReplacement: true }), previous_event_id: null });
+    cluster.db.appendEvent({ session_id: sessionId, timestamp: Date.now(), actor: 'System', type: 'ARTEFACT_PROPOSAL', payload: JSON.stringify({ path: 'src/utils/math.ts', patch: '//', isFullReplacement: true }), previous_event_id: null });
+    cluster.db.appendEvent({ session_id: sessionId, timestamp: Date.now(), actor: 'System', type: 'ARTEFACT_PROPOSAL', payload: JSON.stringify({ path: 'package.json', patch: '{}', isFullReplacement: true }), previous_event_id: null });
+
+    await cluster.bootRepl(sessionId);
+    await new Promise(r => setTimeout(r, 50));
+
+    const printSpy = vi.spyOn(cluster.replIo, 'print');
+    
+    // Test base /ls
+    cluster.replIo.simulateLine('/ls');
+    await new Promise(r => setTimeout(r, 50));
+    
+    let callsStr = printSpy.mock.calls.map(c => typeof c[0] === 'string' ? c[0] : JSON.stringify(c[0])).join('\n');
+    expect(callsStr).toContain('src');
+    expect(callsStr).toContain('package.json');
+    // Ensure utils is hidden since it's nested under src
+    expect(callsStr).not.toContain('utils');
+
+    // Test nested /ls src
+    printSpy.mockClear();
+    cluster.replIo.simulateLine('/ls src');
+    await new Promise(r => setTimeout(r, 50));
+    callsStr = printSpy.mock.calls.map(c => typeof c[0] === 'string' ? c[0] : JSON.stringify(c[0])).join('\n');
+    expect(callsStr).toContain('index.ts');
+    expect(callsStr).toContain('utils');
+
+    // Test /tree
+    printSpy.mockClear();
+    cluster.replIo.simulateLine('/tree');
+    await new Promise(r => setTimeout(r, 50));
+    callsStr = printSpy.mock.calls.map(c => typeof c[0] === 'string' ? c[0] : JSON.stringify(c[0])).join('\n');
+    expect(callsStr).toContain('├── \x1b[36mindex.ts\x1b[0m');
+    expect(callsStr).toContain('  ├── \x1b[36mmath.ts\x1b[0m');
+  });
 });
