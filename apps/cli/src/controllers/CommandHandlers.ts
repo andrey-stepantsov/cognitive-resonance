@@ -187,6 +187,9 @@ export async function handleInteractiveCommand(ctx: CLIControllerContext): Promi
       console.log('[System] Hard deletion is disabled. Please use /archive instead.');
       break;
 
+    case CommandAction.SESSION_LS:
+    case CommandAction.SESSION_USE:
+    case CommandAction.SESSION_NEW:
     case CommandAction.UNKNOWN:
       if (text === '/archive') {
         db.appendEvent({ session_id: state.sessionId, timestamp: Date.now(), actor: 'SYSTEM', type: 'PWA_ARCHIVE_TOGGLE', payload: JSON.stringify({ archived: true }), previous_event_id: state.lastEventId });
@@ -194,7 +197,7 @@ export async function handleInteractiveCommand(ctx: CLIControllerContext): Promi
       } else if (text === '/recover') {
         db.appendEvent({ session_id: state.sessionId, timestamp: Date.now(), actor: 'SYSTEM', type: 'PWA_ARCHIVE_TOGGLE', payload: JSON.stringify({ archived: false }), previous_event_id: state.lastEventId });
         console.log(`[System] Session ${state.sessionId} recovered.`);
-      } else if (text === '/clone') {
+      } else if (text === '/clone' || command.action === CommandAction.SESSION_CLONE) {
         const newSessionId = db.createSession('LOCAL_USER');
         const events = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [state.sessionId]) as any[];
         let previousId = null;
@@ -204,8 +207,8 @@ export async function handleInteractiveCommand(ctx: CLIControllerContext): Promi
         state.sessionId = newSessionId;
         state.lastEventId = previousId;
         console.log(`[System] Session cloned. You are now communicating in the new cloned session: ${state.sessionId}`);
-      } else if (text.startsWith('/session ')) {
-        const newId = text.split(' ')[1];
+      } else if (text.startsWith('/session ') || text.startsWith('/new ') || command.action === CommandAction.SESSION_USE || command.action === CommandAction.SESSION_NEW) {
+        let newId = command.args[0] || text.split(' ')[1];
         if (newId) {
           state.sessionId = newId;
           state.chatHistory = loadSessionFromDB(db, state.sessionId);
@@ -214,9 +217,12 @@ export async function handleInteractiveCommand(ctx: CLIControllerContext): Promi
           if (events.length > 0) state.lastEventId = events[0].id;
           else state.lastEventId = null;
         } else {
-          console.log('[System] Usage: /session <id>');
+          // TODO: [Feature Request] Allow `/session` with no arguments to print detailed info/metadata about the currently active session.
+          console.log('[System] Usage: /session <id> or /new <id>');
         }
-      } else if (text === '/ls' || text === '/sessions') {
+      } else if (text === '/ls' || text === '/sessions' || command.action === CommandAction.SESSION_LS) {
+        // TODO: [Feature Request] Support wildcards (or regex) for all commands that list objects (e.g., `/session ls tmp*`).
+        // TODO: [Feature Request] Implement an `--all` flag to view archived sessions.
         console.log('\n[System] Available Sessions (Archived sessions hidden):');
         const sessionRows = db.query('SELECT session_id, type, payload, timestamp FROM events ORDER BY timestamp ASC');
         const sessions = new Map<string, { last_activity: number, archived: boolean }>();

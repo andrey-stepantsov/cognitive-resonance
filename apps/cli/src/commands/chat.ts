@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { DatabaseEngine } from '../db/DatabaseEngine';
-import { parseCommand, CommandAction, parseMentions } from '@cr/core/src/services/CommandParser';
+import { parseCommand, CommandAction, parseMentions, parseDslRouting } from '@cr/core/src/services/CommandParser';
 import { GemProfiles } from '../services/GemRegistry';
 import { ArtefactManager } from '@cr/core/src/services/ArtefactManager';
 import { Materializer } from '@cr/core/src/services/Materializer';
@@ -134,10 +134,23 @@ export function registerChatCommands(program: Command) {
           required: ['reply', 'dissonanceScore']
         };
 
+        // TODO: [Testing] Write an E2E test to verify that the Virtual Filesystem Context is correctly injected into the AI's system prompt during Headless chat and REPL chat after a repository import.
+        const materializerHeadless = new Materializer(workspaceDir);
+        const sessionEventsHeadless = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [sessionId]) as any[];
+        const virtualStateHeadless = materializerHeadless.computeVirtualState(sessionEventsHeadless);
+        let systemPromptHeadless = 'You are a helpful CLI assistant.';
+        if (virtualStateHeadless.size > 0) {
+            let vfsContext = `\n\n--- Current Workspace Virtual Filesystem ---\n`;
+            for (const [filepath, content] of virtualStateHeadless.entries()) {
+                vfsContext += `\n[File: ${filepath}]\n${content}\n`;
+            }
+            systemPromptHeadless += vfsContext;
+        }
+
         let responsePayload: any;
         try {
           if (options.format !== 'json') process.stdout.write('Thinking...\n');
-          responsePayload = await generateResponse(options.model, chatHistory, 'You are a helpful CLI assistant.', schema, undefined, false);
+          responsePayload = await generateResponse(options.model, chatHistory, systemPromptHeadless, schema, undefined, false);
         } catch (err: any) {
           if (options.format === 'json') console.error(JSON.stringify({ error: err.message }));
           else console.error(`\nAPI Error: ${err.message}`);
@@ -234,6 +247,7 @@ export function registerChatCommands(program: Command) {
       '/recover', '/clone', '/exec', '/exit', '/quit', '/cat', '/read'
     ];
     
+    // TODO: [UX] All CLI commands must provide help and a brief description (ideally with auto-complete style using TAB).
     const completer = (line: string) => {
       const words = line.split(' ');
       const currentWord = words[words.length - 1];
@@ -256,6 +270,7 @@ export function registerChatCommands(program: Command) {
       return [[], line];
     };
 
+    // TODO: [UX] Implement persistent up-arrow command history across REPL restarts by seeding `rl.history` from the `events` table for this session.
     const rl = readline.createInterface({ 
       input: process.stdin, 
       output: process.stdout, 
@@ -471,6 +486,38 @@ export function registerChatCommands(program: Command) {
         return;
       }
 
+      // Intercept User Lisp DSL Directives for Remote Execution
+      const userDslIntents = parseDslRouting(text);
+      let skipAiLoop = false;
+      for (const intent of userDslIntents) {
+          if (intent.host && intent.ast && Array.isArray(intent.ast) && intent.ast[0] === 'exec') {
+              const cmd = intent.ast.slice(1).join(' ');
+              console.log(`[System] Routing remote execution to @@${intent.host}...`);
+              
+              const execEventId = db.appendEvent({
+                  session_id: sessionId,
+                  timestamp: Date.now(),
+                  actor: 'LOCAL_USER',
+                  type: 'EXECUTION_REQUESTED',
+                  payload: JSON.stringify({ target: intent.host, command: cmd }),
+                  previous_event_id: lastEventId
+              });
+              lastEventId = execEventId;
+              
+              chatHistory.push({ role: 'user', content: `[System] Skipped LLM turn: Executed \`${cmd}\` on ${intent.host}. Waiting for RUNTIME_OUTPUT.` });
+              
+              // If the user's entire prompt was just the routing command, skip AI interaction
+              if (text.trim() === intent.rawCommand) {
+                 skipAiLoop = true;
+              }
+          }
+      }
+
+      if (skipAiLoop) {
+          rl.prompt();
+          return;
+      }
+
       // Automatic Handoff Loop
       let nextInput = text;
       let isFirstTurn = true;
@@ -497,7 +544,19 @@ export function registerChatCommands(program: Command) {
         }
 
         const activeActor = explicitTarget ? explicitTarget : currentModel;
-        const systemPrompt = explicitTarget ? GemProfiles[explicitTarget] : 'You are a helpful CLI assistant.';
+        let systemPrompt = explicitTarget ? GemProfiles[explicitTarget] : 'You are a helpful CLI assistant.';
+
+        // TODO: [Testing] Write an E2E test to verify that the Virtual Filesystem Context is correctly injected into the AI's system prompt during Headless chat and REPL chat after a repository import.
+        const materializer = new Materializer(workspaceDir);
+        const sessionEvents = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [sessionId]) as any[];
+        const virtualState = materializer.computeVirtualState(sessionEvents);
+        if (virtualState.size > 0) {
+            let vfsContext = `\n\n--- Current Workspace Virtual Filesystem ---\n`;
+            for (const [filepath, content] of virtualState.entries()) {
+                vfsContext += `\n[File: ${filepath}]\n${content}\n`;
+            }
+            systemPrompt += vfsContext;
+        }
 
         process.stdout.write(`Thinking (@${activeActor})...\n`);
 
@@ -535,6 +594,24 @@ export function registerChatCommands(program: Command) {
                });
                lastEventId = draftEventId;
             }
+          }
+
+          // Check for DSL routing in AI response
+          const aiDslIntents = parseDslRouting(response.reply);
+          for (const intent of aiDslIntents) {
+              if (intent.host && intent.ast && Array.isArray(intent.ast) && intent.ast[0] === 'exec') {
+                  const cmd = intent.ast.slice(1).join(' ');
+                  console.log(`[System] AI requested remote execution on @@${intent.host}...`);
+                  const execEventId = db.appendEvent({
+                      session_id: sessionId,
+                      timestamp: Date.now(),
+                      actor: activeActor,
+                      type: 'EXECUTION_REQUESTED',
+                      payload: JSON.stringify({ target: intent.host, command: cmd }),
+                      previous_event_id: lastEventId
+                  });
+                  lastEventId = execEventId;
+              }
           }
 
           // Check for handoffs
