@@ -212,6 +212,7 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
       let currentModel = options.model;
       let chatHistory = options.session ? loadSessionFromDB(db, sessionId, io) : [];
       let lastEventId: string | null = null;
+      let semanticFocus: string[] = [];
       if (options.session) {
         const events = db.query('SELECT id FROM events WHERE session_id = ? ORDER BY timestamp DESC LIMIT 1', [sessionId]);
         if (events.length > 0) lastEventId = events[0].id;
@@ -278,7 +279,12 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
                     if (p.target) files.add(p.target);
                  } catch(e) {}
              }
-             fileHits = Array.from(files).filter(f => f.startsWith(prefix));
+             let allowedFiles = Array.from(files);
+             if (semanticFocus.length > 0) {
+                 const prefixes = semanticFocus.map(f => f.replace('#path:', ''));
+                 allowedFiles = allowedFiles.filter(f => prefixes.some(p => f.startsWith(p)));
+             }
+             fileHits = allowedFiles.filter(f => f.startsWith(prefix));
           } catch(e) {}
           return [fileHits.map(h => line.split(' ')[0] + ' ' + h), line] as [string[], string];
       } else if (line.startsWith('/')) {
@@ -306,8 +312,11 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
        }
     } catch (e: any) { }
 
-    const updatePrompt = (nick: string) => {
-       rl.setPrompt(`\x1b[35mcr@${nick}\x1b[0m> `);
+    let currentNick = 'user';
+    const updatePrompt = (nick?: string) => {
+       if (nick) currentNick = nick;
+       const focusStr = semanticFocus.length > 0 ? ` {\x1b[36m${semanticFocus.join(', ')}\x1b[0m}` : '';
+       rl.setPrompt(`\x1b[35mcr@${currentNick}\x1b[0m${focusStr}> `);
     };
 
     // Attempt to load the user's nickname asynchronously to decorate the prompt
@@ -392,12 +401,38 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
          io.print(chalk.green('  /session ls      ') + '- View active sessions');
          io.print(chalk.green('  /session <id>    ') + '- Switch to session');
          io.print(chalk.green('  /model use <name>') + '- Switch active Gemini model');
+         io.print(chalk.green('  /focus <tags>    ') + '- Restrict scope (e.g., #path:src)');
+         io.print(chalk.green('  /focus clear     ') + '- Clear current Semantic Focus');
          io.print(chalk.green('  /ls [dir]        ') + '- List files in Virtual FS');
          io.print(chalk.green('  /tree            ') + '- Tree view of Virtual FS');
          io.print(chalk.green('  /read <file>     ') + '- Inject file content into context');
          io.print(chalk.green('  /cat <file>      ') + '- Print file from VFS');
          io.print(chalk.green('  /exec <cmd>      ') + '- Execute shell command in sandbox');
          io.print(chalk.cyanBright('  @@TargetName(exec "...") ') + '- Dispatch execution to a specific host over Edge middleware\n');
+         rl.prompt();
+         return;
+      }
+
+      if (text.startsWith('/focus')) {
+         const args = text.slice(6).trim();
+         if (args === 'clear') {
+             semanticFocus = [];
+             io.print('[System] Semantic Focus cleared.');
+         } else if (args === 'ls') {
+             io.print(`\n[Semantic Focus Bound]`);
+             if (semanticFocus.length === 0) io.print('  (None)');
+             else semanticFocus.forEach(f => io.print(`  - ${f}`));
+             io.print('');
+         } else if (args) {
+             const additions = args.split(' ').filter(Boolean).map(a => a.startsWith('#') ? a : `#path:${a}`);
+             for (const add of additions) {
+                 if (!semanticFocus.includes(add)) semanticFocus.push(add);
+             }
+             io.print(`[System] Appended Semantic Focus: ${additions.join(' ')}`);
+         } else {
+             io.print('[System] Usage: /focus <tags/paths> | clear | ls');
+         }
+         updatePrompt();
          rl.prompt();
          return;
       }
@@ -453,7 +488,11 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
           const sessionEvents = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [sessionId]) as any[];
           const materializer = new Materializer(options.workspace || process.cwd());
           const virtualState = materializer.computeVirtualState(sessionEvents);
-          const files = Array.from(virtualState.keys());
+          let files = Array.from(virtualState.keys());
+          if (semanticFocus.length > 0) {
+             const prefixes = semanticFocus.map(f => f.replace('#path:', ''));
+             files = files.filter(f => prefixes.some(p => f.startsWith(p)));
+          }
           
           io.print(`\n📁 Virtual Directory: /${dir}`);
           let count = 0;
@@ -481,7 +520,11 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
           const sessionEvents = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [sessionId]) as any[];
           const materializer = new Materializer(options.workspace || process.cwd());
           const virtualState = materializer.computeVirtualState(sessionEvents);
-          const files = Array.from(virtualState.keys()).sort();
+          let files = Array.from(virtualState.keys()).sort();
+          if (semanticFocus.length > 0) {
+             const prefixes = semanticFocus.map(f => f.replace('#path:', ''));
+             files = files.filter(f => prefixes.some(p => f.startsWith(p)));
+          }
           
           io.print(`\n🌳 Virtual Filesystem Tree:`);
           if (files.length === 0) {
@@ -563,7 +606,7 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
       const command = parseCommand(text);
 
       if (command) {
-        const state: CLIRuntimeState = { sessionId, currentModel, lastEventId, chatHistory };
+        const state: CLIRuntimeState = { sessionId, currentModel, lastEventId, chatHistory, semanticFocus };
         await handleInteractiveCommand({ io,
           state,
           db,
@@ -579,6 +622,7 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
         currentModel = state.currentModel;
         lastEventId = state.lastEventId;
         chatHistory = state.chatHistory;
+        semanticFocus = state.semanticFocus;
 
         rl.prompt();
         return;

@@ -110,6 +110,9 @@ export class MemoryIoAdapter implements IoAdapter {
   public isClosed: boolean = false;
   public lastPrompt: string = '';
   
+  // Expose completer for tests
+  public activeCompleter?: (line: string) => [string[], string];
+
   // Pending callbacks for programmatically responding to .question()
   public pendingQuestions: Array<(ans: string) => void> = [];
 
@@ -148,6 +151,7 @@ export class MemoryIoAdapter implements IoAdapter {
   }
 
   createInteractive(completer?: (line: string) => [string[], string]): InteractiveIo {
+    this.activeCompleter = completer;
     return {
       setPrompt: (p: string) => { this.lastPrompt = p; },
       prompt: (preserveCursor?: boolean) => {

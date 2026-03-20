@@ -59,7 +59,7 @@ Before any UI work begins, the underlying CLI and core execution engine must sup
 
 **3. Simple Runtime Capabilities (`/exec`)**
 - Add an `/exec [cmd]` slash command strictly for human developers (Scientist).
-- Spawn a `child_process` bound to the active Artefact Workspace directory, capturing `stdout/stderr` to securely verify task completion.
+- Spawn a `child_process` bound to the active Graph-Native Workspace, capturing `stdout/stderr` to securely verify task completion.
 
 ---
 

@@ -9,6 +9,7 @@ export interface CLIRuntimeState {
   currentModel: string;
   lastEventId: string | null;
   chatHistory: { role: string; content: string }[];
+  semanticFocus: string[];
 }
 
 export interface CLIControllerContext {

@@ -103,4 +103,78 @@ describe('E2E VirtualFS REPL Commands', () => {
     expect(callsStr).toContain('├── \x1b[36mindex.ts\x1b[0m');
     expect(callsStr).toContain('  ├── \x1b[36mmath.ts\x1b[0m');
   });
+
+  it('restricts tab autocompletion to available commands and virtual state', async () => {
+    const sessionId = cluster.db.createSession('TEST_USER');
+    
+    cluster.db.appendEvent({ session_id: sessionId, timestamp: Date.now(), actor: 'System', type: 'ARTEFACT_PROPOSAL', payload: JSON.stringify({ path: 'src/dummy.js', patch: '//', isFullReplacement: true }), previous_event_id: null });
+    cluster.db.appendEvent({ session_id: sessionId, timestamp: Date.now(), actor: 'System', type: 'ARTEFACT_PROPOSAL', payload: JSON.stringify({ path: 'package.json', patch: '{}', isFullReplacement: true }), previous_event_id: null });
+
+    await cluster.bootRepl(sessionId);
+    await new Promise(r => setTimeout(r, 50));
+
+    expect(cluster.replIo.activeCompleter).toBeDefined();
+
+    // Verify command completion
+    const [helpHits] = cluster.replIo.activeCompleter!('/hel');
+    expect(helpHits).toContain('/help');
+
+    // Verify VFS file completion for /cat
+    const [catHits] = cluster.replIo.activeCompleter!('/cat s');
+    expect(catHits).toContain('/cat src/dummy.js');
+    expect(catHits).not.toContain('/cat package.json');
+    
+    // Test base completion for /read
+    const [readHits] = cluster.replIo.activeCompleter!('/read ');
+    expect(readHits).toContain('/read package.json');
+    expect(readHits).toContain('/read src/dummy.js');
+  });
+
+  it('respects Semantic Focus bounds for /ls, /tree, and tab-completion', async () => {
+    const sessionId = cluster.db.createSession('TEST_USER');
+    
+    cluster.db.appendEvent({ session_id: sessionId, timestamp: Date.now(), actor: 'System', type: 'ARTEFACT_PROPOSAL', payload: JSON.stringify({ path: 'src/index.ts', patch: '//', isFullReplacement: true }), previous_event_id: null });
+    cluster.db.appendEvent({ session_id: sessionId, timestamp: Date.now(), actor: 'System', type: 'ARTEFACT_PROPOSAL', payload: JSON.stringify({ path: 'src/utils/math.ts', patch: '//', isFullReplacement: true }), previous_event_id: null });
+    cluster.db.appendEvent({ session_id: sessionId, timestamp: Date.now(), actor: 'System', type: 'ARTEFACT_PROPOSAL', payload: JSON.stringify({ path: 'package.json', patch: '{}', isFullReplacement: true }), previous_event_id: null });
+
+    await cluster.bootRepl(sessionId);
+    await new Promise(r => setTimeout(r, 50));
+
+    const printSpy = vi.spyOn(cluster.replIo, 'print');
+
+    // Set Semantic Focus
+    cluster.replIo.simulateLine('/focus src/utils');
+    await new Promise(r => setTimeout(r, 50));
+    
+    // Verify /ls is bounded
+    printSpy.mockClear();
+    cluster.replIo.simulateLine('/ls');
+    await new Promise(r => setTimeout(r, 50));
+    let callsStr = printSpy.mock.calls.map(c => typeof c[0] === 'string' ? c[0] : JSON.stringify(c[0])).join('\n');
+    expect(callsStr).toContain('src');
+    expect(callsStr).not.toContain('package.json');
+
+    // Verify /tree is bounded
+    printSpy.mockClear();
+    cluster.replIo.simulateLine('/tree');
+    await new Promise(r => setTimeout(r, 50));
+    callsStr = printSpy.mock.calls.map(c => typeof c[0] === 'string' ? c[0] : JSON.stringify(c[0])).join('\n');
+    expect(callsStr).toContain('math.ts');
+    expect(callsStr).not.toContain('index.ts');
+    expect(callsStr).not.toContain('package.json');
+
+    // Verify autocompletion is bounded
+    const [catHits] = cluster.replIo.activeCompleter!('/cat s');
+    expect(catHits).toContain('/cat src/utils/math.ts');
+    expect(catHits).not.toContain('/cat src/index.ts');
+
+    // Clear focus
+    cluster.replIo.simulateLine('/focus clear');
+    await new Promise(r => setTimeout(r, 50));
+    
+    // Autocompletion restored
+    const [catHitsRestored] = cluster.replIo.activeCompleter!('/cat s');
+    expect(catHitsRestored).toContain('/cat src/utils/math.ts');
+    expect(catHitsRestored).toContain('/cat src/index.ts');
+  });
 });

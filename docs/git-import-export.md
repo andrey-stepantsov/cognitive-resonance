@@ -15,22 +15,22 @@ Use cases:
 Since Cognitive Resonance is an event-sourced virtual file system, we do not need to mimic Git's internal object model natively. Instead, we can translate physical files into virtual events on import, and translate virtual events back into physical file modifications on export.
 
 **Phase 1: Import (`cr import /path/to/repo`)**
-1. The developer runs the CLI command targeting a local directory containing a Git repository.
-2. The CLI daemon scans the physical directory tree, respecting `.gitignore`.
+1. The developer runs the CLI command targeting a local workspace containing a Git repository.
+2. The CLI daemon scans the physical workspace tree, respecting `.gitignore`.
 3. For every file, the CLI generates a `BASELINE_IMPORTED` or `ARTEFACT_PROPOSAL` event containing the raw physical file content.
 4. These events are flushed to the local SQLite replica and synced to the Cloudflare Room. The workspace is now fully materialized in the CR session.
 
 **Phase 2: Modification**
 1. Agents and the developer collaborate within the CR session, generating sequence events like `ARTEFACT_PROPOSAL` (diffs), `FILE_DELETED`, etc.
-2. These events strictly mutate the virtual state but *do not* touch the physical Git repository directory.
+2. These events strictly mutate the virtual state but *do not* touch the physical Git repository workspace.
 
 **Phase 3: Export / "Eject" (`cr export /path/to/repo`)**
 1. The developer decides they are ready to commit the AI's work back to their real codebase.
 2. They run `cr export` pointing to the original repository.
 3. The CLI daemon runs the standard `Materializer` logic locally using the session's event history to compute the *final virtual file representations*.
-4. The CLI compares the final virtual state against the physical directory contents.
+4. The CLI compares the final virtual state against the physical workspace contents.
 5. **Optimization Rule**: The CLI *only* overwrites physical files if the virtual content differs from the physical content. Identical files are left untouched to preserve filesystem `mtime` (avoiding unnecessary rebuilds or IDE indexing). 
-6. **Empty Directory Rule**: If the target directory is completely empty, the export behaves exactly like a traditional "clone", recursively creating all directories and materializing all files from the virtual state from scratch.
+6. **Empty Workspace Rule**: If the target workspace is completely empty, the export behaves exactly like a traditional "clone", recursively creating all Semantic Focus paths and materializing all files from the virtual state from scratch.
 7. Finally, any files explicitly marked as deleted in the event stream (that still exist physically) are removed safely.
 8. The developer can now use `git diff`, `git add`, and `git commit` using their standard physical Git workflow.
 
@@ -69,7 +69,7 @@ npm run build --workspace=apps/cli
 ```
 
 ### Step 1: Provision
-Create two isolated physical directories to serve as your testing bounds:
+Create two isolated physical workspaces to serve as your testing bounds:
 ```bash
 mkdir -p /tmp/cr-manual-test/source-repo
 mkdir -p /tmp/cr-manual-test/export-repo
@@ -101,7 +101,7 @@ Once the chat boots, type the following prompt to the agent:
 The Agent will emit an `ARTEFACT_PROPOSAL` modifying the virtual state. Once it finishes, press `Ctrl+C` to exit the session.
 
 ### Step 5: Resonance Export
-Export the materialized, AI-modified session back to a completely blank secondary physical directory:
+Export the materialized, AI-modified session back to a completely blank secondary physical workspace:
 ```bash
 node /Users/stepants/dev/cognitive-resonance/apps/cli/bin/cr.js export /tmp/cr-manual-test/export-repo -s manual-test-session
 ```
@@ -124,4 +124,4 @@ In a second terminal, verify it bounded successfully and serves HTTP correctly:
 ```bash
 curl http://localhost:18081
 ```
-*You should receive a `200 OK` response with the directory's index HTML payload, proving the codebase successfully transported across the virtual horizon intact!*
+*You should receive a `200 OK` response with the workspace's index HTML payload, proving the codebase successfully transported across the virtual horizon intact!*

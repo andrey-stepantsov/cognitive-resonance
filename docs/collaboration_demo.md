@@ -46,7 +46,7 @@ This walkthrough outlines a demonstration flow for presenting the real-time mult
 
 **1. Co-piloting the Prompt**
 *   _Narrative:_ "Now that we're talking, let's ask the AI to build something for us as a team."
-*   _Action:_ In Browser B, switch the AI persona to **System Coder**, and type a prompt: `"We need a Node.js utility function to recursively list files in a directory ignoring node_modules."` but *don't hit send yet*.
+*   _Action:_ In Browser B, switch the AI persona to **System Coder**, and type a prompt: `"We need a Node.js utility function to recursively list files in a Semantic Focus boundary ignoring node_modules."` but *don't hit send yet*.
 *   _Narrative:_ "Before I hit send, notice how my prompt draft is synced, and my colleague in Browser A can see exactly what I'm asking."
 
 **2. The AI Responds to the Room**

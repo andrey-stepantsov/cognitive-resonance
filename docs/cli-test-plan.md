@@ -4,7 +4,7 @@ This test plan guides you through a progressive, hands-on exploration of the `cr
 
 ## Prerequisites
 Open two separate terminal windows. You will need both for the Distributed Sandbox tests.
-**CRITICAL:** Both terminal windows *must* be opened in the exact same directory (we highly recommend running this from the root of the `cognitive-resonance` repository so that the CLI can automatically access your `.env` file credentials for the AI and Cloudflare Edge requests).
+**CRITICAL:** Both terminal windows *must* be opened in the exact same Graph-Native Workspace (we highly recommend running this from the root of the `cognitive-resonance` repository so that the CLI can automatically access your `.env` file credentials for the AI and Cloudflare Edge requests).
 
 Instead of relying on a global installation, we will execute the CLI directly from source using `tsx` (which is blazing fast for TypeScript execution). Every command below will start with `npx tsx apps/cli/src/index.ts`.
 
@@ -35,7 +35,7 @@ Instead of relying on a global installation, we will execute the CLI directly fr
 
 1. **Exit the REPL** by typing `/exit`.
 2. **Import a local repository:**
-   Create a temporary directory, or use an existing tiny project.
+   Create a temporary workspace boundary, or use an existing tiny project.
    ```bash
    git clone https://github.com/octocat/Hello-World.git /tmp/hello-world
    npx tsx apps/cli/src/index.ts import /tmp/hello-world -s import-session
@@ -46,6 +46,23 @@ Instead of relying on a global installation, we will execute the CLI directly fr
    npx tsx apps/cli/src/index.ts chat -s import-session
    ```
    Ask the AI: "Explain the files in this repository." It should have full context from the import.
+
+---
+
+### Phase 2.5: Semantic Focus Workspace
+*Goal: Navigate the Virtual Filesystem using Semantic Focus boundaries.*
+
+1. **Navigate the bounded Virtual Graph:**
+   * Ensure you are in the REPL from Phase 2.
+   * Type `/session ls` to confirm your active session.
+2. **Set a Semantic Focus:**
+   * Type `/focus src` (or the name of a folder in the imported repo). Notice the prompt changes to reflect the `#path:src` boundary.
+3. **Visualize the Graph:**
+   * Type `/ls`. You should only see contents within the semantic boundary.
+   * Type `/tree`. The projected tree is strictly restricted to your focus.
+   * Type `/cat ` and press `<tab>` to verify that tab-completion only suggests files within the bounded focus.
+4. **Clear Focus:**
+   * Type `/focus clear` to return to the global workspace view.
 
 ---
 
