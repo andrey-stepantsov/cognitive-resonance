@@ -16,7 +16,8 @@ import { parseDslRouting } from '@cr/core/src/services/CommandParser';
 import { DynamicDispatch } from '@cr/core/src/services/DynamicDispatch';
 import { generateSubWorker } from '@cr/core/src/utils/SubWorkerTemplate';
 import * as pty from 'node-pty';
-import { IoAdapter, DefaultIoAdapter } from '../utils/IoAdapter';
+import { DefaultIoAdapter, IoAdapter } from '../utils/IoAdapter';
+import { validateEventSequence } from '@cr/core/src/schemas/EventsSchema';
 
 const activeTerminals = new Map<string, pty.IPty>();
 const terminalBuffers = new Map<string, { buffer: string, timeout: NodeJS.Timeout | null }>();
@@ -60,6 +61,12 @@ export function createServerApp(dbEngine: DatabaseEngine, clients: Set<WebSocket
   app.post('/api/events', (req, res) => {
     try {
       const event: EventRecord = req.body;
+      try {
+        validateEventSequence(event);
+      } catch (err: any) {
+        return res.status(400).json({ error: `Validation Error: ${err.message}` });
+      }
+      
       const id = dbEngine.appendEvent(event);
       
       const eventRecord = dbEngine.get('SELECT * FROM events WHERE id = ?', [id]);
@@ -77,6 +84,15 @@ export function createServerApp(dbEngine: DatabaseEngine, clients: Set<WebSocket
       if (!body || !Array.isArray(body.events)) {
         return res.status(400).json({ error: 'Expected { events: [] }' });
       }
+
+      for (const ev of body.events) {
+        try {
+          validateEventSequence(ev);
+        } catch (err: any) {
+          return res.status(400).json({ error: `Validation Error on event ${ev.id || 'unknown'}: ${err.message}` });
+        }
+      }
+
       for (const ev of body.events) {
         // Use insertRemoteEvent to INSERT OR IGNORE and set sync_status = 'SYNCED'
         dbEngine.insertRemoteEvent(ev);
@@ -258,7 +274,19 @@ export async function runSyncDaemon(dbEngine: DatabaseEngine, clients: Set<WebSo
       
       if (pullRes.ok) {
          const data = await pullRes.json() as any;
-         const incomingEvents: any[] = data.events || [];
+         let incomingEvents: any[] = data.events || [];
+         
+         const validEvents = [];
+         for (const rawEv of incomingEvents) {
+            try {
+               validateEventSequence(rawEv);
+               validEvents.push(rawEv);
+            } catch (err: any) {
+               logger.warn(`[Sync Daemon] Edge sent invalid event ${rawEv.id}, skipping: ${err.message}`);
+            }
+         }
+         incomingEvents = validEvents;
+
          if (incomingEvents.length > 0) {
             logger.info(`[Sync Daemon] Pulled ${incomingEvents.length} new events from the Edge.`);
             for (const ev of incomingEvents) {

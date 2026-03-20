@@ -13,7 +13,7 @@ export const globalBackendConfig: BackendConfig = {
 // Singleton Cloudflare storage provider (lazy initialized to prevent circular reference)
 let _cloudflareStorage: CloudflareStorageProvider;
 export const cloudflareStorage = new Proxy({} as CloudflareStorageProvider, {
-  get(target, prop, receiver) {
+  get(_target, prop, receiver) {
     if (!_cloudflareStorage) {
       _cloudflareStorage = new CloudflareStorageProvider();
     }

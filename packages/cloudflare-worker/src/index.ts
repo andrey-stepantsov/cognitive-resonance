@@ -10,6 +10,8 @@ export interface Env {
   JWT_SECRET?: string;
 }
 
+import { validateEventSequence } from '@cr/core/src/schemas/EventsSchema';
+
 // ─── Rate Limiting ───────────────────────────────────────────────
 
 const RATE_LIMIT_WINDOW_MS = 60_000; // 60 seconds
@@ -598,8 +600,18 @@ async function handleEventsAPI(request: Request, env: Env, path: string, userId:
     
     if (body.events.length === 0) return jsonResponse({ ok: true });
     
+    const validEvents = [];
+    for (const ev of body.events) {
+       try {
+          validateEventSequence(ev);
+          validEvents.push(ev);
+       } catch (err: any) {
+          logger.warn(`[Edge Sync] Invalid event ${ev.id || 'unknown'} rejected: ${err.message}`);
+       }
+    }
+    
     // D1 Transactions / Batching
-    const stmts = body.events.map(ev => {
+    const stmts = validEvents.map(ev => {
        const payloadStr = typeof ev.payload === 'string' ? ev.payload : JSON.stringify(ev.payload);
        return env.DB.prepare(`
          INSERT OR IGNORE INTO events (id, session_id, timestamp, actor, type, payload, previous_event_id, user_id)

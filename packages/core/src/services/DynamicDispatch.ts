@@ -33,7 +33,7 @@ export class DynamicDispatch {
                 CLOUDFLARE_API_TOKEN: this.apiToken 
             };
 
-            const proc = exec('npx wrangler deploy', { cwd: dispatchDir, env }, (err, stdout, stderr) => {
+            exec('npx wrangler deploy', { cwd: dispatchDir, env }, (err, stdout, stderr) => {
                 if (err) {
                     console.error(`[Dynamic Dispatch] Deployment failed:`, stderr || stdout);
                     return reject(new Error(stderr || err.message));

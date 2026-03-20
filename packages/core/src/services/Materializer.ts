@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import { applyPatch } from 'diff';
 import { execSync } from 'child_process';
 import type { IEvent, ArtefactProposalPayload, ArtefactKeyframePayload, ProjectConfigPayload } from '../interfaces/IEvents';
+import { validateEventSequence } from '../schemas/EventsSchema';
 
 export class Materializer {
   private baseDir: string;
@@ -20,7 +21,15 @@ export class Materializer {
     const vfs = new Map<string, string>();
     this.projects.clear();
 
-    for (const evt of events) {
+    for (const rawEvt of events) {
+      let evt: IEvent;
+      try {
+         evt = validateEventSequence(rawEvt);
+      } catch (err: any) {
+         console.warn(`[Materializer] Invalid event skipped (${rawEvt.type}):`, err.message);
+         continue;
+      }
+
       if (evt.type === 'PROJECT_CONFIG') {
          const payload = typeof evt.payload === 'string'
            ? JSON.parse(evt.payload) as ProjectConfigPayload
@@ -222,7 +231,14 @@ export class Materializer {
     // Note: A keyframe would overwrite the physical baseline entirely for that file
     let currentContent = physicalContent;
     
-    for (const evt of sessionEvents) {
+    for (const rawEvt of sessionEvents) {
+      let evt: IEvent;
+      try {
+        evt = validateEventSequence(rawEvt);
+      } catch (err) {
+        continue;
+      }
+
       if (evt.type === 'ARTEFACT_KEYFRAME') {
         const payload = typeof evt.payload === 'string' ? JSON.parse(evt.payload) : evt.payload;
         if (payload.files && typeof payload.files[filePath] !== 'undefined') {

@@ -54,8 +54,8 @@ describe('Focused Backend Sync Integration', () => {
       session_id: 'test-session',
       timestamp: Date.now(),
       actor: 'User A',
-      type: 'USER_PROMPT',
-      payload: 'Hello from User A',
+      type: 'CHAT_MESSAGE',
+      payload: JSON.stringify({ message: { role: 'user', content: 'Hello from User A' } }),
       previous_event_id: null
     });
 

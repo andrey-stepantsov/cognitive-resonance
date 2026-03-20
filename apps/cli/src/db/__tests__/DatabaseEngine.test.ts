@@ -31,8 +31,8 @@ describe('DatabaseEngine', () => {
       session_id: sessionId,
       timestamp: Date.now(),
       actor: 'USER',
-      type: 'PROMPT',
-      payload: JSON.stringify({ text: 'Hello AI' }),
+      type: 'CHAT_MESSAGE',
+      payload: JSON.stringify({ message: { role: 'user', content: 'Hello AI' } }),
       previous_event_id: null
     });
 
@@ -40,8 +40,8 @@ describe('DatabaseEngine', () => {
       session_id: sessionId,
       timestamp: Date.now(),
       actor: 'SYSTEM',
-      type: 'RESPONSE',
-      payload: JSON.stringify({ text: 'Hello Human' }),
+      type: 'CHAT_MESSAGE',
+      payload: JSON.stringify({ message: { role: 'model', content: 'Hello Human' } }),
       previous_event_id: eventId1
     });
 
@@ -60,8 +60,8 @@ describe('DatabaseEngine', () => {
       session_id: sessionId,
       timestamp: Date.now(),
       actor: 'USER',
-      type: 'EDIT',
-      payload: '{}',
+      type: 'ARTEFACT_PROPOSAL',
+      payload: JSON.stringify({ path: 'src/main.ts', patch: 'console.log("hello");', isFullReplacement: true }),
       previous_event_id: null
     });
 
@@ -117,8 +117,8 @@ describe('DatabaseEngine', () => {
         session_id: sessionId,
         timestamp: Date.now(),
         actor: 'USER',
-        type: 'PROMPT',
-        payload: JSON.stringify({ text: 'Hello' }),
+        type: 'CHAT_MESSAGE',
+        payload: JSON.stringify({ message: { role: 'user', content: 'Hello' } }),
         previous_event_id: null
       });
 
@@ -143,8 +143,8 @@ describe('DatabaseEngine', () => {
         session_id: sessionId,
         timestamp: 1000,
         actor: 'USER',
-        type: 'PROMPT',
-        payload: '{}',
+        type: 'CHAT_MESSAGE',
+        payload: JSON.stringify({ message: { role: 'user', content: '{}' } }),
         previous_event_id: null
       });
 
@@ -154,8 +154,8 @@ describe('DatabaseEngine', () => {
         session_id: sessionId,
         timestamp: 5000,
         actor: 'USER',
-        type: 'PROMPT',
-        payload: '{}',
+        type: 'CHAT_MESSAGE',
+        payload: JSON.stringify({ message: { role: 'user', content: '{}' } }),
         previous_event_id: null
       });
 
@@ -168,8 +168,8 @@ describe('DatabaseEngine', () => {
         session_id: 'remote-session',
         timestamp: 9999,
         actor: 'REMOTE_USER',
-        type: 'PROMPT',
-        payload: '{"text": "Remote Data"}',
+        type: 'CHAT_MESSAGE',
+        payload: JSON.stringify({ message: { role: 'user', content: 'Remote Data' } }),
         previous_event_id: null
       };
 

@@ -67,7 +67,15 @@ describe('runSyncDaemon', () => {
     mockDbEngine.getPendingEvents.mockReturnValue([]);
     mockDbEngine.getLatestEventTimestamp.mockReturnValue(100);
     
-    const incomingEvent = { id: 'evt-incoming' };
+    const incomingEvent = {
+        id: 'evt-incoming',
+        session_id: 'test-session',
+        timestamp: 100,
+        actor: 'Edge Node',
+        type: 'CHAT_MESSAGE',
+        payload: JSON.stringify({ message: { role: 'model', content: 'test msg' } }),
+        previous_event_id: null
+    };
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ events: [incomingEvent] })

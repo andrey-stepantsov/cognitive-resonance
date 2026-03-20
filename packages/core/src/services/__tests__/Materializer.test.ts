@@ -6,7 +6,7 @@ describe('Materializer Virtual State Gen', () => {
   it('computes correct virtual file contents from sequential proposals', () => {
     const events = [
       {
-        id: '1', type: 'ARTEFACT_PROPOSAL', timestamp: 1000,
+        id: '1', event_id: '1', session_id: 'test', actor: 'system', type: 'ARTEFACT_PROPOSAL', timestamp: 1000,
         payload: {
            path: 'src/main.ts',
            patch: 'Initial Content\n',
@@ -14,7 +14,7 @@ describe('Materializer Virtual State Gen', () => {
         } as ArtefactProposalPayload
       },
       {
-        id: '2', type: 'ARTEFACT_PROPOSAL', timestamp: 1001,
+        id: '2', event_id: '2', session_id: 'test', actor: 'system', type: 'ARTEFACT_PROPOSAL', timestamp: 1001,
         payload: {
            path: 'src/main.ts',
            patch: 'Index: src/main.ts\n===================================================================\n--- src/main.ts\n+++ src/main.ts\n@@ -1,1 +1,2 @@\n Initial Content\n+Additional Line',

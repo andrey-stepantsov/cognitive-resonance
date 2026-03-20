@@ -44,8 +44,8 @@ describe('Local CLI Server Endpoints', () => {
       session_id: 'session-abc',
       timestamp: 123456,
       actor: 'system',
-      type: 'chat',
-      payload: 'hello world',
+      type: 'CHAT_MESSAGE',
+      payload: JSON.stringify({ message: { role: 'user', content: 'hello world' } }),
       previous_event_id: null
     };
 
@@ -58,7 +58,7 @@ describe('Local CLI Server Endpoints', () => {
     const fetchRes = await request(app).get('/api/events/session-abc');
     expect(fetchRes.status).toBe(200);
     expect(fetchRes.body.length).toBe(1);
-    expect(fetchRes.body[0].payload).toBe('hello world');
+    expect(fetchRes.body[0].type).toBe('CHAT_MESSAGE');
   });
 
   it('GET /api/entities should return entities', async () => {
@@ -83,6 +83,6 @@ describe('Local CLI Server Endpoints', () => {
 
     // Attempt event append
     const res2 = await request(app).post('/api/events').send({ actor: 'missing-fields' });
-    expect(res2.status).toBe(500);
+    expect(res2.status).toBe(400);
   });
 });

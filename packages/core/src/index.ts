@@ -16,4 +16,5 @@ export * from './providers/LocalNodeStorageProvider';
 export * from './providers/RemoteStorageProvider';
 
 export * from './interfaces/IEvents';
+export * from './schemas/EventsSchema';
 export * from './services/EventReducers';
