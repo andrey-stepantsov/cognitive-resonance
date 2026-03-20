@@ -10,6 +10,8 @@ import { GemProfiles } from '../services/GemRegistry';
 import { ArtefactManager } from '@cr/core/src/services/ArtefactManager';
 import { Materializer } from '@cr/core/src/services/Materializer';
 import { exec } from 'child_process';
+import chalk from 'chalk';
+import { highlight } from 'cli-highlight';
 import * as vm from 'vm';
 import { runSyncDaemon } from './serve';
 import { backendFetch } from '../utils/api';
@@ -229,7 +231,7 @@ export function registerChatCommands(program: Command) {
       '/help', '/login', '/signup', '/whoami', '/session', '/session ls', '/session new', 
       '/session clear', '/history', '/model', '/model use', '/model ls', '/gem ls', 
       '/graph ls', '/graph search', '/graph stats', '/clear', '/archive',
-      '/recover', '/clone', '/exec', '/exit', '/quit'
+      '/recover', '/clone', '/exec', '/exit', '/quit', '/cat', '/read'
     ];
     
     const completer = (line: string) => {
@@ -338,6 +340,51 @@ export function registerChatCommands(program: Command) {
       const text = line.trim();
       if (!text) { rl.prompt(); return; }
       if (text === '/exit' || text === '/quit') { rl.close(); return; }
+
+      if (text.startsWith('/cat ')) {
+        const filePath = text.slice(5).trim();
+        const materializer = new Materializer(workspaceDir);
+        const sessionEvents = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [sessionId]) as any[];
+        
+        const content = await materializer.getVirtualFileContent(filePath, sessionEvents);
+        if (content) {
+          const ext = filePath.split('.').pop() || 'txt';
+          console.log(`\n--- ${filePath} ---`);
+          console.log(highlight(content, { language: ext, ignoreIllegals: true }));
+          console.log('--- EOF ---\n');
+        } else {
+          console.log(`[System] File not found or empty in virtual state: ${filePath}`);
+        }
+        rl.prompt();
+        return;
+      }
+
+      if (text.startsWith('/read ')) {
+        const filePath = text.slice(6).trim();
+        const materializer = new Materializer(workspaceDir);
+        const sessionEvents = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [sessionId]) as any[];
+        
+        const content = await materializer.getVirtualFileContent(filePath, sessionEvents);
+        if (content) {
+          const injectionText = `[System] Injected context for ${filePath}:\n\n${content}`;
+          chatHistory.push({ role: 'user', content: injectionText });
+          
+          lastEventId = db.appendEvent({
+            session_id: sessionId,
+            timestamp: Date.now(),
+            actor: 'LOCAL_USER',
+            type: 'USER_PROMPT',
+            payload: JSON.stringify({ text: injectionText }),
+            previous_event_id: lastEventId
+          });
+          
+          console.log(chalk.gray(`[System] Injected ${filePath} into AI Context.`));
+        } else {
+          console.log(chalk.yellow(`[System] Could not read ${filePath} from virtual state.`));
+        }
+        rl.prompt();
+        return;
+      }
 
       if (text.startsWith('/exec ')) {
         const cmd = text.slice(6).trim();

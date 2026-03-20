@@ -113,6 +113,32 @@ export function createServerApp(dbEngine: DatabaseEngine, clients: Set<WebSocket
     }
   });
 
+  app.get('/health', (req, res) => {
+    try {
+      const dbStats = dbEngine.get('SELECT count(*) as count FROM events') as { count: number };
+      const sessionStats = dbEngine.get('SELECT count(*) as count FROM sessions') as { count: number };
+      const mem = process.memoryUsage();
+      
+      res.json({
+        status: 'ok',
+        activeTerminals: activeTerminals.size,
+        webSockets: clients.size,
+        dbMetrics: {
+          totalEvents: dbStats?.count || 0,
+          totalSessions: sessionStats?.count || 0
+        },
+        memoryUsage: {
+          rss: Math.round(mem.rss / 1024 / 1024) + ' MB',
+          heapTotal: Math.round(mem.heapTotal / 1024 / 1024) + ' MB',
+          heapUsed: Math.round(mem.heapUsed / 1024 / 1024) + ' MB',
+          external: Math.round(mem.external / 1024 / 1024) + ' MB'
+        }
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return app;
 }
 
