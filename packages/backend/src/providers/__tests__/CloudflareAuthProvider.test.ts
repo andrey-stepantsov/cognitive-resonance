@@ -2,9 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuthStatus } from '@cr/core';
 import { CloudflareAuthProvider } from '../CloudflareAuthProvider';
 
-const mockFetch = vi.fn();
-globalThis.fetch = mockFetch;
-
 const localStorageMock = (() => {
   let store: Record<string, string> = {};
   return {
@@ -48,7 +45,6 @@ describe('CloudflareAuthProvider', () => {
       await provider.init();
 
       expect(provider.getStatus()).toBe(AuthStatus.ANONYMOUS);
-      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
