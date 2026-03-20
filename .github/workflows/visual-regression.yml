@@ -1,0 +1,47 @@
+name: Visual Regression Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  visual-regression:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        
+    - name: Install Dependencies
+      run: npm install
+      
+    - name: Install Asciinema & Agg
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y asciinema
+        # Download pre-compiled agg binary for linux x86_64
+        wget https://github.com/asciinema/agg/releases/download/v1.4.3/agg-x86_64-unknown-linux-gnu -O agg
+        chmod +x agg
+        sudo mv agg /usr/local/bin/agg
+        
+    - name: Run Demo Recording
+      run: |
+        # In CI, we need to fake a PTY and possibly configure some env vars
+        # asciinema rec requires a UTF-8 locale
+        export LANG=en_US.UTF-8
+        cd apps/cli
+        npm run record
+        
+    - name: Upload Visual Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: terminal-demo-visuals
+        path: apps/cli/demo.gif
+        retention-days: 7

@@ -6,7 +6,7 @@ Cognitive Resonance is a multi-platform AI chat application built as an NPM Work
 ## Workspaces Structure
 - **`apps/extension`**: The VS Code webview extension.
 - **`apps/pwa`**: The Vite/React Progressive Web App (also deployable as mobile iOS/Android apps via Capacitor).
-- **`apps/cli`**: A robust Node.js Command Line Interface supporting both interactive REPL and headless batch execution modes.
+- **`apps/cli`**: A robust Node.js Command Line Interface supporting both interactive REPL and headless batch execution modes. It is driven by an abstract `IoAdapter` and includes the **Terminal Director** for stateful multi-head `node-pty` integration and scriptable terminal recording.
 - **`packages/ui`**: Highly optimized React components (Markdown, Mermaid, Semantic Graphs, Dissonance Meters) designed to be responsive and native touch-aware.
 - **`packages/core`**: Core utilities including semantic search, state management, AI APIs, and Capacitor wrappers.
 - **`packages/backend`**: Contains integration providers and utilities to interact with Cloudflare (D1 Storage, Workers, R2) and event-sourced synchronization.
@@ -47,7 +47,7 @@ The cloud backend runs entirely on Cloudflare:
 *   **Vector Database:** Cloudflare Vectorize (via `@cf/baai/bge-base-en-v1.5` Workers AI model).
 *   **Version Control:** Local SQLite event log (`DatabaseEngine.ts`), Git Smart HTTP on Cloudflare Worker, loose objects in R2.
 *   **Multiplayer Collab:** WebSockets mediated by Cloudflare Durable Objects.
-*   **CLI Framework:** Customized interactive headless node execution pipeline capturing standard `process.stdin`.
+*   **CLI Framework:** Built atop a programmatic `IoAdapter` enabling seamless headless E2E testing. Features the **Terminal Director** utilizing `node-pty` for persistent, stateful shell execution, allowing AI manipulation and user observation of real-time terminal environments.
 
 ## Documentation
 Additional module documentation is available in the `docs/` directory:

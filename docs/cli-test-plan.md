@@ -131,3 +131,20 @@ Instead of relying on a global installation, we will execute the CLI directly fr
    ```
    * *What happens:* The CLI reads the event stream from your SQLite database, reconstructs the file system DAG up to the tip of `branch-b`, and writes raw files to `./exported-repo`. 
 3. Verify the files exist and match the state of your AI's codebase.
+
+---
+
+### Phase 7: Observability and Health
+*Goal: Use the diagnostic and health commands to monitor the local daemon and project.*
+
+1. **Check Daemon Status:**
+   Run the following command at any time to verify your `cr serve` instance is operational:
+   ```bash
+   npx tsx apps/cli/src/index.ts status
+   ```
+2. **Snapshot Audit:**
+   Execute an audit to extract localized metrics and environment assertions:
+   ```bash
+   npx tsx apps/cli/src/index.ts audit
+   ```
+   * *What happens:* The CLI inspects the active sandbox context and generates a diagnostic report, validating connections without modifying the active workspace state.

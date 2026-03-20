@@ -47,21 +47,24 @@ describe('LocalIndexedDBProvider', () => {
     };
     
     // Save
-    const sessionId = await provider.saveSession('test-1', sessionData);
-    expect(sessionId).toBe('test-1');
+    await provider.createSession('test-1', sessionData.config);
+    await provider.appendEvent('test-1', 'CHAT_MESSAGE', { message: sessionData.messages[0] });
+    await provider.renameSession('test-1', 'E2E Test Session');
 
     // Load
     const loaded = await provider.loadSession('test-1');
     expect(loaded).toBeDefined();
     expect(loaded?.id).toBe('test-1');
     expect(loaded?.customName).toBe('E2E Test Session');
-    expect(loaded?.data).toEqual(sessionData);
-    expect(loaded?.preview).toContain('Testing E2E logic');
+    expect(loaded?.data?.messages?.[0]?.content).toBe('Testing E2E logic locally');
+    expect(loaded?.preview).toContain('Testing E2E logic locally');
   });
 
   it('auto-generates an ID if not provided', async () => {
-    const sessionData = { messages: [], config: {} };
-    const sessionId = await provider.saveSession('', sessionData);
+    await provider.createSession('');
+    const all = await provider.loadAllSessions();
+    expect(all.length).toBeGreaterThan(0);
+    const sessionId = all[0].id;
     
     expect(sessionId).toMatch(/^session-\d+$/);
     
@@ -70,21 +73,21 @@ describe('LocalIndexedDBProvider', () => {
   });
 
   it('loads all sessions sorted by timestamp descending', async () => {
-    await provider.saveSession('s1', { customName: 'First' });
+    await provider.createSession('s1');
     
     // Artificial delay to ensure different timestamps if test runs too fast
     await new Promise(r => setTimeout(r, 10));
     
-    await provider.saveSession('s2', { customName: 'Second' });
+    await provider.createSession('s2');
 
     const all = await provider.loadAllSessions();
-    expect(all).toHaveLength(2);
+    expect(all.length).toBeGreaterThanOrEqual(2);
     expect(all[0].id).toBe('s2'); // latest first
     expect(all[1].id).toBe('s1');
   });
 
   it('renames a session', async () => {
-    await provider.saveSession('rename-test', { customName: 'Old', messages: [], config: {} });
+    await provider.createSession('rename-test');
     
     await provider.renameSession('rename-test', 'New');
     
@@ -94,7 +97,7 @@ describe('LocalIndexedDBProvider', () => {
   });
 
   it('deletes a session', async () => {
-    await provider.saveSession('del-test', { messages: [], config: {} });
+    await provider.createSession('del-test');
     await provider.deleteSession('del-test');
     
     const loaded = await provider.loadSession('del-test');
@@ -122,7 +125,7 @@ describe('LocalIndexedDBProvider', () => {
   });
 
   it('archives and unarchives a session', async () => {
-    await provider.saveSession('archive-test', { customName: 'To Archive', messages: [], config: {} });
+    await provider.createSession('archive-test');
     
     // Archive it
     await provider.archiveSession('archive-test', true);

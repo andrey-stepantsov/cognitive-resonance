@@ -31,43 +31,18 @@ describe('CloudflareAuthProvider', () => {
     it('sets AUTHENTICATED when valid token is in localStorage', async () => {
       localStorageMock.setItem('cr-cf-jwt', 'valid-token');
       
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          user: { id: 'user-123', name: 'Alice', email: 'alice@example.com' }
-        })
-      });
-
       await provider.init();
 
       expect(provider.getStatus()).toBe(AuthStatus.AUTHENTICATED);
       expect(provider.getUser()).toEqual({
-        id: 'user-123',
-        name: 'Alice',
-        email: 'alice@example.com',
+        id: 'cloud',
+        name: 'Cloud User',
+        email: 'cloud@edge',
       });
       expect(provider.getToken()).toBe('valid-token');
-      
-      expect(mockFetch).toHaveBeenCalledWith(`${endpoint}/api/auth/me`, expect.objectContaining({
-        headers: { Authorization: 'Bearer valid-token' }
-      }));
     });
 
-    it('sets ANONYMOUS when token is invalid', async () => {
-      localStorageMock.setItem('cr-cf-jwt', 'invalid-token');
-      
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        json: async () => ({ error: 'Unauthorized' })
-      });
 
-      await provider.init();
-
-      expect(provider.getStatus()).toBe(AuthStatus.ANONYMOUS);
-      expect(provider.getUser()).toBeUndefined();
-      expect(provider.getToken()).toBeNull();
-      expect(localStorageMock.removeItem).toHaveBeenCalledWith('cr-cf-jwt');
-    });
 
     it('sets ANONYMOUS when no token exists', async () => {
       await provider.init();
@@ -77,69 +52,30 @@ describe('CloudflareAuthProvider', () => {
     });
   });
 
-  describe('loginWithEmail', () => {
+  describe('connectCloud', () => {
     it('sets AUTHENTICATED on success and stores token', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          token: 'new-jwt-token',
-          user: { id: 'user-456', name: 'Bob', email: 'bob@example.com' }
-        })
-      });
-
-      await provider.loginWithEmail('bob@example.com', 'password123');
+      await provider.connectCloud('test-api-key');
 
       expect(provider.getStatus()).toBe(AuthStatus.AUTHENTICATED);
-      expect(provider.getUser()?.email).toBe('bob@example.com');
-      expect(provider.getToken()).toBe('new-jwt-token');
-      expect(localStorageMock.setItem).toHaveBeenCalledWith('cr-cf-jwt', 'new-jwt-token');
-      
-      expect(mockFetch).toHaveBeenCalledWith(`${endpoint}/api/auth/login`, expect.objectContaining({
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'bob@example.com', password: 'password123' })
-      }));
-    });
-
-    it('sets ERROR status on failure', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        json: async () => ({ error: 'Invalid credentials' })
-      });
-
-      await provider.loginWithEmail('bob@example.com', 'wrong');
-
-      expect(provider.getStatus()).toBe(AuthStatus.ERROR);
-      expect(provider.getToken()).toBeNull();
+      expect(provider.getUser()?.email).toBe('cloud@edge');
+      expect(provider.getToken()).toBe('test-api-key');
+      expect(localStorageMock.setItem).toHaveBeenCalledWith('cr-cf-jwt', 'test-api-key');
     });
   });
 
-  describe('signupWithEmail', () => {
-    it('sets AUTHENTICATED on success and stores token', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          token: 'signup-jwt',
-          user: { id: 'user-789', name: 'charlie', email: 'charlie@example.com' }
-        })
-      });
-
-      await provider.signupWithEmail('charlie@example.com', 'newpassword');
+  describe('connectLocal', () => {
+    it('sets AUTHENTICATED on success and stores local-dev-token', async () => {
+      await provider.connectLocal();
 
       expect(provider.getStatus()).toBe(AuthStatus.AUTHENTICATED);
-      expect(provider.getToken()).toBe('signup-jwt');
-      expect(localStorageMock.setItem).toHaveBeenCalledWith('cr-cf-jwt', 'signup-jwt');
+      expect(provider.getToken()).toBe('local-dev-token');
+      expect(localStorageMock.setItem).toHaveBeenCalledWith('cr-cf-jwt', 'local-dev-token');
     });
   });
 
   describe('logout', () => {
     it('clears session, JWT, and localStorage', async () => {
-      // First setup state as logged in
       localStorageMock.setItem('cr-cf-jwt', 'active-jwt');
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ user: { id: 'u1', name: 'A', email: 'a@a.com' } })
-      });
       await provider.init();
 
       expect(provider.getToken()).toBe('active-jwt');
@@ -161,16 +97,12 @@ describe('CloudflareAuthProvider', () => {
 
       expect(listener).toHaveBeenCalledWith(AuthStatus.LOADING, undefined);
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ user: { id: 'u1', name: 'X', email: 'x@x.com' } })
-      });
       localStorageMock.setItem('cr-cf-jwt', 'jwt');
       await provider.init();
 
       expect(listener).toHaveBeenCalledWith(
         AuthStatus.AUTHENTICATED,
-        expect.objectContaining({ id: 'u1' })
+        expect.objectContaining({ id: 'cloud' })
       );
     });
   });

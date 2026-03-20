@@ -35,3 +35,17 @@ agg demo.cast demo.gif
 ```
 
 *Note: You can pass `--theme`, `--font-family`, `--speed`, etc., to AGG.*
+
+## Known Hazards & Learnings
+
+### 1. Existing `.cast` Files
+When running headless scripts, if the target `.cast` file already exists, `asciinema rec` will instantly abort with an error. Always pass `--overwrite` or `--append` in automated environments.
+
+### 2. Preserving Colors in Headless Child Processes
+When driving UI tests programmatically via `child_process.spawn` or `node-pty` to feed into `asciinema`, modern CLI libs (like `chalk` or `ink`) will detect the missing interactive TTY and gracefully disable color output. You must forcibly inject `FORCE_COLOR: '1'` into the spawned environment to guarantee the `.cast` output retains its styling.
+
+### 3. Apple Silicon `posix_spawnp` Crashes in `node-pty`
+The native C++ `.node` bindings for `node-pty` are brittle on macOS ARM when intersecting with package managers like Nix or Homebrew, specifically crashing during the `posix_spawnp` syscall. If true terminal dimensions aren't required, replacing `node-pty` with standard Node `child_process.spawn({ shell: true })` provides completely robust chronological stdout capturing without native binding dependencies.
+
+### 4. Multiplex Prefixing Resets Colors
+If you are multiplexing multiple streams into one console, be careful injecting colorized prefixes (e.g., `\x1b[36m[Daemon]\x1b[0m`). Appending the reset code `\x1b[0m` clears *all* terminal attributes for the remainder of the cursor's line, which will inadvertently kill any native color formatting the child process was emitting!

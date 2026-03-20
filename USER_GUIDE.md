@@ -106,6 +106,8 @@ npm run dev --workspace=apps/cli
 | `/observe` | Toggles the real-time AI Cognitive State (Dissonance & Semantic Markers) visual output logs alongside the generated stream response. |
 | `/exec` | Materializes the topological sandbox locally for the given repository and executes scripts natively with strict dependency linking. |
 | `/mcp` | Integrates and manages Model Context Protocol (MCP) toolchains across the current sandbox, enabling dynamic cross-tool interaction. |
+| `cr audit` | Performs a snapshot diagnostic of the local sandbox environment, generating observability metrics and logging cognitive state. |
+| `cr status`| Polls the health check endpoint to verify daemon connectivity and subsystem statuses without full synchronization. |
 
 ### Working in the CLI
 

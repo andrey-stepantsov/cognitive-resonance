@@ -10,8 +10,17 @@ export const globalBackendConfig: BackendConfig = {
   apiKey: '',
 };
 
-// Singleton Cloudflare storage provider
-export const cloudflareStorage = new CloudflareStorageProvider();
+// Singleton Cloudflare storage provider (lazy initialized to prevent circular reference)
+let _cloudflareStorage: CloudflareStorageProvider;
+export const cloudflareStorage = new Proxy({} as CloudflareStorageProvider, {
+  get(target, prop, receiver) {
+    if (!_cloudflareStorage) {
+      _cloudflareStorage = new CloudflareStorageProvider();
+    }
+    const val = Reflect.get(_cloudflareStorage, prop, receiver);
+    return typeof val === 'function' ? val.bind(_cloudflareStorage) : val;
+  }
+});
 
 export function initBackendEnvironment(config: Partial<BackendConfig>) {
   Object.assign(globalBackendConfig, config);

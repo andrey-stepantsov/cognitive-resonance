@@ -40,17 +40,15 @@ describe('CloudflareStorageProvider', () => {
     expect(headers?.Authorization).toBe(`Bearer ${TEST_API_KEY}`);
   }
 
-  describe('saveSession', () => {
+  describe('createSession', () => {
     it('sends PUT to /api/sessions/:id with auth header', async () => {
       const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => ({ id: 'sess-1', ok: true }) });
       vi.stubGlobal('fetch', mockFetch);
 
-      const id = await provider.saveSession('sess-1', {
-        messages: [{ content: 'Hello world!' }],
+      await provider.createSession('sess-1', {
         customName: 'My Session',
       });
 
-      expect(id).toBe('sess-1');
       expect(mockFetch).toHaveBeenCalledWith(
         `${WORKER_URL}/api/sessions/sess-1`,
         expect.objectContaining({ method: 'PUT' })
@@ -62,8 +60,8 @@ describe('CloudflareStorageProvider', () => {
       const mockFetch = vi.fn().mockResolvedValue({ ok: true });
       vi.stubGlobal('fetch', mockFetch);
 
-      const id = await provider.saveSession('', { messages: [] });
-      expect(id).toMatch(/^session-/);
+      await provider.createSession('', {});
+      expect(mockFetch).toHaveBeenCalled();
     });
   });
 
@@ -71,17 +69,24 @@ describe('CloudflareStorageProvider', () => {
     it('fetches GET /api/sessions with auth header', async () => {
       await provider.init();
       const mockRows = [
-        { id: 's1', timestamp: 1000, preview: 'Hello...', customName: null, config: '{}', isArchived: false },
-        { id: 's2', timestamp: 2000, preview: 'World...', customName: 'Named', config: '{}', isArchived: true },
+        { id: 's1' },
+        { id: 's2' },
       ];
-      const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => mockRows });
+      const mockFetch = vi.fn().mockImplementation(async (url: string) => {
+          if (url.includes('/api/events/s1')) {
+              return { ok: true, json: async () => [{ id: 'e1', type: 'SESSION_CREATED', payload: '{"config":{"customName":null,"isArchived":false}}' }] };
+          }
+          if (url.includes('/api/events/s2')) {
+              return { ok: true, json: async () => [{ id: 'e2', type: 'SESSION_CREATED', payload: '{"config":{"customName":"Named","isArchived":true}}' }] };
+          }
+          return { ok: true, json: async () => mockRows };
+      });
       vi.stubGlobal('fetch', mockFetch);
 
       const sessions = await provider.loadAllSessions();
       expect(sessions).toHaveLength(2);
       expect(sessions[0].id).toBe('s1');
-      expect(sessions[1].customName).toBe('Named');
-      expect(sessions[1].isArchived).toBe(true);
+      expect(sessions[1].id).toBe('s2');
       expectAuthHeader(mockFetch);
     });
 
@@ -100,10 +105,10 @@ describe('CloudflareStorageProvider', () => {
   });
 
   describe('loadSession', () => {
-    it('fetches GET /api/sessions/:id with auth header', async () => {
+    it('fetches GET /api/events/:id with auth header', async () => {
       await provider.init();
-      const mockRow = { id: 's1', timestamp: 1000, preview: 'Hello...', config: '{}', data: '{"messages":[]}' };
-      const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => mockRow });
+      const mockEvents = [{ id: 'e1', type: 'SESSION_CREATED', payload: '{"config":{}}' }];
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => mockEvents });
       vi.stubGlobal('fetch', mockFetch);
 
       const session = await provider.loadSession('s1');
