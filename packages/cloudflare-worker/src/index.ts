@@ -8,6 +8,7 @@ export interface Env {
   // Secrets
   API_KEY: string;
   JWT_SECRET?: string;
+  CR_PUBLIC_KEY?: string;
 }
 
 import { validateEventSequence } from '@cr/core/src/schemas/EventsSchema';
@@ -65,7 +66,8 @@ import {
   hashPassword,
   verifyPassword,
   generateApiKey,
-  decodeJwtParts
+  decodeJwtParts,
+  verifyEd25519Token
 } from './auth';
 
 import { handleAuthAPI } from './authRoutes';
@@ -145,10 +147,17 @@ export async function requireAuth(request: Request, env: Env): Promise<Response 
     return { userId: token.replace('cr_mock_', '') };
   }
 
-
+  // 1. Try Mathematical Ed25519 Offline Token Validation
+  if (env.CR_PUBLIC_KEY) {
+     const edResult = await verifyEd25519Token(token, env.CR_PUBLIC_KEY);
+     if (edResult) {
+        const revoked = await env.DB.prepare('SELECT 1 FROM revoked_identities WHERE identity = ?').bind(edResult.userId).first();
+        if (!revoked) return edResult;
+     }
+  }
 
   // 2. Try HMAC (local Cloudflare Auth)
-  const result = await verifyJwt(token, env.JWT_SECRET);
+  const result = await verifyJwt(token, env.JWT_SECRET || '');
   if (result) {
     // Basic structural check if this is an invite token
     // If it's a guest token, it MUST match the requested roomId if one is provided in the request

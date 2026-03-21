@@ -245,7 +245,7 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
     };
 
     const shellCommands = [
-      '/help', '/login', '/signup', '/whoami', '/session', '/session ls', '/session new', 
+      '/help', '/login', '/signup', '/whoami', '/activate', '/session', '/session ls', '/session new', 
       '/session clear', '/history', '/model', '/model use', '/model ls', '/gem ls', 
       '/graph ls', '/graph search', '/graph stats', '/clear', '/archive',
       '/recover', '/clone', '/exec', '/exit', '/quit', '/cat', '/read', '/ls', '/tree'
@@ -397,6 +397,7 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
       if (text === '/exit' || text === '/quit') { rl.close(); return; }
       if (text === '/help') {
          io.print(chalk.yellow('\n--- Cognitive Resonance Commands ---'));
+         io.print(chalk.green('  /activate <token>') + '- Activate Edge access using offline token');
          io.print(chalk.green('  /login <email>   ') + '- Authenticate with Edge');
          io.print(chalk.green('  /session ls      ') + '- View active sessions');
          io.print(chalk.green('  /session <id>    ') + '- Switch to session');
@@ -433,6 +434,43 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
              io.print('[System] Usage: /focus <tags/paths> | clear | ls');
          }
          updatePrompt();
+         rl.prompt();
+         return;
+      }
+
+      if (text.startsWith('/activate ')) {
+         const token = text.slice(10).trim();
+         if (!token) { io.print('[System] Usage: /activate <base64_token>'); rl.prompt(); return; }
+         
+         try {
+            const parts = token.split('.');
+            if (parts.length !== 3) throw new Error('Invalid token format');
+            
+            // Core package resolves path from dist.
+            // When running locally: `__dirname` is apps/cli/dist/commands
+            // The public key resides in packages/core/src/scripts/.keys/ed25519.pub
+            const publicKeyPath = require('path').resolve(__dirname, '../../../../packages/core/src/scripts/.keys/ed25519.pub');
+            
+            if (!require('fs').existsSync(publicKeyPath)) {
+                throw new Error('Public Key ed25519.pub not bundled in CLI. Cannot verify. (Developer: Please run mint_token.ts first)');
+            }
+            
+            const publicKey = require('crypto').createPublicKey(require('fs').readFileSync(publicKeyPath));
+            
+            const isValid = require('crypto').verify(null, Buffer.from(`${parts[0]}.${parts[1]}`), publicKey, Buffer.from(parts[2], 'base64url'));
+            if (!isValid) throw new Error('Mathematical signature is invalid or forged');
+            
+            const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+            if (payload.exp < Math.floor(Date.now() / 1000)) throw new Error('Token has expired');
+            
+            require('../utils/api').saveCliToken(token);
+            io.print(chalk.green(`\n[System] ✅ Environment Activated Successfully!`));
+            io.print(`  Identity: ${payload.sub}`);
+            io.print(`  Expires:  ${new Date(payload.exp * 1000).toLocaleString()}\n`);
+            
+         } catch (err: any) {
+            io.print(chalk.red(`\n[System] ❌ Activation Failed: ${err.message}\n`));
+         }
          rl.prompt();
          return;
       }

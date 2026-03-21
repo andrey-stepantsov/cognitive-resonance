@@ -1,5 +1,5 @@
 import type { Env } from './index';
-import { hashPassword, verifyPassword, signJwt, generateApiKey } from './auth';
+import { hashPassword, verifyPassword, signJwt, generateApiKey, verifyEd25519Token } from './auth';
 import { requireAuth, isAuthError, jsonResponse, corsResponse } from './index';
 
 export async function handleAuthAPI(request: Request, env: Env): Promise<Response> {
@@ -7,6 +7,32 @@ export async function handleAuthAPI(request: Request, env: Env): Promise<Respons
   const path = url.pathname;
 
   // --- Public Routes ---
+
+  if (request.method === 'POST' && path === '/api/auth/exchange') {
+    const body = await request.json() as { token?: string };
+    if (!body.token) {
+      return jsonResponse({ error: 'Missing Master Token' }, 400);
+    }
+    if (!env.CR_PUBLIC_KEY || !env.JWT_SECRET) {
+      return jsonResponse({ error: 'Server authentication securely unconfigured' }, 500);
+    }
+
+    const edResult = await verifyEd25519Token(body.token, env.CR_PUBLIC_KEY);
+    if (!edResult) {
+      return jsonResponse({ error: 'Invalid Identity Token signature' }, 401);
+    }
+
+    // Stateful Revocation Check (The only required D1 baseline read for the 1 hour)
+    const revoked = await env.DB.prepare('SELECT 1 FROM revoked_identities WHERE identity = ?').bind(edResult.userId).first();
+    if (revoked) {
+      return jsonResponse({ error: 'Identity access revoked' }, 403);
+    }
+
+    // Sign the fast 1-hour HMAC session token
+    const sessionToken = await signJwt({ userId: edResult.userId }, env.JWT_SECRET, 3600);
+    
+    return jsonResponse({ token: sessionToken, user: { id: edResult.userId } });
+  }
 
   if (request.method === 'POST' && path === '/api/auth/signup') {
     const body = await request.json() as any;

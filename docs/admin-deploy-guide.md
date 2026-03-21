@@ -13,25 +13,46 @@ cd packages/cloudflare-worker
 npx wrangler deploy
 ```
 
-### Seeding Secrets
-The Worker contains a strict HTTP authentication layer (`Packages/cloudflare-worker/src/index.ts -> requireAuth`) that rejects all incoming connections without a valid token. You must inject two critical secrets into the deployed Worker environment:
+### 1. Seeding the Root Identity Authority
 
-1. **The Edge Connection Key (`API_KEY`)**
-   This is the master static key that web PWA users type into their "Edge Connection" popup to gain database access.
+The Worker now strictly implements a **Dual-Token Asymmetric Authenticator**. It intercepts mathematical signatures mapped against an Ed25519 PKI root structure. To set this up:
+
+1. **The Asymmetric Public Key (`CR_PUBLIC_KEY`)**
+   Offline, run the identity minter script (detailed in section 3) to generate your core keypair. Once generated, upload *only* the resulting `.pub` file into your worker's encrypted vault.
    ```bash
-   npx wrangler secret put API_KEY
-   # Enter something secure, e.g. "cognitive-resonance-admin-key"
+   npx wrangler secret put CR_PUBLIC_KEY < /path/to/save/.keys/ed25519.pub
    ```
 
-2. **The Cryptographic JWT Secret (`JWT_SECRET`)**
-   The CLI uses a native `/signup` and `/login` flow that mathematically signs JSON Web Tokens for identity verification. The Worker requires a secret to sign these payloads.
+2. **The Session HMAC Key (`JWT_SECRET`)**
+   Because the Edge instantaneously swaps Asymmetric Tokens into fast 1-hour symmetric `HS256` tokens for throughput, a symmetric shared JWT secret is still required:
    ```bash
    echo "cr_jwt_secret_$(openssl rand -hex 32)" | npx wrangler secret put JWT_SECRET
    ```
 
 ---
 
-## 2. Frontend: PWA web-deployment
+## 2. Managing Identities & Permissions
+
+User identity and activation tokens are managed entirely offline on the Administrator's secure machine to prevent private-key leaks to the cloud.
+
+### 2a. Minting a New Identity Token
+To authorize a new human, agent, or programmatic CLI client, execute the offline Minter:
+```bash
+npx tsx packages/core/src/scripts/mint_token.ts <target_user_identity> [optional_days_valid]
+```
+- A `days_valid` numeric parameter will mathematically bake an `exp` claim into the cryptograph.
+- Omitting the parameter generates an infinite-horizon *Permanent Identity*.
+
+The resulting block of Base64 strings should be sent uniquely to the user, who then executes `cr activate <token>` on their end.
+
+### 2b. Instant Access Revocation
+We natively utilize D1 lookups at the Edge exclusively during the 1-hour swap boundary.
+To immediately and globally terminate an identity (or leaked permanent token), inject the username into the stateful `revoked_identities` table:
+```bash
+npx wrangler d1 execute cr-sessions --remote --command "INSERT INTO revoked_identities (identity, revoked_at) VALUES ('<target_user_identity>', strftime('%s','now'));"
+```
+
+## 3. Frontend: PWA web-deployment
 
 The Progressive Web App communicates with the Cloudflare Worker. When compiling the React app code for production, it requires knowledge of the Cloudflare Worker's URL.
 

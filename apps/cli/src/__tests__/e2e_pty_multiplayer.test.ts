@@ -7,6 +7,11 @@ import * as path from 'path';
 import os from 'os';
 import * as pty from 'node-pty';
 
+vi.mock('../utils/api', () => ({
+    fetchSessionToken: vi.fn().mockResolvedValue('mock-token'),
+    getCliToken: vi.fn().mockReturnValue('mock-token')
+}));
+
 vi.mock('node-pty', () => {
     let mockOnDataCb: any = null;
     return {
@@ -68,7 +73,7 @@ describe('E2E: PTY Multiplayer Terminal Sync', () => {
             status: 200,
             json: async () => ({
                 events: [{
-                    id: 101,
+                    id: '11111111-1111-1111-1111-111111111111',
                     session_id: sessionId,
                     timestamp: Date.now(),
                     actor: 'Cloud-User',
@@ -95,13 +100,13 @@ describe('E2E: PTY Multiplayer Terminal Sync', () => {
             status: 200,
             json: async () => ({
                 events: [{
-                    id: 102,
+                    id: '22222222-2222-2222-2222-222222222222',
                     session_id: sessionId,
                     timestamp: Date.now(),
                     actor: 'User-A',
                     type: 'TERMINAL_INPUT',
                     payload: JSON.stringify({ target: hostname, input: "echo 'Hello Multiplayer'\n" }),
-                    previous_event_id: 101,
+                    previous_event_id: '11111111-1111-1111-1111-111111111111',
                     sync_status: 'SYNCED'
                 }]
             })

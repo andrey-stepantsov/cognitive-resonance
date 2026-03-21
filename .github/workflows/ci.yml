@@ -1,0 +1,30 @@
+name: CI Verification Matrix
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  verify:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Compile TypeScript (CLI)
+        run: npm run build --workspace=apps/cli
+
+      - name: Run Core & CLI Tests (Vitest)
+        run: npm run test --workspace=apps/cli

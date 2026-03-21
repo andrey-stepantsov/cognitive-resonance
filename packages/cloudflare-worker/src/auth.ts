@@ -207,6 +207,51 @@ export async function verifyJwt(
   }
 }
 
+export async function verifyEd25519Token(token: string, publicKeyPem: string): Promise<{ userId: string } | null> {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    
+    const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[1])));
+    
+    // Strip PEM headers and whitespace to isolate the base64 ASN.1 sequence
+    const pemContents = publicKeyPem
+      .replace(/-----BEGIN PUBLIC KEY-----/g, '')
+      .replace(/-----END PUBLIC KEY-----/g, '')
+      .replace(/\s+/g, '');
+      
+    const binaryDer = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
+    
+    const key = await crypto.subtle.importKey(
+      "spki",
+      binaryDer,
+      { name: "Ed25519" },
+      false,
+      ["verify"]
+    );
+    
+    const signatureInput = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
+    const signature = base64UrlDecode(parts[2]);
+    
+    const valid = await crypto.subtle.verify(
+      "Ed25519",
+      key,
+      signature,
+      signatureInput
+    );
+    
+    if (!valid) return null;
+    
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+        return null; // Token temporally expired
+    }
+    
+    return { userId: payload.sub || payload.userId || payload.user_id };
+  } catch (err) {
+    return null;
+  }
+}
+
 // ─── API Key Utilities ───────────────────────────────────────────
 
 // Generates a random secure API key, and returns [plainKey, keyHash]

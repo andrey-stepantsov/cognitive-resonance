@@ -59,3 +59,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
   last_used_at INTEGER,
   FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS revoked_identities (
+  identity TEXT PRIMARY KEY,
+  revoked_at INTEGER NOT NULL
+);

@@ -18,7 +18,7 @@ import { generateSubWorker } from '@cr/core/src/utils/SubWorkerTemplate';
 import * as pty from 'node-pty';
 import { DefaultIoAdapter, IoAdapter } from '../utils/IoAdapter';
 import { validateEventSequence } from '@cr/core/src/schemas/EventsSchema';
-
+import { fetchSessionToken, getCliToken } from '../utils/api';
 const activeTerminals = new Map<string, pty.IPty>();
 const terminalBuffers = new Map<string, { buffer: string, timeout: NodeJS.Timeout | null }>();
 
@@ -232,16 +232,15 @@ export function registerServeCommand(program: Command, io: IoAdapter = new Defau
 
 export async function runSyncDaemon(dbEngine: DatabaseEngine, clients: Set<WebSocket>, logger: any, hostName: string = 'unknown-host') {
    try {
-      const fs = require('fs');
-      const path = require('path');
-      const TOKEN_FILE_PATH = path.resolve(process.cwd(), '.cr', 'token');
       
-      let token: string | null = null;
-      if (fs.existsSync(TOKEN_FILE_PATH)) {
-         token = fs.readFileSync(TOKEN_FILE_PATH, 'utf-8').trim();
-      }
+      let token = await fetchSessionToken();
+      if (!token) token = getCliToken();
             // Try local override first, then Vite production env, then fallback
-       const backendUrl = process.env.CR_CLOUD_URL || process.env.VITE_CLOUDFLARE_WORKER_URL || 'http://localhost:8787';
+      let backendUrl = 'http://localhost:8787';
+      if (process.env.CR_ENV === 'prod') backendUrl = 'https://api.andrey-stepantsov.workers.dev';
+      else if (process.env.CR_ENV === 'staging') backendUrl = 'https://api-staging.andrey-stepantsov.workers.dev';
+      
+      backendUrl = process.env.CR_EDGE_URL || process.env.CR_CLOUD_URL || process.env.VITE_CLOUDFLARE_WORKER_URL || backendUrl;
       const baseUrl = backendUrl.replace(/\/$/, '');
       
       const headers = new Headers({ 'Content-Type': 'application/json' });
@@ -493,6 +492,14 @@ export async function runSyncDaemon(dbEngine: DatabaseEngine, clients: Set<WebSo
       }
       
    } catch (err: any) {
+      if (err.message && err.message.startsWith('AUTH_FATAL:')) {
+         logger.error(`[CRITICAL] Authentication Failed: ${err.message.replace('AUTH_FATAL: ', '')}`);
+         logger.error(`[CRITICAL] Your Identity Token is invalid or has been revoked. Terminating daemon and clearing local credentials.`);
+         const { clearCliToken } = await import('../utils/api');
+         clearCliToken();
+         process.exit(1);
+         return;
+      }
       logger.error(`[Sync Daemon] Offline or unreachable: ${err.message}`);
    }
 }
