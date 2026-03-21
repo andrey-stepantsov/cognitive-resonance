@@ -26,3 +26,5 @@ coverage/
 /playwright/.cache/
 /playwright/.auth/
 packages/cloudflare-worker/.wrangler/
+packages/cloudflare-worker/.dev.vars
+.keys/
