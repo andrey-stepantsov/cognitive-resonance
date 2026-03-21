@@ -106,7 +106,7 @@ export class MemoryIoAdapter implements IoAdapter {
   public timeouts: Array<NodeJS.Timeout> = [];
   
   private lineCallbacks: Array<(line: string) => void> = [];
-  private closeCallbacks: Array<() => void> = [];
+  public closeCallbacks: Array<() => void> = [];
   public isClosed: boolean = false;
   public lastPrompt: string = '';
   
