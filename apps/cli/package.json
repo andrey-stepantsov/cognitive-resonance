@@ -4,7 +4,8 @@
   "description": "Cognitive Resonance Command Line Interface",
   "main": "dist/index.js",
   "bin": {
-    "cr": "./bin/cr.js"
+    "cr": "./bin/cr.js",
+    "cr-dev": "./bin/cr.js"
   },
   "scripts": {
     "clean": "rm -rf dist",
