@@ -9,6 +9,7 @@ export interface Env {
   API_KEY: string;
   JWT_SECRET?: string;
   CR_PUBLIC_KEY?: string;
+  SECRET_SUPER_ADMIN_IDS?: string;
 }
 
 import { validateEventSequence } from '@cr/core/src/schemas/EventsSchema';
@@ -73,6 +74,7 @@ import {
 import { handleAuthAPI } from './authRoutes';
 export { RoomSession } from './roomSession';
 import { getEdgeLogger } from './logger';
+import { handleAdminAPI } from './adminRoutes';
 
 import {
   parsePackfile,
@@ -224,6 +226,11 @@ export default {
     // --- Auth API ---
     if (path.startsWith('/api/auth')) {
       return handleAuthAPI(request, env);
+    }
+
+    // --- Admin API ---
+    if (path.startsWith('/api/admin')) {
+      return handleAdminAPI(request, env);
     }
 
     // --- Session API (D1) — requires auth ---

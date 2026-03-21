@@ -121,4 +121,47 @@ describe('E2E: Authentication Exchange Lifecycle', () => {
     const data3 = await res3.json() as any;
     expect(data3.token).toBeTruthy();
   });
+
+  it('rejects /api/auth/exchange missing token', async () => {
+    const request = new Request('http://localhost/api/auth/exchange', {
+      method: 'POST', body: JSON.stringify({}),
+    });
+    const response = await worker.fetch(request, makeEnv({}), makeCtx());
+    expect(response.status).toBe(400);
+  });
+
+  it('rejects /api/auth/exchange when strictly unconfigured', async () => {
+    const request = new Request('http://localhost/api/auth/exchange', {
+      method: 'POST', body: JSON.stringify({ token: validToken }),
+    });
+    // Omit JWT_SECRET
+    const env = makeEnv({});
+    env.JWT_SECRET = '';
+    const response = await worker.fetch(request, env, makeCtx());
+    expect(response.status).toBe(500);
+  });
+
+  it('handles /api/auth/invite generating an invite token', async () => {
+    const mockDB = { prepare: vi.fn().mockReturnValue({ bind: vi.fn().mockReturnValue({ first: vi.fn().mockResolvedValue(null) }) }) };
+    const request = new Request('http://localhost/api/auth/invite', {
+      method: 'POST', 
+      headers: { 'Authorization': `Bearer ${validToken}` },
+      body: JSON.stringify({ sessionId: 'test-room-id' }),
+    });
+    const response = await worker.fetch(request, makeEnv(mockDB), makeCtx());
+    expect(response.status).toBe(200);
+    const data = await response.json() as any;
+    expect(data.token).toBeTruthy();
+  });
+
+  it('rejects /api/auth/invite with missing sessionId', async () => {
+    const mockDB = { prepare: vi.fn().mockReturnValue({ bind: vi.fn().mockReturnValue({ first: vi.fn().mockResolvedValue(null) }) }) };
+    const request = new Request('http://localhost/api/auth/invite', {
+      method: 'POST', 
+      headers: { 'Authorization': `Bearer ${validToken}` },
+      body: JSON.stringify({}),
+    });
+    const response = await worker.fetch(request, makeEnv(mockDB), makeCtx());
+    expect(response.status).toBe(400);
+  });
 });

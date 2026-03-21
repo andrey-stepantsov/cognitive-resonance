@@ -31,6 +31,7 @@ import { registerChatCommands } from './commands/chat';
 import { registerObserveCommands } from './commands/observe';
 import { DefaultIoAdapter } from './utils/IoAdapter';
 import { registerMcpCommand } from './commands/mcp';
+import { registerAdminCommands } from './commands/admin';
 
 // Register model 2 commands
 registerSimulateCommand(program);
@@ -43,6 +44,7 @@ registerObserveCommands(program, io);
 registerServeCommand(program, io);
 registerMcpCommand(program);
 registerImportExportCommands(program);
+registerAdminCommands(program);
 
 program.parseAsync(process.argv).catch(err => {
   console.error('Fatal CLI Error:', err);
