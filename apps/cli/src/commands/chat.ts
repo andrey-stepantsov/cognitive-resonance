@@ -605,6 +605,15 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
         
         await materializer.computeAndMaterialize(sessionEvents, sandboxDir);
 
+        try {
+           const latestSymlink = path.resolve(workspaceDir, '.cr', 'sandbox', 'latest');
+           if (fs.existsSync(latestSymlink)) fs.unlinkSync(latestSymlink);
+           fs.symlinkSync(sessionId, latestSymlink, 'dir');
+        } catch(e) {}
+
+        io.print(chalk.dim(`[System] Sandbox Materialized at: ${sandboxDir}`));
+        io.print(chalk.dim(`[System] Synced via alias: .cr/sandbox/latest`));
+
         if (cmd.startsWith('node ')) {
           const parts = cmd.split(' ');
           const scriptFile = parts[1];
