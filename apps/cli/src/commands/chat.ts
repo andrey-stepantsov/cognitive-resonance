@@ -726,6 +726,46 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
         const activeActor = explicitTarget ? explicitTarget : currentModel;
         let systemPrompt = explicitTarget ? GemProfiles[explicitTarget] : 'You are a helpful CLI assistant.';
 
+        if (activeActor.toLowerCase() === 'trinity') {
+           io.print(`[System] Initializing Pre-Flight Discovery for @trinity...`);
+           let discoveryContext = `\n\n--- Pre-Flight Discovery (Local Skills & Memories) ---\n`;
+           
+           const skillsDir = path.resolve(process.cwd(), '.agents/skills');
+           if (fs.existsSync(skillsDir)) {
+              const readSkillsRecursive = (dir: string) => {
+                 const files = fs.readdirSync(dir);
+                 for (const file of files) {
+                    const fullPath = path.join(dir, file);
+                    if (fs.statSync(fullPath).isDirectory()) {
+                       readSkillsRecursive(fullPath);
+                    } else if (file.endsWith('.md') || file.endsWith('.ts')) {
+                       const content = fs.readFileSync(fullPath, 'utf8');
+                       const relativePath = path.relative(process.cwd(), fullPath);
+                       discoveryContext += `\n[Skill Blueprint: ${relativePath}]\n${content}\n`;
+                    }
+                 }
+              };
+              try { readSkillsRecursive(skillsDir); io.print(`[System] Loaded local skills from .agents/skills/`); }
+              catch(e) {}
+           }
+
+           try {
+              const res = await backendFetch('/api/search?limit=3&q=' + encodeURIComponent(nextInput));
+              if (res.ok) {
+                 const data = await res.json() as any;
+                 if (data.results && data.results.length > 0) {
+                     discoveryContext += `\n[Related Historical Sessions (Vectorize)]\n`;
+                     data.results.forEach((r: any) => {
+                        discoveryContext += `- ${r.customName || r.sessionId}: ${r.preview}\n`;
+                     });
+                     io.print(`[System] Retrieved ${data.results.length} related memory chunks from Vectorize.`);
+                 }
+              }
+           } catch (e: any) {}
+
+           systemPrompt += discoveryContext;
+        }
+
         // TODO: [Testing] Write an E2E test to verify that the Virtual Filesystem Context is correctly injected into the AI's system prompt during Headless chat and REPL chat after a repository import.
         const materializer = new Materializer(workspaceDir);
         const sessionEvents = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC', [sessionId]) as any[];
@@ -798,15 +838,15 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
 
           // Check for handoffs
           const dslIntents = parseDslRouting(response.reply);
-          const agentHandoff = dslIntents.find(i => i.agent && GemProfiles[i.agent] && i.agent !== activeActor);
+          const agentHandoff = dslIntents.find(i => i.agent && GemProfiles[i.agent.toLowerCase()] && i.agent.toLowerCase() !== activeActor.toLowerCase());
           
-          let nextTargetGem = agentHandoff ? agentHandoff.agent : null;
+          let nextTargetGem = agentHandoff ? agentHandoff.agent.toLowerCase() : null;
           let handoffPayload = agentHandoff?.ast ? JSON.stringify(agentHandoff.ast) : null;
 
           if (!nextTargetGem) {
             // fallback to simple mentions
             const responseMentions = parseMentions(response.reply);
-            nextTargetGem = responseMentions.find(m => GemProfiles[m] && m !== activeActor);
+            nextTargetGem = responseMentions.find(m => GemProfiles[m] && m !== activeActor.toLowerCase());
           }
           
           if (nextTargetGem) {
