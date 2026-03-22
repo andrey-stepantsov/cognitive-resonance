@@ -28,4 +28,13 @@ bindings = [
 tag = "v1"
 new_sqlite_classes = ["RoomSession"]
 
+[[queues.producers]]
+binding = "AI_QUEUE"
+queue = "tg-ai-queue"
+
+[[queues.consumers]]
+queue = "tg-ai-queue"
+max_batch_size = 5
+max_batch_timeout = 10
+
 [vars]

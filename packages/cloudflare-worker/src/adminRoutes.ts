@@ -59,5 +59,22 @@ export async function handleAdminAPI(request: Request, env: Env): Promise<Respon
     }
   }
 
+  if (request.method === 'POST' && path === '/api/admin/bot/register') {
+    const body = await request.json() as any;
+    if (!body.userId || !body.botToken) {
+      return jsonResponse({ error: 'Missing userId or botToken' }, 400);
+    }
+    try {
+      await env.DB.prepare(
+        "INSERT INTO telegram_integrations (user_id, bot_token, created_at) VALUES (?, ?, strftime('%s','now')) " +
+        "ON CONFLICT(user_id) DO UPDATE SET bot_token = excluded.bot_token"
+      ).bind(body.userId, body.botToken).run();
+      return jsonResponse({ ok: true });
+    } catch (e: any) {
+      return jsonResponse({ error: 'Database error' }, 500);
+    }
+  }
+
   return corsResponse('Not Found', 404);
 }
+

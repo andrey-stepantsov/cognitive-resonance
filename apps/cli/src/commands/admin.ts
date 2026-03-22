@@ -96,4 +96,30 @@ export function registerAdminCommands(program: Command) {
         process.exit(1);
       }
     });
+
+  const botCmd = adminCmd.command('bot').description('Telegram bot integration management');
+
+  botCmd.command('register <userId> <botToken>')
+    .description('Register a Telegram BYOB token for a user')
+    .action(async (userId, botToken) => {
+      try {
+        const res = await backendFetch('/api/admin/bot/register', {
+          method: 'POST',
+          body: JSON.stringify({ userId, botToken })
+        });
+        
+        if (res.ok) {
+          console.log(`✅ Successfully registered bot token for user ${userId}`);
+        } else {
+          console.error(`❌ Failed to register bot: ${res.status} ${res.statusText}`);
+          const text = await res.text();
+          if (text) console.error(text);
+          process.exit(1);
+        }
+      } catch (e: any) {
+        console.error(`[Error] ${e.message}`);
+        process.exit(1);
+      }
+    });
+
 }

@@ -64,3 +64,20 @@ CREATE TABLE IF NOT EXISTS revoked_identities (
   identity TEXT PRIMARY KEY,
   revoked_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS bot_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  timestamp INTEGER NOT NULL,
+  provider TEXT NOT NULL,
+  status_code INTEGER,
+  response_body TEXT,
+  payload TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_bot_logs_time ON bot_logs(timestamp DESC);
+
+CREATE TABLE IF NOT EXISTS telegram_integrations (
+  user_id TEXT PRIMARY KEY,
+  bot_token TEXT NOT NULL UNIQUE,
+  created_at INTEGER NOT NULL
+);

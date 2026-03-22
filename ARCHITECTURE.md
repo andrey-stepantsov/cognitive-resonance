@@ -33,11 +33,11 @@ The system tracks the AI's internal processing context natively.
 - **Persistence:** This AI metadata is permanently stored with the message inside the `events` table architecture.
 - **Visualization:** In the PWA and VS Code Extension, users can visually explore this state through the `DissonanceMeter` and an interactive 3D `SemanticGraph`. The CLI surfaces and logs dissonance natively.
 
-[Read the Deep Dive: AI Cognitive State](docs/technical/ai_cognitive_state.md)
+[Read the Deep Dive: AI Cognitive State](docs/tech-ai-cognitive-state.md)
 
 ## Cloudflare Edge Infrastructure
 The cloud backend runs entirely on Cloudflare:
-- **Cloudflare D1:** (SQLite at the edge) handles all session metadata and event storage, operating behind an api key auth layer.
+- **Cloudflare D1:** (SQLite at the edge) handles all session metadata and event storage, operating behind an api key auth layer. It also natively hosts the `telegram_integrations` routing table, enabling the Multi-Tenant "Bring Your Own Bot" (BYOB) architecture by dynamically resolving Telegram tokens to specific users directly at the edge layer.
 - **Cloudflare Workers:** Serves the D1 REST API, natively processes the Git HTTPS remote endpoints, and routes WebSocket upgrade requests to Durable Objects.
 - **Cloudflare Vectorize:** Generates embeddings of conversations on-the-fly and handles semantic search.
 - **Cloudflare Durable Objects:** Governs real-time multiplayer WebSocket rooms and WebRTC voice payloads for sub-millisecond sync capability.
@@ -52,8 +52,8 @@ The cloud backend runs entirely on Cloudflare:
 
 ## Documentation
 Additional module documentation is available in the `docs/` directory:
-- [Git Object Storage Deep-Dive](docs/technical/git_object_storage.md)
-- [AI Cognitive State Deep-Dive](docs/technical/ai_cognitive_state.md)
+- [Git Object Storage Deep-Dive](docs/tech-git-object-storage.md)
+- [AI Cognitive State Deep-Dive](docs/tech-ai-cognitive-state.md)
 - [Collaboration Demo & Walkthrough](docs/demo-collaboration.md)
-- [CLI Interactions Catalog](docs/design/cli_interactions_catalog.md)
-- [DSL & REPL Design](docs/design/dsl_repl_design.md)
+- [CLI Interactions Catalog](docs/design-cli-interactions-catalog.md)
+- [DSL & REPL Design](docs/design-dsl-repl.md)

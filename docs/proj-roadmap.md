@@ -101,3 +101,13 @@ To prove the architecture is sound before committing fully to the React UI, we w
 - The AI streams the code to both users as `Draft A1`. 
 - Concurrently, User B intercepts the Draft before Promotion, typing a manual fix (e.g., adding an imported library).
 - The test evaluates that the resulting `Artefact A2` successfully merged both the AI generation and User B's live edit into a single cohesive commit upon Promotion.
+
+---
+
+## Future Considerations (Post MVP)
+
+### The Guide Persona (User Onboarding & Support)
+Once the Telegram and Multi-Agent foundations are complete, we will implement a dedicated `@Guide` persona to reduce the learning curve of the Cognitive Resonance CLI, PWA, and Edge architectures.
+- **RAG via Cloudflare Vectorize:** The Guide will use embeddings of the `docs/` directory to answer architectural and operational questions accurately.
+- **Proactive Onboarding:** Hook into the `SESSION_STARTED` event to automatically inject a greeting and tutorial message from `@Guide` into new databases.
+- **Artefact Proposals:** The Guide will possess the ability to output environment configuration diffs via the VFS to actively assist users in setting up their `.env` files and aliases.

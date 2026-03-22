@@ -5,12 +5,19 @@ export interface Env {
   GIT_PACKS_BUCKET: R2Bucket;
   ROOM_SESSION: DurableObjectNamespace;
   DB: D1Database;
+  AI_QUEUE: any;
   // Secrets
   API_KEY: string;
   JWT_SECRET?: string;
   CR_PUBLIC_KEY?: string;
   SECRET_SUPER_ADMIN_IDS?: string;
+  TELEGRAM_BOT_TOKEN?: string;
+  GEMINI_API_KEY?: string;
+  GEMINI_MODEL?: string;
+  ALLOWED_TELEGRAM_USERS?: string;
 }
+
+import { processAiQueueJob } from './aiService';
 
 import { validateEventSequence } from '@cr/core/src/schemas/EventsSchema';
 
@@ -75,6 +82,7 @@ import { handleAuthAPI } from './authRoutes';
 export { RoomSession } from './roomSession';
 import { getEdgeLogger } from './logger';
 import { handleAdminAPI } from './adminRoutes';
+import { handleTelegramWebhook, sendTelegramMessage } from './telegramRoutes';
 
 import {
   parsePackfile,
@@ -230,6 +238,13 @@ export default {
 
     // --- Admin API ---
     if (path.startsWith('/api/admin')) {
+      if (path === '/api/admin/set-telegram-webhook') {
+         const workerUrl = new URL(request.url).origin;
+         const webhookUrl = `${workerUrl}/api/telegram/webhook/${env.TELEGRAM_BOT_TOKEN}`;
+         const tgUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/setWebhook?url=${webhookUrl}`;
+         const res = await fetch(tgUrl, { method: 'POST' });
+         return new Response(await res.text(), { status: res.status });
+      }
       return handleAdminAPI(request, env);
     }
 
@@ -265,6 +280,16 @@ export default {
       const authResult = await requireAuth(request, env);
       if (isAuthError(authResult)) return authResult;
       return handleGitAPI(request, env, path, authResult.userId);
+    }
+
+    // --- Telegram Webhook API ---
+    if (path.startsWith('/api/telegram/webhook/')) {
+       const tokenFromPath = path.split('/api/telegram/webhook/')[1];
+       const row = await env.DB.prepare('SELECT user_id FROM telegram_integrations WHERE bot_token = ?').bind(tokenFromPath).first();
+       if (!row) {
+          return corsResponse('Unauthorized', 401);
+       }
+       return handleTelegramWebhook(request, env, row.user_id as string, tokenFromPath);
     }
 
     // --- WebSocket Rooms (Durable Objects) ---
@@ -325,6 +350,18 @@ export default {
     // --- Fallback ---
     return corsResponse('Not Found', 404);
   },
+
+  async queue(batch: any, env: Env): Promise<void> {
+    for (const message of batch.messages) {
+       try {
+          await processAiQueueJob(message.body, env);
+          message.ack();
+       } catch(err) {
+          console.error("Queue job failed:", err);
+          message.retry();
+       }
+    }
+  }
 };
 
 // ─── Sessions CRUD ───────────────────────────────────────────────
@@ -640,12 +677,37 @@ async function handleEventsAPI(request: Request, env: Env, path: string, userId:
          ev.type,
          payloadStr,
          ev.previous_event_id || null,
-         userId
+        userId
        );
     });
     
     try {
-      await env.DB.batch(stmts);
+      if (stmts.length > 0) {
+        await env.DB.batch(stmts);
+      }
+      // 2. Intercept and push non-Human responses to Telegram if applicable
+      for (const ev of validEvents) {
+         if (ev.actor !== 'Human' && ev.type === 'message') {
+            const evUserId = ev.user_id || userId;
+            const tgRow = await env.DB.prepare('SELECT bot_token FROM telegram_integrations WHERE user_id = ?').bind(evUserId).first();
+            if (tgRow && tgRow.bot_token) {
+               const tgId = ev.session_id.startsWith('tg_chat_') ? ev.session_id.replace('tg_chat_', '') : null;
+               let textToSend = '';
+               try {
+                  const p = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
+                  textToSend = p.content || '';
+                  if (p.internalState?.dissonanceScore && p.internalState.dissonanceScore > 80) {
+                     textToSend = `[⚠️ High Dissonance: ${p.internalState.dissonanceScore}%]\n\n` + textToSend;
+                  }
+               } catch(e) { textToSend = ev.payload; }
+               
+               if (textToSend && tgId) {
+                  ctx?.waitUntil(sendTelegramMessage(tgId, textToSend, tgRow.bot_token as string));
+               }
+            }
+         }
+      }
+
       return jsonResponse({ ok: true });
     } catch (err: any) {
       logger.error('[Sync Daemon] Failed to handle event batch:', err);
