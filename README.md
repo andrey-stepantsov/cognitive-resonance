@@ -15,6 +15,12 @@ This platform is aggressively optimized to run entirely on the **Cloudflare Edge
 
 ## 🚀 Quick Start
 
+> **⚠️ Important Note for OSS Developers:**
+> Because Cognitive Resonance is deeply integrated with Cloudflare Edge (D1, Workers, Durable Objects) and the Gemini API, an arbitrary developer cannot simply `npm run dev` out of the box. 
+> To successfully boot the environment, you must either:
+> 1. Provision your own Cloudflare backend resources via `wrangler` and supply your own Gemini API keys in the `.env` file.
+> 2. Obtain explicit authorization/access tokens from the repository maintainer.
+
 1. **Install Dependencies**
    ```bash
    npm install
