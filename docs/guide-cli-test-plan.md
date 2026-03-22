@@ -148,3 +148,20 @@ Instead of relying on a global installation, we will execute the CLI directly fr
    npx tsx apps/cli/src/index.ts audit
    ```
    * *What happens:* The CLI inspects the active sandbox context and generates a diagnostic report, validating connections without modifying the active workspace state.
+
+---
+
+### Phase 8: Automated E2E Live Sync Testing
+*Goal: Automatically verify distributed sync integrity entirely headlessly.*
+
+You can run the entire sync orchestration pipeline (spinning up Edge Workers and simulating User A and User B events) via the completely automated shell script:
+
+```bash
+./scripts/e2e_live_sync.sh
+```
+
+This CI script will:
+1. Boot a background Miniflare (`npx wrangler d1 execute`) instance.
+2. Force two sub-shells to mimic physical users pushing messages through `cr.js chat`.
+3. Assert that User A successfully receives the `Hello from User B responding!` token within 6 seconds.
+4. Safely kill the daemons and clean up `.sqlite` fragments.

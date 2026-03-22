@@ -62,7 +62,9 @@ To implement Phase 1 and Phase 3 safely, we need to guarantee that user data is 
 
 This tutorial demonstrates how to verify the Cognitive Resonance `cr import` and `cr export` pipeline manually using a popular, real-world Node.js repository (`http-party/http-server`). This tests that the platform successfully serializes physical files into the virtual event graph, ignores dependencies appropriately, and materializes safely back to disk.
 
-### Prerequisites
+![Git Pipeline Action Recording](./assets/demo-git-import-export.gif)
+
+## 1. Setup the Playground
 Make sure you have built the CLI locally:
 ```bash
 npm run build --workspace=apps/cli
@@ -125,3 +127,19 @@ In a second terminal, verify it bounded successfully and serves HTTP correctly:
 curl http://localhost:18081
 ```
 *You should receive a `200 OK` response with the workspace's index HTML payload, proving the codebase successfully transported across the virtual horizon intact!*
+
+---
+
+## 2. Automated Verification Script
+
+If you wish to run the entire Phase 1 through Phase 3 manual sequence as an automated E2E workflow, you can execute the top-level tutorial script:
+
+```bash
+./run_tutorial_scenario.sh
+```
+This script will:
+1. Provision a local `/tmp/cr-manual-test3/` working directory.
+2. Clone `http-server` and run `cr import`.
+3. Synthetically inject an `ARTEFACT_PROPOSAL` modifying the HTML title seamlessly into the `.cr.sqlite` graph database (mimicking the AI).
+4. Run `cr export`.
+5. Serve the modified project on port `18083` and aggressively verify the `<h1>` payload via `curl`.

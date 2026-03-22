@@ -4,6 +4,15 @@ Cognitive Resonance is a state-of-the-art multi-platform AI chat application bui
 
 ---
 
+## ⛅ Cloudflare Edge Native
+This platform is aggressively optimized to run entirely on the **Cloudflare Edge Infrastructure**:
+- **Cloudflare D1** handles all scalable Event Graph SQLite persistence.
+- **Cloudflare Durable Objects** govern sub-millisecond WebSockets orchestrating live multi-user and multi-agent AI synchronization.
+- **Cloudflare Vectorize** powers real-time conversational semantic embeddings.
+- **Cloudflare Workers** natively handle the Git Smart HTTP transport and process the incremental `cr serve` sync daemons.
+
+---
+
 ## 🚀 Quick Start
 
 1. **Install Dependencies**

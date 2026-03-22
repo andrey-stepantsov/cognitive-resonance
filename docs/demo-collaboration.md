@@ -65,3 +65,20 @@ This walkthrough outlines a demonstration flow for presenting the real-time mult
 
 ## Conclusion
 "By fusing real-time sync (Yjs/Durable Objects), P2P Voice (WebRTC), and Git-backed AI context into a single window, Cognitive Resonance eliminates the context-switching tax of modern software engineering. We didn't just share a chat log—we shared an entire AI orchestration environment, backed by robust local security policies."
+
+---
+
+## 💻 Automated CLI Multiplayer Test
+
+If you wish to test the underlying Edge synchronization architecture **without using the web PWA**, you can launch the purely native terminal-based chat client emulator:
+
+```bash
+./scripts/play_coop.sh
+```
+
+This AppleScript orchestration will:
+1. Boot a local Cloudflare Miniflare daemon instance binding to `8787`.
+2. Spawn two separate native Terminal windows representing **User A (`db_A.sqlite`)** and **User B (`db_B.sqlite`)**.
+3. Point both terminals to a shared, securely randomized `$SESSION_ID`.
+
+Any chat messages or code interactions sent in Terminal A will instantly synchronize to Terminal B via the edge WebSocket relay!
