@@ -82,8 +82,21 @@ export async function handleAuthAPI(request: Request, env: Env): Promise<Respons
     if (user) {
       return jsonResponse({ user });
     }
-    // Fallback for default API_KEY user
+    // Fallback for default API_KEY user Let's inject them into a virtual payload if they are headless
     return jsonResponse({ user: { id: userId, email: userId + '@legacy', name: 'Legacy User' } });
+  }
+
+  if (request.method === 'POST' && path === '/api/auth/me/name') {
+    const body = await request.json() as any;
+    if (!body.name) return jsonResponse({ error: 'Missing name' }, 400);
+
+    await env.DB.prepare(`
+      INSERT INTO users (id, email, password_hash, name, created_at)
+      VALUES (?1, ?2, 'offline_key', ?3, ?4)
+      ON CONFLICT(id) DO UPDATE SET name = excluded.name
+    `).bind(userId, `${userId}@legacy.headless`, body.name, Date.now()).run();
+
+    return jsonResponse({ ok: true, name: body.name });
   }
 
   if (request.method === 'POST' && path === '/api/auth/keys') {

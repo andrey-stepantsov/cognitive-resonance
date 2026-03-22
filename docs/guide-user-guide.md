@@ -128,6 +128,11 @@ If you prefer the terminal, you can interact with Cognitive Resonance natively:
    ```
    *Your login token will be saved to your local machine, and your subsequent commits and interactions will be securely signed under your name.*
 
+4. **Cryptographic Offline Identities:** If you act as a headless edge-administrator and generated your token via mathematically decoupled keypairs, you will appear natively as `Legacy User` since you bypassed Web Registration. You can explicitly map your token to a display profile by running:
+   ```bash
+   cr user set-name "My Name"
+   ```
+
 ### Headless Execution (CI/Scripting)
 The CLI exposes a machine-optimized execution paradigm designed explicitly for CI pipelines and pipe chains. 
 

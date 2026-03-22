@@ -36,8 +36,7 @@ The system tracks the AI's internal processing context natively.
 [Read the Deep Dive: AI Cognitive State](docs/tech-ai-cognitive-state.md)
 
 ## Cloudflare Edge Infrastructure
-The cloud backend runs entirely on Cloudflare:
-- **Cloudflare D1:** (SQLite at the edge) handles all session metadata and event storage, operating behind an api key auth layer. It also natively hosts the `telegram_integrations` routing table, enabling the Multi-Tenant "Bring Your Own Bot" (BYOB) architecture by dynamically resolving Telegram tokens to specific users directly at the edge layer.
+- **Cloudflare D1:** (SQLite at the edge) handles all session metadata and event storage, operating behind an api key auth layer. It enables the Multi-Tenant "Bring Your Own Bot" (BYOB) architecture by dynamically resolving Telegram tokens to specific users via the `telegram_integrations` routing table. Webhook registrations are completely automated upon registering a bot token. Granular authorization is natively handled via the `telegram_links` table, which strictly enforces that only explicitly authorized Telegram accounts can communicate with a specific tenant's bot, bypassing any legacy global environment variables.
 - **Cloudflare Workers:** Serves the D1 REST API, natively processes the Git HTTPS remote endpoints, and routes WebSocket upgrade requests to Durable Objects.
 - **Cloudflare Vectorize:** Generates embeddings of conversations on-the-fly and handles semantic search.
 - **Cloudflare Durable Objects:** Governs real-time multiplayer WebSocket rooms and WebRTC voice payloads for sub-millisecond sync capability.

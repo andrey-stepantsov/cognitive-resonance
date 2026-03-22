@@ -34,6 +34,7 @@ When a regular user summons `@Operator`, the agent receives tools heavily scoped
 - **`getMyUsageStats()`:** Returns the total tokens consumed, session counts, and memory thresholds for their specific account.
 - **`flushMyMemory()`:** Allows the user to ask the system to forcibly clear their session context graph or rewrite their D1 history.
 - **`rotateMyApiKeys()`:** Automatically rotates the user's specific LLM keys or Telegram Webhook connections within the D1 `users` table.
+- **`fileIssueReport()`:** Operator should be able to formally file complaints and bugs for Analysis, intelligently collecting necessary session state and environment details needed for investigation.
 
 #### B. Master Admin Access (Global Administration)
 When the system's cryptographically confirmed Master Administrator (the owner) summons `@Operator`, the system prompt expands significantly, injecting highly privileged global tools:

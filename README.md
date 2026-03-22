@@ -37,6 +37,18 @@ This platform is aggressively optimized to run entirely on the **Cloudflare Edge
    ```
    This script will automatically boot the local core packages, database engines, and backend integrations.
 
+4. **Deploy Telegram Webhooks (Optional)**
+   If you wish to configure natively isolated Telegram chat bots that pipe directly into your edge workers, please follow the [Bring Your Own Bot (BYOB) Integration Guide](./docs/guide-telegram-integration.md).
+
+### 🌍 Workspace Configuration Resolution
+
+The Cognitive Resonance CLI is designed to be executed from anywhere on your system! 
+When executing commands like `cr-dev chat`, the CLI will automatically:
+1. Crawl upward from your current directory to find the nearest `.cr/` folder, safely operating within that localized workspace's event context.
+2. If it reaches the system root without finding a local workspace, it will seamlessly fall back to your global user profile configuration located at `~/.cr/`.
+
+*Note: This architecture guarantees that event streams and AI cognitive states are securely isolated within specific projects, while still granting system administrators the maximum flexibility to run headless commands globally.*
+
 ---
 
 ## 📚 Documentation Map
@@ -48,6 +60,9 @@ All system documentation is organized under a strict **Flat Prefix Taxonomy** in
 
 - **[End User Guide](./docs/guide-user-guide.md)** 
   The core operating manual for utilizing the system effectively.
+
+- **[Telegram BYOB Integration](./docs/guide-telegram-integration.md)** 
+  A step-by-step guide for provisioning zero-trust multi-tenant Telegram robot connections securely routed to specific workspaces.
 
 - **Component Designs (`docs/design-*`)** 
   Explore precise component specifications such as the Semantic Librarian Auditor or the DSL definitions.

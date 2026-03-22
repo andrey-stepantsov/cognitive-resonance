@@ -37,12 +37,19 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
     const fromId = update.message.from?.id;
     const text = update.message.text;
 
-    // Validate whitelist
-    if (env.ALLOWED_TELEGRAM_USERS) {
-       const allowedIds = env.ALLOWED_TELEGRAM_USERS.split(',').map(s => s.trim());
-       if (!allowedIds.includes(fromId?.toString())) {
-          await sendTelegramMessage(chatId, "Unauthorized. Please use the /link command from the CLI/PWA to link your identity.", botToken);
-          return new Response('OK', { status: 200 });
+    if (fromId) {
+       const linkRow = await env.DB.prepare('SELECT 1 FROM telegram_links WHERE tg_user_id = ? AND user_id = ?').bind(fromId, ownerId).first();
+       if (!linkRow) {
+          // Fallback to global ALLOWED_TELEGRAM_USERS if it exists (legacy support)
+          let allowed = false;
+          if (env.ALLOWED_TELEGRAM_USERS) {
+             const allowedIds = env.ALLOWED_TELEGRAM_USERS.split(',').map(s => s.trim());
+             if (allowedIds.includes(fromId.toString())) allowed = true;
+          }
+          if (!allowed) {
+             await sendTelegramMessage(chatId, `Unauthorized. Your Telegram ID is \`${fromId}\`. Please ask the administrator to run: \n\n\`cr admin bot link ${ownerId} ${fromId}\``, botToken);
+             return new Response('OK', { status: 200 });
+          }
        }
     }
 
@@ -93,6 +100,12 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
       const isEdgeBoundPersona = targetAgent === 'guide' || targetAgent === 'operator';
       
       if (env.AI_QUEUE && (!isDelegatedToLocal || isEdgeBoundPersona)) {
+         await fetch(`https://api.telegram.org/bot${botToken}/sendChatAction`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: chatId, action: 'typing' })
+         }).catch(e => logger.error('Failed to send typing indicator', e));
+
          if (newTotal >= 6000 && (!sessionRow || !sessionRow.has_graph)) {
              await env.AI_QUEUE.send({ sessionId, userId, type: 'compile_graph' });
          } else {
@@ -100,6 +113,7 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
          }
       } else if (isDelegatedToLocal) {
          logger.info(`Delegated to local agent/host: ${JSON.stringify(routingIntents)}. Skipping Edge AI.`);
+         await sendTelegramMessage(chatId, `_Dispatched to local @${targetAgent || 'default'} host. Awaiting response..._`, botToken);
       }
 
     } catch (err: any) {

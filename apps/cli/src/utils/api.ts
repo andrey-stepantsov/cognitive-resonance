@@ -1,8 +1,33 @@
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 
-// Path to store the CLI authentication token
-export const CR_DIR = path.resolve(process.cwd(), '.cr');
+function findCRDir(startDir: string): string | null {
+  let currentDir = startDir;
+  const root = path.parse(currentDir).root;
+  while (currentDir !== root) {
+    const testPath = path.join(currentDir, '.cr');
+    if (fs.existsSync(testPath) && fs.statSync(testPath).isDirectory()) {
+      return testPath;
+    }
+    currentDir = path.dirname(currentDir);
+  }
+  const testRoot = path.join(root, '.cr');
+  if (fs.existsSync(testRoot) && fs.statSync(testRoot).isDirectory()) return testRoot;
+  
+  return null;
+}
+
+let binDir = __dirname;
+try {
+  if (require.main?.filename && fs.existsSync(require.main.filename)) {
+    binDir = path.dirname(fs.realpathSync(require.main.filename));
+  } else if (process.argv[1] && fs.existsSync(process.argv[1])) {
+    binDir = path.dirname(fs.realpathSync(process.argv[1]));
+  }
+} catch (e) {}
+
+export const CR_DIR = findCRDir(process.cwd()) || findCRDir(binDir) || findCRDir(__dirname) || path.join(os.homedir(), '.cr');
 export const TOKEN_FILE_PATH = path.join(CR_DIR, 'token');
 
 export function getCliToken(): string | null {

@@ -122,4 +122,27 @@ export function registerAdminCommands(program: Command) {
       }
     });
 
+  botCmd.command('link <userId> <tgUserId>')
+    .description('Link a Telegram User ID to a System User for BYOB bot authorization')
+    .action(async (userId, tgUserId) => {
+      try {
+        const res = await backendFetch('/api/admin/users/telegram-link', {
+          method: 'POST',
+          body: JSON.stringify({ userId, tgUserId: parseInt(tgUserId, 10) })
+        });
+        
+        if (res.ok) {
+          console.log(`✅ Successfully linked Telegram ID ${tgUserId} to user ${userId}`);
+        } else {
+          console.error(`❌ Failed to link Telegram ID: ${res.status} ${res.statusText}`);
+          const text = await res.text();
+          if (text) console.error(text);
+          process.exit(1);
+        }
+      } catch (e: any) {
+        console.error(`[Error] ${e.message}`);
+        process.exit(1);
+      }
+    });
+
 }

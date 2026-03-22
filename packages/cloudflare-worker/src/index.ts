@@ -22,6 +22,7 @@ export interface Env {
 import { processAiQueueJob } from './aiService';
 
 import { validateEventSequence } from '@cr/core/src/schemas/EventsSchema';
+import { parseDslRouting } from '@cr/core/src/services/CommandParser';
 
 // ─── Rate Limiting ───────────────────────────────────────────────
 
@@ -266,7 +267,7 @@ export default {
     if (path.startsWith('/api/events')) {
       const authResult = await requireAuth(request, env);
       if (isAuthError(authResult)) return authResult;
-      return handleEventsAPI(request, env, path, authResult.userId);
+      return handleEventsAPI(request, env, path, authResult.userId, ctx);
     }
 
     if (path.startsWith('/api/gems')) {
@@ -643,7 +644,7 @@ async function handleSearchAPI(request: Request, env: Env, userId: string): Prom
 
 // ─── Events Sync (D1) ────────────────────────────────────────────
 
-async function handleEventsAPI(request: Request, env: Env, path: string, userId: string): Promise<Response> {
+async function handleEventsAPI(request: Request, env: Env, path: string, userId: string, ctx?: ExecutionContext): Promise<Response> {
   const logger = getEdgeLogger(request);
   if (request.method === 'GET') {
     const url = new URL(request.url);
@@ -733,7 +734,6 @@ async function handleEventsAPI(request: Request, env: Env, path: string, userId:
 
       // Intercept Human messages routed specifically to Edge Personas (@guide, @operator)
       if (env.AI_QUEUE) {
-         const { parseDslRouting } = require('@cr/core/src/services/CommandParser');
          for (const ev of validEvents) {
             if (ev.actor === 'Human' && ev.type === 'message') {
                let text = '';
@@ -773,7 +773,7 @@ async function handleEventsAPI(request: Request, env: Env, path: string, userId:
       return jsonResponse({ ok: true });
     } catch (err: any) {
       logger.error('[Sync Daemon] Failed to handle event batch:', err);
-      return jsonResponse({ error: 'Failed to insert events' }, 500);
+      return jsonResponse({ error: 'Failed to insert events', details: err.message, stack: err.stack }, 500);
     }
   }
   

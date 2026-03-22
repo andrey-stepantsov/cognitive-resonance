@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { DatabaseEngine } from '../db/DatabaseEngine';
 import crypto from 'crypto';
+import { backendFetch } from '../utils/api';
 
 export function registerUserCommands(program: Command) {
   const userCmd = program.command('user').description('User management commands');
@@ -101,4 +102,20 @@ export function registerUserCommands(program: Command) {
         }
         db.close();
     });
+
+  userCmd.command('set-name <nickname>')
+    .description('Set your remote Cloudflare workspace display native name (for headless offline keys)')
+    .action(async (nickname) => {
+        try {
+            console.log(`📡 Synching display name '${nickname}' to Edge...`);
+            const res = await backendFetch('/api/auth/me/name', {
+                method: 'POST',
+                body: JSON.stringify({ name: nickname })
+            });
+            console.log(`✅ Success! Your Cloudflare display profile is now permanently updated.`);
+        } catch (e: any) {
+            console.error(`❌ Failed to set display name: ${e.message}`);
+        }
+    });
+
 }

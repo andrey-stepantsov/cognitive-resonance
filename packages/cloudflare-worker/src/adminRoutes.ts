@@ -65,10 +65,37 @@ export async function handleAdminAPI(request: Request, env: Env): Promise<Respon
       return jsonResponse({ error: 'Missing userId or botToken' }, 400);
     }
     try {
+      // 1. Set the Webhook to Telegram
+      const workerUrl = new URL(request.url).origin;
+      const webhookUrl = `${workerUrl}/api/telegram/webhook/${body.botToken}`;
+      const tgUrl = `https://api.telegram.org/bot${body.botToken}/setWebhook?url=${webhookUrl}`;
+      const tgRes = await fetch(tgUrl, { method: 'POST' });
+      if (!tgRes.ok) {
+         const tgErr = await tgRes.text();
+         return jsonResponse({ error: `Failed to set Telegram webhook: ${tgErr}` }, 500);
+      }
+
+      // 2. Save in Database
       await env.DB.prepare(
         "INSERT INTO telegram_integrations (user_id, bot_token, created_at) VALUES (?, ?, strftime('%s','now')) " +
         "ON CONFLICT(user_id) DO UPDATE SET bot_token = excluded.bot_token"
       ).bind(body.userId, body.botToken).run();
+      return jsonResponse({ ok: true, note: 'Webhook successfully registered' });
+    } catch (e: any) {
+      return jsonResponse({ error: 'Database error' }, 500);
+    }
+  }
+
+  if (request.method === 'POST' && path === '/api/admin/users/telegram-link') {
+    const body = await request.json() as any;
+    if (!body.userId || !body.tgUserId) {
+      return jsonResponse({ error: 'Missing userId or tgUserId' }, 400);
+    }
+    try {
+      await env.DB.prepare(
+        "INSERT INTO telegram_links (tg_user_id, user_id, created_at) VALUES (?, ?, strftime('%s','now')) " +
+        "ON CONFLICT(tg_user_id) DO UPDATE SET user_id = excluded.user_id"
+      ).bind(body.tgUserId, body.userId).run();
       return jsonResponse({ ok: true });
     } catch (e: any) {
       return jsonResponse({ error: 'Database error' }, 500);

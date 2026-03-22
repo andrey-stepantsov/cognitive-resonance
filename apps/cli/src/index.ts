@@ -13,11 +13,10 @@ import { registerPortabilityCommands } from './commands/portability';
 import { registerServeCommand } from './commands/serve';
 import { registerImportExportCommands } from './commands/importExport';
 
-// Path to store the CLI authentication token
-const TOKEN_FILE_PATH = path.resolve(process.cwd(), '.cr-cli-token');
+import { CR_DIR } from './utils/api';
 
-// Load env vars, searching upwards if needed
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+// Load env vars from the resolved workspace root
+dotenv.config({ path: path.join(path.dirname(CR_DIR), '.env') });
 
 const program = new Command();
 
@@ -25,7 +24,7 @@ program
   .name('cr')
   .description('Cognitive Resonance Command Line Interface')
   .version('1.0.0')
-  .option('-d, --db <path>', 'Global option: Path to SQLite database', '.cr/cr.sqlite');
+  .option('-d, --db <path>', 'Global option: Path to SQLite database', path.join(CR_DIR, 'cr.sqlite'));
 
 import { registerChatCommands } from './commands/chat';
 import { registerObserveCommands } from './commands/observe';

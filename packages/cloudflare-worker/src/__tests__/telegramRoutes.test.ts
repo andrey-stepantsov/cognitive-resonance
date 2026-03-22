@@ -51,12 +51,13 @@ describe('Telegram Webhook Route (BYOB mapping)', () => {
         const mockDB = {
             prepare: vi.fn().mockImplementation((query) => ({
                 bind: vi.fn().mockReturnValue({
-                    first: vi.fn().mockImplementation(() => {
-                        if (query.includes('bot_token')) return Promise.resolve({ user_id: 'user_xyz' });
-                        if (query.includes('estimated_tokens')) return Promise.resolve({ estimated_tokens: 5990, has_graph: 0 });
-                        return Promise.resolve(null);
-                    }),
-                    run: vi.fn().mockResolvedValue({ success: true })
+            first: vi.fn().mockImplementation(() => {
+                if (query.includes('bot_token')) return Promise.resolve({ user_id: 'user_xyz' });
+                if (query.includes('telegram_links')) return Promise.resolve({ 1: 1 });
+                if (query.includes('estimated_tokens')) return Promise.resolve({ estimated_tokens: 5990, has_graph: 0 });
+                return Promise.resolve(null);
+            }),
+            run: vi.fn().mockResolvedValue({ success: true })
                 })
             }))
         };

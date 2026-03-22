@@ -54,10 +54,14 @@ Before any UI work begins, the underlying CLI and core execution engine must sup
 - Route context explicitly to distinct AI "Gems" equipped with their own system prompts.
 
 **2. Multi-Agent Ecosystem (Gems)**
-- Instantiate `Architect` (focuses on planning and delegating) and `Coder` (focuses on execution) profiles.
+- Instantiate `Architect` (focuses on planning and delegating), `Coder` (focuses on execution), and `Auditor/Critic` profiles.
 - Enable automatic handoffs so an Architect's response containing `@Coder` automatically triggers the Coder's execution.
 
-**3. Simple Runtime Capabilities (`/exec`)**
+**3. Trinity: Autonomous Choreography**
+- Goal: Launch a "trinity" of Actors (`@Architect`, `@Coder`, and `@Auditor`/`@Critic`) to work autonomously on a given task.
+- *Example Task:* Create a video recorder that takes an audio file (WAV) and one picture (PNG/JPEG) and produces a video with the static image. Should be based on FFmpeg. The goal is to create recordings optimized for YouTube uploads and match YouTube's audio profile accurately to avoid re-processing.
+
+**4. Simple Runtime Capabilities (`/exec`)**
 - Add an `/exec [cmd]` slash command strictly for human developers (Scientist).
 - Spawn a `child_process` bound to the active Graph-Native Workspace, capturing `stdout/stderr` to securely verify task completion.
 
