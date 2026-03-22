@@ -46,4 +46,33 @@ describe('Telegram Webhook Route (BYOB mapping)', () => {
             sessionId: 'tg_chat_999'
         }));
     });
+
+    it('sends compile_graph job when session exceeds 6000 tokens', async () => {
+        const mockDB = {
+            prepare: vi.fn().mockImplementation((query) => ({
+                bind: vi.fn().mockReturnValue({
+                    first: vi.fn().mockImplementation(() => {
+                        if (query.includes('bot_token')) return Promise.resolve({ user_id: 'user_xyz' });
+                        if (query.includes('estimated_tokens')) return Promise.resolve({ estimated_tokens: 5990, has_graph: 0 });
+                        return Promise.resolve(null);
+                    }),
+                    run: vi.fn().mockResolvedValue({ success: true })
+                })
+            }))
+        };
+        const mockQueue = { send: vi.fn() };
+        const request = new Request('http://localhost/api/telegram/webhook/real_token_123', {
+            method: 'POST',
+            body: JSON.stringify({
+                message: { chat: { id: 999 }, from: { id: 888 }, text: 'A'.repeat(100) }
+            })
+        });
+
+        const env = { DB: mockDB, AI_QUEUE: mockQueue } as any;
+        await worker.fetch(request, env, {} as any);
+        
+        expect(mockQueue.send).toHaveBeenCalledWith(expect.objectContaining({ 
+            type: 'compile_graph' 
+        }));
+    });
 });

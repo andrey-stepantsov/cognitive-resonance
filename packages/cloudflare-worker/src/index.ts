@@ -681,9 +681,33 @@ async function handleEventsAPI(request: Request, env: Env, path: string, userId:
        );
     });
     
+    // Compute required estimated_tokens updates and trigger compilation if threshold met
+    const sessionTokenIncrements = new Map<string, number>();
+    for (const ev of validEvents) {
+       const payloadStr = typeof ev.payload === 'string' ? ev.payload : JSON.stringify(ev.payload);
+       const tokens = Math.ceil(payloadStr.length / 4);
+       sessionTokenIncrements.set(ev.session_id, (sessionTokenIncrements.get(ev.session_id) || 0) + tokens);
+    }
+    
     try {
       if (stmts.length > 0) {
         await env.DB.batch(stmts);
+      }
+      
+      // Process estimated_tokens updates and queue AI tasks
+      for (const [sId, addedTokens] of sessionTokenIncrements) {
+         const sessionRow = await env.DB.prepare('SELECT estimated_tokens, has_graph FROM sessions WHERE id = ?').bind(sId).first();
+         if (sessionRow) {
+             const currentTotal = sessionRow.estimated_tokens as number || 0;
+             const newTotal = currentTotal + addedTokens;
+             await env.DB.prepare('UPDATE sessions SET estimated_tokens = ? WHERE id = ?').bind(newTotal, sId).run();
+             
+             if (newTotal >= 6000 && !sessionRow.has_graph) {
+                 if (env.AI_QUEUE) {
+                     await env.AI_QUEUE.send({ sessionId: sId, userId, type: 'compile_graph' });
+                 }
+             }
+         }
       }
       // 2. Intercept and push non-Human responses to Telegram if applicable
       for (const ev of validEvents) {

@@ -8,7 +8,10 @@ CREATE TABLE IF NOT EXISTS sessions (
   parent_id TEXT,
   forked_at INTEGER,
   is_archived INTEGER DEFAULT 0,
-  user_id TEXT DEFAULT 'legacy'
+  user_id TEXT DEFAULT 'legacy',
+  has_graph INTEGER DEFAULT 0,
+  semantic_graph TEXT,
+  estimated_tokens INTEGER DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id, timestamp DESC);

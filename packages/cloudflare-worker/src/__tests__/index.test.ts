@@ -371,7 +371,12 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
 
     it('accepts valid POST to /api/events/batch', async () => {
       const mockDB = {
-        prepare: vi.fn().mockReturnValue({ bind: vi.fn() }),
+        prepare: vi.fn().mockReturnValue({ 
+            bind: vi.fn().mockReturnValue({
+                first: vi.fn().mockResolvedValue({ estimated_tokens: 0, has_graph: 0 }),
+                run: vi.fn()
+            })
+        }),
         batch: vi.fn().mockResolvedValue([{}]),
       };
       const request = new Request('http://localhost/api/events/batch', {

@@ -72,9 +72,26 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
       const routingIntents = parseDslRouting(payloadObj.content);
       const isDelegatedToLocal = routingIntents.some(intent => intent.agent !== null || intent.host !== null);
 
+      // Token tracking and threshold
+      const tokens = Math.ceil(payloadObj.content.length / 4);
+      const sessionRow = await env.DB.prepare('SELECT estimated_tokens, has_graph FROM sessions WHERE id = ?').bind(sessionId).first();
+      let newTotal = tokens;
+      if (sessionRow) {
+          newTotal += (sessionRow.estimated_tokens as number || 0);
+          await env.DB.prepare('UPDATE sessions SET estimated_tokens = ? WHERE id = ?').bind(newTotal, sessionId).run();
+      } else {
+          await env.DB.prepare(
+              'INSERT INTO sessions (id, timestamp, estimated_tokens, user_id) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(id) DO UPDATE SET estimated_tokens = estimated_tokens + ?3'
+          ).bind(sessionId, timestamp, tokens, userId).run();
+      }
+
       // Dispatch async AI execution ONLY if no other agent is mentioned
       if (env.AI_QUEUE && !isDelegatedToLocal) {
-         await env.AI_QUEUE.send({ sessionId, userId });
+         if (newTotal >= 6000 && (!sessionRow || !sessionRow.has_graph)) {
+             await env.AI_QUEUE.send({ sessionId, userId, type: 'compile_graph' });
+         } else {
+             await env.AI_QUEUE.send({ sessionId, userId, type: 'reply' });
+         }
       } else if (isDelegatedToLocal) {
          logger.info(`Delegated to local agent/host: ${JSON.stringify(routingIntents)}. Skipping Edge AI.`);
       }
