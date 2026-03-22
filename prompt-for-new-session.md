@@ -1,20 +1,26 @@
-# Next Session Objective: Dynamic Memory Escalation (Semantic Graph Injection)
+# Cognitive Resonance: SRE Persona & Operator Enhancements
 
-## Context
-We have just successfully completed the Multi-Tenant BYOB architecture for the Telegram integration. The user's bot can now dynamically route Webhook traffic using D1 tokens.
+In the previous session, we successfully designed the architecture for the `@SRE` (Site Reliability Engineer) persona and finalized the remaining observability requirements for the `@Operator` persona. Our previous CI/CD provisioning work was also successfully merged and tested on the edge.
 
-The goal for this new session is to tackle the "Context Window Limits" problem for long-running conversations. We have designed a new architecture called **Dynamic Memory Escalation** where the system switches from a cheap "Sliding Window" to a dense "Semantic Knowledge Graph" once a chat gets too long.
+Your goal for this session is to step straight into **EXECUTION** mode to implement the SRE roadmap we just designed.
 
-## Architectural Design
-Please review the newly created design document:
-- `/Users/stepants/dev/cognitive-resonance/docs/design-dynamic-memory-escalation.md`
+## 1. Operator Observability Finalization
+- Implement the `flushEdgeCache` tool in `packages/cloudflare-worker/src/aiService.ts`.
+- Ensure it is strictly bound to the `SECRET_SUPER_ADMIN_IDS` RBAC check inside `processAiQueueJob`.
 
-## The Plan & User Approvals
-The user has reviewed and explicitly approved the following strategies during the last session:
-1. **Threshold Tracking:** We will track `estimated_tokens` on the D1 `sessions` table (heuristically calculated via `text.length / 4` during syncs). When this hits ~6,000, we trigger graph compilation.
-2. **Schema Migration:** We will run a D1 migration to add `has_graph` (BOOLEAN), `semantic_graph` (JSON text), and `estimated_tokens` (INTEGER) to the `sessions` table.
-3. **Structured Output:** We will force Gemini to return the graph via its native `responseSchema` to guarantee 100% valid JSON matching the `semanticNodes` and `semanticEdges` shape.
+## 2. SRE Persona Initialization
+- Create a dedicated `packages/cloudflare-worker/src/sreService.ts` to house complex analytical D1 queries (preventing bloat in `aiService.ts`).
+- Implement the following core SRE capabilities:
+  - `forecastInferenceCosts()`: Aggregate the `estimated_tokens` column from `sessions` over a 30-day trailing window.
+  - `detectAbusePatterns()`: Scan `bot_logs` for high-frequency 401/429 status codes to flag potential abuse.
+  - `auditZombieKeys()`: Identify unused API keys in `api_keys` where `last_used_at < (Now - 90 Days)`.
+- **Router Integration:** Update the Sync Daemon in `index.ts` to intercept `@sre` mentions in Human messages, pushing them to the AI Queue just like `@guide` and `@operator`.
 
-## Next Steps for the Agent
-You are now in **EXECUTION** mode for this feature. 
-Please read the design document, formulate your `task.md` checklist based on the planned tasks, and begin executing the code changes in `packages/cloudflare-worker/src/index.ts` and `aiService.ts`.
+## 3. SRE AI Quality Assurance (Red Teaming)
+- Implement `evaluateAgentAccuracy(agentId)`: Have the SRE fetch recent `events` where the actor is the `@Guide`. The SRE should blindly re-run the user's prompt through the Vectorize DB (getting the factual RAG payload) and then have its LLM instance compare the actual Guide's response against the true RAG payload to generate a dissonance/accuracy score.
+
+## Resources to Review
+- The full architectural and systemic design specifications are located in `docs/design-guide-operator-personas.md` (specifically Section 3 regarding the `@SRE`).
+- Write robust D1 mock unit tests in `src/__tests__/sreService.test.ts` to validate the analytical queries.
+
+Please read the design document and begin implementation!

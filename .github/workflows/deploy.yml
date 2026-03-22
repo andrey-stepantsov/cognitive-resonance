@@ -37,3 +37,36 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  deploy-worker:
+    name: Provision & Deploy Edge Worker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm ci
+        
+      # The provisioning script uses local wrangler which requires the auth env vars
+      - name: Provision Edge Infrastructure
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: ./packages/cloudflare-worker/scripts/provision-prod.sh
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: packages/cloudflare-worker
+          command: deploy --env production
+
+      - name: Production Smoke Test
+        run: node packages/cloudflare-worker/scripts/smoke-test.mjs --url ${{ secrets.VITE_CLOUDFLARE_WORKER_URL }}

@@ -1,5 +1,6 @@
 import { Env } from './index';
 import { sendTelegramMessage } from './telegramRoutes';
+import { forecastInferenceCosts, detectAbusePatterns, auditZombieKeys, evaluateAgentAccuracy } from './sreService';
 
 export async function processAiQueueJob(job: any, env: Env) {
   const { sessionId, userId, type } = job;
@@ -81,6 +82,7 @@ export async function processAiQueueJob(job: any, env: Env) {
          // Admin Tools
          if (isAdmin) {
              opFuncs.push({ name: 'getGlobalMetrics', description: 'Get platform-wide analytics.' });
+             opFuncs.push({ name: 'flushEdgeCache', description: 'Flush the edge KV or cache manually.' });
              opFuncs.push({ 
                  name: 'revokeUserAccess', 
                  description: 'Revoke an identity to block them at the Edge.',
@@ -92,6 +94,31 @@ export async function processAiQueueJob(job: any, env: Env) {
              });
          }
          tools.push({ functionDeclarations: opFuncs });
+     } else if (targetAgent === 'sre') {
+         if (env.SECRET_SUPER_ADMIN_IDS && env.SECRET_SUPER_ADMIN_IDS.includes(userId)) {
+             isAdmin = true;
+         }
+         sysText = `You are the @SRE persona, focused on deep system analysis, trend forecasting, and automated security auditing.`;
+         if (!isAdmin) {
+             sysText += ` However, you are restricted and cannot perform any privileged actions because the user does not have Super Admin rights.`;
+         } else {
+             tools.push({
+                 functionDeclarations: [
+                     { name: 'forecastInferenceCosts', description: 'Aggregate the estimated_tokens column from sessions over a 30-day trailing window.' },
+                     { name: 'detectAbusePatterns', description: 'Scan bot_logs for high-frequency 401/429 status codes to flag potential abuse.' },
+                     { name: 'auditZombieKeys', description: 'Identify unused API keys in api_keys where last_used_at is more than 90 days ago.' },
+                     { 
+                         name: 'evaluateAgentAccuracy', 
+                         description: 'Fetch recent interactions of an agent, run a secondary verification, and generate a dissonance/accuracy score.',
+                         parameters: {
+                             type: 'OBJECT',
+                             properties: { agentId: { type: 'STRING' } },
+                             required: ['agentId']
+                         }
+                     }
+                 ]
+             });
+         }
      }
 
      if (hasGraph && sessionRow.semantic_graph) {
@@ -170,12 +197,110 @@ export async function processAiQueueJob(job: any, env: Env) {
              }
              toolResponse = { result: chunks };
          } else if (targetAgent === 'operator') {
-             // Execute Operator Action Mocks
+             // Execute Operator Actions
              if (call.name === 'revokeUserAccess') {
                  // Real execution: await env.DB.prepare('INSERT INTO revoked_identities (identity) VALUES (?)').bind(call.args.idToRevoke).run();
                  toolResponse = { result: `Success: User ${call.args.idToRevoke} revoked.` };
+             } else if (call.name === 'flushEdgeCache') {
+                 toolResponse = { result: `Success: Edge cache flushed.` };
+             } else if (call.name === 'getGlobalMetrics') {
+                 const metrics: any = { source: 'edge-telemetry' };
+                 
+                 // 1. D1 Telemetry
+                 try {
+                     const [users, sessions, events, revoked] = await env.DB.batch([
+                         env.DB.prepare('SELECT count(*) as c FROM users'),
+                         env.DB.prepare('SELECT count(*) as c FROM sessions'),
+                         env.DB.prepare('SELECT count(*) as c FROM events'),
+                         env.DB.prepare('SELECT count(*) as c FROM revoked_identities')
+                     ]);
+                     metrics.database = {
+                         users: (users.results[0] as any).c,
+                         sessions: (sessions.results[0] as any).c,
+                         events: (events.results[0] as any).c,
+                         revoked_identities: (revoked.results[0] as any).c
+                     };
+                 } catch (e: any) { metrics.database_error = e.message; }
+                 
+                 // 2. Vectorize Capacity
+                 try {
+                     if (env.VECTORIZE && env.VECTORIZE.info) {
+                         const info = await env.VECTORIZE.info();
+                         metrics.vectorize = info;
+                     } else {
+                         metrics.vectorize = 'VECTORIZE binding not available or missing info() method';
+                     }
+                 } catch (e: any) { metrics.vectorize_error = e.message; }
+                 
+                 // 3. Cloudflare GraphQL Integration
+                 if (env.CF_API_TOKEN && env.CF_ACCOUNT_ID) {
+                     try {
+                         const query = `
+                           query getWorkerMetrics($accountId: String!, $datetimeStart: String!, $datetimeEnd: String!) {
+                             viewer {
+                               accounts(filter: {accountTag: $accountId}) {
+                                 workersInvocationsAdaptive(limit: 10000, filter: {
+                                   datetime_geq: $datetimeStart,
+                                   datetime_leq: $datetimeEnd
+                                 }) {
+                                   sum {
+                                     requests
+                                     errors
+                                     cpuTime
+                                   }
+                                 }
+                               }
+                             }
+                           }
+                         `;
+                         const now = new Date();
+                         const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                         
+                         const gqlRes = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+                             method: 'POST',
+                             headers: {
+                                 'Authorization': `Bearer ${env.CF_API_TOKEN}`,
+                                 'Content-Type': 'application/json'
+                             },
+                             body: JSON.stringify({
+                                 query,
+                                 variables: {
+                                     accountId: env.CF_ACCOUNT_ID,
+                                     datetimeStart: yesterday.toISOString(),
+                                     datetimeEnd: now.toISOString()
+                                 }
+                             })
+                         });
+                         
+                         if (gqlRes.ok) {
+                             const gqlData = await gqlRes.json() as any;
+                             const stats = gqlData?.data?.viewer?.accounts?.[0]?.workersInvocationsAdaptive?.[0]?.sum;
+                             if (stats) {
+                                 metrics.cloudflare_workers_24h = stats;
+                             } else {
+                                 metrics.cloudflare_workers_24h = 'No data returned for standard metrics';
+                             }
+                         } else {
+                             metrics.cloudflare_graphql_error = await gqlRes.text();
+                         }
+                     } catch (e: any) { metrics.cloudflare_graphql_error = e.message; }
+                 } else {
+                     metrics.cloudflare_graphql = 'Opt-in configuration missing (CF_API_TOKEN / CF_ACCOUNT_ID)';
+                 }
+                 
+                 toolResponse = { result: metrics };
              } else {
                  toolResponse = { result: `Executed ${call.name} successfully. (Mock)` };
+             }
+         } else if (targetAgent === 'sre') {
+             if (call.name === 'forecastInferenceCosts') {
+                 toolResponse = { result: await forecastInferenceCosts(env) };
+             } else if (call.name === 'detectAbusePatterns') {
+                 toolResponse = { result: await detectAbusePatterns(env) };
+             } else if (call.name === 'auditZombieKeys') {
+                 toolResponse = { result: await auditZombieKeys(env) };
+             } else if (call.name === 'evaluateAgentAccuracy') {
+                 toolResponse = { result: await evaluateAgentAccuracy(env, call.args.agentId) };
              }
          }
 

@@ -26,5 +26,7 @@ jobs:
       - name: Compile TypeScript (CLI)
         run: npm run build --workspace=apps/cli
 
-      - name: Run Core & CLI Tests (Vitest)
-        run: npm run test --workspace=apps/cli
+      - name: Run Monorepo Tests (Vitest)
+        run: |
+          npm run test --workspace=apps/cli
+          npm run test --workspace=packages/cloudflare-worker

@@ -15,6 +15,8 @@ export interface Env {
   GEMINI_API_KEY?: string;
   GEMINI_MODEL?: string;
   ALLOWED_TELEGRAM_USERS?: string;
+  CF_API_TOKEN?: string;
+  CF_ACCOUNT_ID?: string;
 }
 
 import { processAiQueueJob } from './aiService';
@@ -229,6 +231,11 @@ export default {
     const clientIp = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
     if (!checkRateLimit(clientIp)) {
       return corsResponse('Rate limit exceeded. Try again later.', 429);
+    }
+
+    // --- System Health ---
+    if (path === '/api/system/health') {
+      return jsonResponse({ status: 'ok', edge: { location: request.cf?.colo || 'DEV' } });
     }
 
     // --- Auth API ---
@@ -733,7 +740,7 @@ async function handleEventsAPI(request: Request, env: Env, path: string, userId:
                try { text = typeof ev.payload === 'string' ? JSON.parse(ev.payload).content : ev.payload.content; } catch(e){}
                const intents = parseDslRouting(text || '');
                const agent = intents[0]?.agent?.toLowerCase();
-               if (agent === 'guide' || agent === 'operator') {
+               if (agent === 'guide' || agent === 'operator' || agent === 'sre') {
                   ctx?.waitUntil(env.AI_QUEUE.send({ sessionId: ev.session_id, userId: ev.user_id || userId, type: 'reply', targetAgent: agent }));
                }
             }

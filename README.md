@@ -18,8 +18,11 @@ This platform is aggressively optimized to run entirely on the **Cloudflare Edge
 > **⚠️ Important Note for OSS Developers:**
 > Because Cognitive Resonance is deeply integrated with Cloudflare Edge (D1, Workers, Durable Objects) and the Gemini API, an arbitrary developer cannot simply `npm run dev` out of the box. 
 > To successfully boot the environment, you must either:
-> 1. Provision your own Cloudflare backend resources via `wrangler` and supply your own Gemini API keys in the `.env` file.
+> 1. Run our fully idempotent automated provisioning script (`packages/cloudflare-worker/scripts/provision-prod.sh`) to seamlessly instantiate your D1 Database, Vectorize index, R2 Buckets, and Cloudflare Queues; and supply your own Gemini API keys in the `.env` file.
 > 2. Obtain explicit authorization/access tokens from the repository maintainer.
+>
+> **Continuous Integration / Continuous Deployment (CI/CD)**
+> Cognitive Resonance is configured with a rigorous zero-downtime, fully-automated GitHub Actions CD pipeline. Upon pushing to `main`, the CI natively executes structural provisioning validations via `wrangler`, securely hot-swaps the production Edge Worker, and immediately validates Edge responsiveness via a programmatic HTTP assertion smoke-test (`/api/system/health`).
 
 1. **Install Dependencies**
    ```bash
