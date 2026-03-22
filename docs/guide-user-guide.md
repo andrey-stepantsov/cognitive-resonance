@@ -105,6 +105,7 @@ npm run dev --workspace=apps/cli
 | `/login` | Provisions credential mapping for interactive use via config files. Evaluates `.env` and `VITE_CR_API_KEY`. |
 | `/observe` | Toggles the real-time AI Cognitive State (Dissonance & Semantic Markers) visual output logs alongside the generated stream response. |
 | `/exec` | Materializes the topological sandbox locally for the given repository and executes scripts natively with strict dependency linking. |
+| `/sandbox` | Manages CLI generated artifacts. Run `/sandbox ls` to view session footprints/sizes, and `/sandbox clear [id]` to delete them. |
 | `/mcp` | Integrates and manages Model Context Protocol (MCP) toolchains across the current sandbox, enabling dynamic cross-tool interaction. |
 | `cr audit` | Performs a snapshot diagnostic of the local sandbox environment, generating observability metrics and logging cognitive state. |
 | `cr status`| Polls the health check endpoint to verify daemon connectivity and subsystem statuses without full synchronization. |
@@ -135,7 +136,7 @@ If you prefer the terminal, you can interact with Cognitive Resonance natively:
 
 5. **Autonomous Choreography (The Trinity Loop):** To delegate a complex task (planning, coding, testing, and delivery) entirely to the system without micromanaging individual agents, simply address the orchestrator facade:
    ```text
-   cr> @trinity Please create a bash script render.sh to generate a 5s Youtube MP4 video from sample_image.png and sample_audio.wav using FFmpeg, then execute it.
+   cr> @trinity Please create a bash script render.sh to generate a YouTube Shorts MP4 video (1080x1920, cropping the image to fit) matching the exact full duration of the audio, using the optimal YouTube audio profile. The inputs are /Users/stepants/dev/cognitive-resonance/docs/assets/trinity-demo-input.png and /Users/stepants/dev/cognitive-resonance/docs/assets/trinity-demo-input.wav. Execute it when done.
    ```
    *Trinity will perform Pre-Flight discovery (RAG) to locate relevant skills, formulate a technical blueprint, and trigger the `@architect` -> `@coder` -> `@auditor` sequence. If the Auditor rejects the generated code based on constraints (e.g., YouTube profile mismatch), the Coder is automatically reassigned the task without user intervention. Trinity will only return control to you once the final executable deliverable has been verified via the sandbox.*
 

@@ -16,7 +16,7 @@ async function main() {
   console.log("\n\x1b[32m>>> CLI Ready. Injecting @trinity command...\x1b[0m\n");
 
   // Send the command
-  term.write('@trinity Please create a bash script render.sh to generate a 5s Youtube MP4 video from /Users/stepants/dev/cognitive-resonance/docs/assets/trinity-demo-input.png and /Users/stepants/dev/cognitive-resonance/docs/assets/trinity-demo-input.wav using FFmpeg, then execute it.\n');
+  term.write('@trinity Please create a bash script render.sh to generate a YouTube Shorts MP4 video (1080x1920, cropping the image to fit) matching the exact full duration of the audio, using the optimal YouTube audio profile. The inputs are /Users/stepants/dev/cognitive-resonance/docs/assets/trinity-demo-input.png and /Users/stepants/dev/cognitive-resonance/docs/assets/trinity-demo-input.wav. Execute it when done.\n');
 
   try {
      // Wait for the loop to start

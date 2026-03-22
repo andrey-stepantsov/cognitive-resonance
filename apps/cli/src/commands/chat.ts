@@ -248,7 +248,7 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
       '/help', '/login', '/signup', '/whoami', '/activate', '/session', '/session ls', '/session new', 
       '/session clear', '/history', '/model', '/model use', '/model ls', '/gem ls', 
       '/graph ls', '/graph search', '/graph stats', '/clear', '/archive',
-      '/recover', '/clone', '/exec', '/exit', '/quit', '/cat', '/read', '/ls', '/tree'
+      '/recover', '/clone', '/exec', '/sandbox', '/exit', '/quit', '/cat', '/read', '/ls', '/tree'
     ];
     
     // TODO: [UX] All CLI commands must provide help and a brief description (ideally with auto-complete style using TAB).
@@ -576,6 +576,70 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
              }
           }
           io.print('');
+          rl.prompt();
+          return;
+      }
+
+      if (text.startsWith('/sandbox')) {
+          const args = text.split(' ').slice(1);
+          const cmd = args[0] || 'ls';
+          const sandboxRoot = path.resolve(workspaceDir, '.cr', 'sandbox');
+          
+          if (cmd === 'ls') {
+              if (!fs.existsSync(sandboxRoot)) {
+                  io.print('Sandbox is currently empty.');
+                  rl.prompt();
+                  return;
+              }
+              const sessions = fs.readdirSync(sandboxRoot).filter(f => f !== 'latest' && fs.statSync(path.join(sandboxRoot, f)).isDirectory());
+              if (sessions.length === 0) {
+                  io.print('Sandbox is currently empty.');
+                  rl.prompt();
+                  return;
+              }
+              
+              const getDirSize = (dirPath: string): number => {
+                 let size = 0;
+                 try {
+                     const files = fs.readdirSync(dirPath);
+                     for (const file of files) {
+                         const filePath = path.join(dirPath, file);
+                         const stats = fs.statSync(filePath);
+                         if (stats.isDirectory()) size += getDirSize(filePath);
+                         else size += stats.size;
+                     }
+                 } catch(e) {}
+                 return size;
+              };
+
+              io.print('\nActive Sandbox Sessions:');
+              for (const session of sessions) {
+                  const sizeBytes = getDirSize(path.join(sandboxRoot, session));
+                  const sizeMB = (sizeBytes / (1024 * 1024)).toFixed(2);
+                  io.print(`  - ${session} (${sizeMB} MB)`);
+              }
+              io.print('');
+          } else if (cmd === 'clear') {
+              const target = args[1];
+              if (target) {
+                  const targetPath = path.join(sandboxRoot, target);
+                  if (fs.existsSync(targetPath)) {
+                      fs.rmSync(targetPath, { recursive: true, force: true });
+                      io.print(`[System] Sandbox session ${target} cleared.`);
+                  } else {
+                      io.print(`[System] Session ${target} not found.`);
+                  }
+              } else {
+                  if (fs.existsSync(sandboxRoot)) {
+                      fs.rmSync(sandboxRoot, { recursive: true, force: true });
+                      io.print(`[System] All sandbox sessions cleared.`);
+                  } else {
+                      io.print(`[System] Sandbox is already empty.`);
+                  }
+              }
+          } else {
+              io.print('Usage: /sandbox ls | /sandbox clear [session_id]');
+          }
           rl.prompt();
           return;
       }
