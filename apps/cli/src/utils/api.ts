@@ -18,16 +18,25 @@ function findCRDir(startDir: string): string | null {
   return null;
 }
 
-let binDir = __dirname;
-try {
-  if (require.main?.filename && fs.existsSync(require.main.filename)) {
-    binDir = path.dirname(fs.realpathSync(require.main.filename));
-  } else if (process.argv[1] && fs.existsSync(process.argv[1])) {
-    binDir = path.dirname(fs.realpathSync(process.argv[1]));
-  }
-} catch (e) {}
+export function resolveWorkspaceRoot(
+  cwd = process.cwd(), 
+  mainFilename = require.main?.filename, 
+  argv1 = process.argv[1], 
+  dirName = __dirname
+): string {
+  let binDir = dirName;
+  try {
+    if (mainFilename && fs.existsSync(mainFilename)) {
+      binDir = path.dirname(fs.realpathSync(mainFilename));
+    } else if (argv1 && fs.existsSync(argv1)) {
+      binDir = path.dirname(fs.realpathSync(argv1));
+    }
+  } catch (e) {}
 
-export const CR_DIR = findCRDir(process.cwd()) || findCRDir(binDir) || findCRDir(__dirname) || path.join(os.homedir(), '.cr');
+  return findCRDir(cwd) || findCRDir(binDir) || findCRDir(dirName) || path.join(os.homedir(), '.cr');
+}
+
+export const CR_DIR = resolveWorkspaceRoot();
 export const TOKEN_FILE_PATH = path.join(CR_DIR, 'token');
 
 export function getCliToken(): string | null {
