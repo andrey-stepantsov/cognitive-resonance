@@ -76,14 +76,11 @@ export async function evaluateAgentAccuracy(env: Env, agentId: string): Promise<
     let guideResponseText = '';
     try { guideResponseText = typeof guideEvent.payload === 'string' ? JSON.parse(guideEvent.payload).content : (guideEvent.payload as any).content; } catch(e) {}
 
-    const embedUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${env.GEMINI_API_KEY}`;
-    const embeddingRes = await fetch(embedUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'models/gemini-embedding-001', content: { parts: [{ text: userPromptText }] } })
-    });
-    const embeddingData = await embeddingRes.json() as any;
-    const vector = embeddingData?.embedding?.values?.slice(0, 1536);
+    let vector: number[] | null = null;
+    if (env.AI) {
+        const embeddingResult = await env.AI.run('@cf/baai/bge-base-en-v1.5', { text: [userPromptText] });
+        vector = embeddingResult?.data?.[0];
+    }
     
     let factualChunks = 'No chunks found.';
     if (vector && env.VECTORIZE && env.VECTORIZE.query) {

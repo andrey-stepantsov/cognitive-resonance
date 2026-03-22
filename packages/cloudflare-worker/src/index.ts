@@ -251,6 +251,23 @@ export default {
          const webhookUrl = `${workerUrl}/api/telegram/webhook/${env.TELEGRAM_BOT_TOKEN}`;
          const tgUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/setWebhook?url=${webhookUrl}`;
          const res = await fetch(tgUrl, { method: 'POST' });
+         
+         const cmdsUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/setMyCommands`;
+         await fetch(cmdsUrl, {
+             method: 'POST', headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({
+                 commands: [
+                     { command: 'help', description: 'About Cognitive Resonance' },
+                     { command: 'agents', description: 'List available Edge personas' },
+                     { command: 'multiplayer', description: 'Group chat routing info' },
+                     { command: 'memory', description: 'Check session context array size' },
+                     { command: 'clear', description: 'Flush and archive semantic memory' },
+                     { command: 'promote', description: 'Pin a default agent to the chat' },
+                     { command: 'model', description: 'Change the active LLM explicitly' }
+                 ]
+             })
+         });
+         
          return new Response(await res.text(), { status: res.status });
       }
       return handleAdminAPI(request, env);

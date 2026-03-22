@@ -88,13 +88,11 @@ describe('sreService', () => {
             all: vi.fn().mockResolvedValue({ results: mockEvents })
         });
 
-        // 1st fetch: embedding
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: vi.fn().mockResolvedValue({ embedding: { values: [0.1, 0.2] } })
-        });
+        env.AI = {
+            run: vi.fn().mockResolvedValue({ data: [[0.1, 0.2]] })
+        };
 
-        // 2nd fetch: llm evaluation
+        // 1st fetch: llm evaluation
         mockFetch.mockResolvedValueOnce({
             ok: true,
             json: vi.fn().mockResolvedValue({
@@ -105,14 +103,12 @@ describe('sreService', () => {
         const result = await evaluateAgentAccuracy(env, 'sre');
         
         expect(env.DB.prepare).toHaveBeenCalledWith(expect.stringContaining('SELECT id, session_id, timestamp, actor, payload FROM events'));
-        expect(mockFetch).toHaveBeenCalledTimes(2);
-        
-        const embedCall = JSON.parse(mockFetch.mock.calls[0][1].body);
-        expect(embedCall.content.parts[0].text).toBe('user question');
+        expect(env.AI.run).toHaveBeenCalledWith('@cf/baai/bge-base-en-v1.5', { text: ['user question'] });
+        expect(mockFetch).toHaveBeenCalledTimes(1);
 
         expect(env.VECTORIZE.query).toHaveBeenCalledWith([0.1, 0.2], { topK: 3 });
 
-        const llmCall = JSON.parse(mockFetch.mock.calls[1][1].body);
+        const llmCall = JSON.parse(mockFetch.mock.calls[0][1].body);
         expect(llmCall.contents[0].parts[0].text).toContain('guide reply');
         expect(llmCall.contents[0].parts[0].text).toContain('doc chunk');
 

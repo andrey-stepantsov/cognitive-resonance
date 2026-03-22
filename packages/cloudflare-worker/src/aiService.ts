@@ -10,8 +10,10 @@ export async function processAiQueueJob(job: any, env: Env) {
   }
 
   try {
-     const sessionRow = await env.DB.prepare('SELECT has_graph, semantic_graph FROM sessions WHERE id = ?').bind(sessionId).first() as any;
+     const sessionRow = await env.DB.prepare('SELECT has_graph, semantic_graph, config FROM sessions WHERE id = ?').bind(sessionId).first() as any;
      const hasGraph = sessionRow?.has_graph === 1;
+     let sessionConfig: any = {};
+     try { if (sessionRow && sessionRow.config) sessionConfig = JSON.parse(sessionRow.config as string); } catch(e){}
 
      if (type === 'compile_graph') {
          await compileSemanticGraph(sessionId, userId, env);
@@ -128,7 +130,7 @@ export async function processAiQueueJob(job: any, env: Env) {
 
      const systemInstruction = { parts: [{ text: sysText }] };
 
-     const modelName = env.GEMINI_MODEL || 'gemini-2.5-flash';
+     const modelName = sessionConfig.model || env.GEMINI_MODEL || 'gemini-2.5-pro';
      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${env.GEMINI_API_KEY}`;
      
      // Build request body
@@ -174,14 +176,11 @@ export async function processAiQueueJob(job: any, env: Env) {
          if (call.name === 'queryVectorSearch' && targetAgent === 'guide') {
              // Execute RAG
              const query = call.args.query;
-             const embedUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${env.GEMINI_API_KEY}`;
-             const embeddingRes = await fetch(embedUrl, {
-                 method: 'POST',
-                 headers: { 'Content-Type': 'application/json' },
-                 body: JSON.stringify({ model: 'models/gemini-embedding-001', content: { parts: [{ text: query }] } })
-             });
-             const embeddingData = await embeddingRes.json() as any;
-             const vector = embeddingData?.embedding?.values?.slice(0, 1536);
+             let vector: number[] | null = null;
+             if (env.AI) {
+                 const embeddingResult = await env.AI.run('@cf/baai/bge-base-en-v1.5', { text: [query] });
+                 vector = embeddingResult?.data?.[0];
+             }
              
              let chunks = 'No matching chunks found in Vectorize.';
              
@@ -389,7 +388,10 @@ async function compileSemanticGraph(sessionId: string, userId: string, env: Env)
        return { role: row.actor === 'Agent' ? 'model' : 'user', parts: [{ text }] };
     });
 
-    const modelName = env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const sessionRow = await env.DB.prepare('SELECT config FROM sessions WHERE id = ?').bind(sessionId).first();
+    let sessionConfig: any = {};
+    try { if (sessionRow && sessionRow.config) sessionConfig = JSON.parse(sessionRow.config as string); } catch(e){}
+    const modelName = sessionConfig.model || env.GEMINI_MODEL || 'gemini-2.5-pro';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${env.GEMINI_API_KEY}`;
     
     const reqBody = {

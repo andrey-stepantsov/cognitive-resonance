@@ -55,16 +55,104 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
 
     // Accept message and map to Event Graph
     try {
-      // In BYOB, the core Event stream is locked to the owner's CR User ID
-      // We partition chat threads via the session ID
       const userId = ownerId;
       const sessionId = `tg_chat_${chatId}`; // Give them a persistent single session
       
+      // -- Slash Commands Interception --
+      if (text.startsWith('/')) {
+         const cmd = text.split(' ')[0].toLowerCase().trim();
+         const args = text.split(' ').slice(1).join(' ').trim();
+         
+         if (cmd === '/help') {
+             const helpMsg = "🤖 *Cognitive Resonance Bot Help*\n\n" +
+                 "I am your interface to the Cognitive Resonance network. Speak to me naturally to use the default agent, or route messages to specific agents!\n\n" +
+                 "• `@Guide` - Questions about architecture, RAG, and codebase.\n" +
+                 "• `@Operator` - System admin (metrics, caching, identity).\n" +
+                 "• `@SRE` - Analytics, red-teaming, cost forecasting.\n\n" +
+                 "Use `/agents` to list all edge personas, `/multiplayer` for group info, or `/promote <agent>` to set a default for this chat.";
+             await sendTelegramMessage(chatId, helpMsg, botToken);
+             return new Response('OK', { status: 200 });
+         }
+         if (cmd === '/agents') {
+             const agentsMsg = "🎭 *Edge Personas*\n\n" +
+                 "1. `@Guide`: RAG / Documentation.\n" +
+                 "2. `@Operator`: Operations / Admin.\n" +
+                 "3. `@SRE`: Red-Teaming / Costs.\n\n" +
+                 "_Note: Local personas (@coder, @architect) require the CLI daemon `cr serve` running locally._";
+             await sendTelegramMessage(chatId, agentsMsg, botToken);
+             return new Response('OK', { status: 200 });
+         }
+         if (cmd === '/multiplayer') {
+             const mpMsg = "🌍 *Multiplayer Sessions*\n\n" +
+                 "Add me to a Telegram group! I will build a shared memory graph. " +
+                 "To trigger a response in a group, you *must* explicitly ping an agent (e.g. `@guide what do you think?`). Un-pinged messages are just committed to the memory graph silently.";
+             await sendTelegramMessage(chatId, mpMsg, botToken);
+             return new Response('OK', { status: 200 });
+         }
+         if (cmd === '/memory') {
+             const row = await env.DB.prepare('SELECT estimated_tokens FROM sessions WHERE id = ?').bind(sessionId).first();
+             const numTokens = row?.estimated_tokens || 0;
+             await sendTelegramMessage(chatId, `🧠 *Memory Graph Size*: ~${numTokens} tokens.\n\n(Threshold for deep-compilation is 6,000 tokens)`, botToken);
+             return new Response('OK', { status: 200 });
+         }
+         if (cmd === '/clear') {
+             await env.DB.prepare('DELETE FROM sessions WHERE id = ?').bind(sessionId).run();
+             await env.DB.prepare('DELETE FROM events WHERE session_id = ?').bind(sessionId).run();
+             await sendTelegramMessage(chatId, `🧹 *Memory cleared*. The context graph for this chat has been flushed.`, botToken);
+             return new Response('OK', { status: 200 });
+         }
+         if (cmd === '/model') {
+             if (!args) {
+                 await sendTelegramMessage(chatId, `Please specify a model. Example: \`/model gemini-2.5-pro\``, botToken);
+                 return new Response('OK', { status: 200 });
+             }
+             let config = {};
+             const row = await env.DB.prepare('SELECT config FROM sessions WHERE id = ?').bind(sessionId).first();
+             try { if (row && row.config) config = JSON.parse(row.config as string); } catch(e){}
+             config = { ...config, model: args };
+             await env.DB.prepare('INSERT INTO sessions (id, timestamp, config, user_id) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(id) DO UPDATE SET config = ?3').bind(
+                 sessionId, Date.now(), JSON.stringify(config), ownerId
+             ).run();
+             await sendTelegramMessage(chatId, `⚙️ Active LLM switched to \`${args}\` for this chat.`, botToken);
+             return new Response('OK', { status: 200 });
+         }
+         if (cmd === '/promote') {
+             if (!args) {
+                 await sendTelegramMessage(chatId, `Please specify an agent to promote. Example: \`/promote operator\``, botToken);
+                 return new Response('OK', { status: 200 });
+             }
+             const target = args.replace('@', '').toLowerCase().trim();
+             let config = {};
+             const row = await env.DB.prepare('SELECT config FROM sessions WHERE id = ?').bind(sessionId).first();
+             try { if (row && row.config) config = JSON.parse(row.config as string); } catch(e){}
+             
+             if (target === 'none' || target === 'clear') {
+                 delete (config as any).defaultAgent;
+                 await sendTelegramMessage(chatId, `⚙️ Promoted agent cleared. Reverting to base Agent.`, botToken);
+             } else {
+                 (config as any).defaultAgent = target;
+                 await sendTelegramMessage(chatId, `👑 Promoted \`@${target}\` as the default agent for this chat.`, botToken);
+             }
+             await env.DB.prepare('INSERT INTO sessions (id, timestamp, config, user_id) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(id) DO UPDATE SET config = ?3').bind(
+                 sessionId, Date.now(), JSON.stringify(config), ownerId
+             ).run();
+             return new Response('OK', { status: 200 });
+         }
+      }
+
       const eventId = crypto.randomUUID();
       const timestamp = Date.now();
       
+      let isGroupChat = false;
+      let textContent = text;
+      if (chatId < 0) {
+          isGroupChat = true;
+          const firstName = update.message.from?.first_name || 'User';
+          textContent = `${firstName}: ${text}`;
+      }
+      
       const payloadObj = {
-         content: text,
+         content: textContent,
          role: 'user',
       };
       
@@ -81,10 +169,12 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
 
       // Token tracking and threshold
       const tokens = Math.ceil(payloadObj.content.length / 4);
-      const sessionRow = await env.DB.prepare('SELECT estimated_tokens, has_graph FROM sessions WHERE id = ?').bind(sessionId).first();
+      const sessionRow = await env.DB.prepare('SELECT estimated_tokens, has_graph, config FROM sessions WHERE id = ?').bind(sessionId).first();
       let newTotal = tokens;
+      let sessionConfig: any = {};
       if (sessionRow) {
           newTotal += (sessionRow.estimated_tokens as number || 0);
+          try { if (sessionRow.config) sessionConfig = JSON.parse(sessionRow.config as string); } catch(e){}
           await env.DB.prepare('UPDATE sessions SET estimated_tokens = ? WHERE id = ?').bind(newTotal, sessionId).run();
       } else {
           await env.DB.prepare(
@@ -93,13 +183,15 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
       }
 
       // Dispatch async AI execution
-      // If no agent mentioned, it goes to default Edge AI. 
-      // If specific Edge-bound agent mentioned (guide/operator), we route it to Edge AI too.
-      // If local agent mentioned (e.g. coder), we skip edge AI.
-      const targetAgent = routingIntents[0]?.agent?.toLowerCase();
-      const isEdgeBoundPersona = targetAgent === 'guide' || targetAgent === 'operator';
+      const defaultAgent = sessionConfig?.defaultAgent;
+      let targetAgent = routingIntents[0]?.agent?.toLowerCase() || defaultAgent;
+      const isEdgeBoundPersona = targetAgent === 'guide' || targetAgent === 'operator' || targetAgent === 'sre';
       
-      if (env.AI_QUEUE && (!isDelegatedToLocal || isEdgeBoundPersona)) {
+      // Spam protection: prevent auto-replying to every un-pinged message in a multiplayer group.
+      const hasExplicitPing = text.includes('@') || routingIntents.length > 0;
+      const shouldTriggerAI = !isGroupChat || hasExplicitPing;
+      
+      if (shouldTriggerAI && env.AI_QUEUE && (!isDelegatedToLocal || isEdgeBoundPersona)) {
          await fetch(`https://api.telegram.org/bot${botToken}/sendChatAction`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -111,7 +203,7 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
          } else {
              await env.AI_QUEUE.send({ sessionId, userId, type: 'reply', targetAgent });
          }
-      } else if (isDelegatedToLocal) {
+      } else if (isDelegatedToLocal && shouldTriggerAI) {
          logger.info(`Delegated to local agent/host: ${JSON.stringify(routingIntents)}. Skipping Edge AI.`);
          await sendTelegramMessage(chatId, `_Dispatched to local @${targetAgent || 'default'} host. Awaiting response..._`, botToken);
       }

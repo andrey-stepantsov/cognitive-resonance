@@ -797,12 +797,24 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
           }
 
           // Check for handoffs
-          const responseMentions = parseMentions(response.reply);
-          const nextTargetGem = responseMentions.find(m => GemProfiles[m] && m !== activeActor);
+          const dslIntents = parseDslRouting(response.reply);
+          const agentHandoff = dslIntents.find(i => i.agent && GemProfiles[i.agent] && i.agent !== activeActor);
+          
+          let nextTargetGem = agentHandoff ? agentHandoff.agent : null;
+          let handoffPayload = agentHandoff?.ast ? JSON.stringify(agentHandoff.ast) : null;
+
+          if (!nextTargetGem) {
+            // fallback to simple mentions
+            const responseMentions = parseMentions(response.reply);
+            nextTargetGem = responseMentions.find(m => GemProfiles[m] && m !== activeActor);
+          }
           
           if (nextTargetGem) {
             io.print(`[System] Handoff to @${nextTargetGem} detected.`);
             nextInput = `[System] @${activeActor} called @${nextTargetGem}. Please proceed based on their output.`;
+            if (handoffPayload) {
+                 nextInput += `\\nDirect Instruction (AST): ${handoffPayload}`;
+            }
             explicitTarget = nextTargetGem;
             isFirstTurn = false;
           } else {

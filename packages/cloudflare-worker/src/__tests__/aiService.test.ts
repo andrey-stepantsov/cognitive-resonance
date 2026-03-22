@@ -120,6 +120,9 @@ describe('aiService - Dynamic Memory Escalation', () => {
       env.VECTORIZE = {
           query: vi.fn().mockResolvedValue({ matches: [{ score: 0.8, metadata: { content: 'Docs chunk' } }] })
       };
+      env.AI = {
+          run: vi.fn().mockResolvedValue({ data: [[0.1, 0.2]] })
+      };
       
       // 1st fetch: Gemini returns a function call
       mockFetch.mockResolvedValueOnce({
@@ -129,13 +132,7 @@ describe('aiService - Dynamic Memory Escalation', () => {
           }),
           text: vi.fn().mockResolvedValue('ok')
       });
-      // 2nd fetch: EmbedContent
-      mockFetch.mockResolvedValueOnce({
-          ok: true,
-          json: vi.fn().mockResolvedValue({ embedding: { values: [0.1, 0.2] } }),
-          text: vi.fn().mockResolvedValue('ok')
-      });
-      // 3rd fetch: Gemini returns final response
+      // 2nd fetch: Gemini returns final response
       mockFetch.mockResolvedValueOnce({
           ok: true,
           json: vi.fn().mockResolvedValue({
@@ -146,7 +143,8 @@ describe('aiService - Dynamic Memory Escalation', () => {
 
       await processAiQueueJob({ sessionId: '1', userId: '2', type: 'reply', targetAgent: 'guide' }, env);
       
-      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(env.AI.run).toHaveBeenCalledWith('@cf/baai/bge-base-en-v1.5', { text: ['test'] });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(env.VECTORIZE.query).toHaveBeenCalledWith([0.1, 0.2], { topK: 3 });
    });
 
