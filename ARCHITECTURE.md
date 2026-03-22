@@ -54,6 +54,6 @@ The cloud backend runs entirely on Cloudflare:
 Additional module documentation is available in the `docs/` directory:
 - [Git Object Storage Deep-Dive](docs/technical/git_object_storage.md)
 - [AI Cognitive State Deep-Dive](docs/technical/ai_cognitive_state.md)
-- [Collaboration Demo & Walkthrough](docs/collaboration_demo.md)
+- [Collaboration Demo & Walkthrough](docs/demo-collaboration.md)
 - [CLI Interactions Catalog](docs/design/cli_interactions_catalog.md)
 - [DSL & REPL Design](docs/design/dsl_repl_design.md)
