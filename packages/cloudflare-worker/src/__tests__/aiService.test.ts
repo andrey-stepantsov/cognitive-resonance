@@ -60,4 +60,60 @@ describe('aiService - Dynamic Memory Escalation', () => {
       expect(req.system_instruction.parts[0].text).toContain('STATE OF THE WORLD (Semantic Graph):');
       expect(req.generationConfig.responseSchema).toBeDefined();
    });
+   it('injects standard tools for @Operator when user is a normal user', async () => {
+      // Mock has_graph = 0 so tools are injected
+      env.DB.prepare = vi.fn().mockImplementation(() => ({
+          bind: vi.fn().mockReturnValue({
+              first: vi.fn().mockResolvedValue({ has_graph: 0 }),
+              all: vi.fn().mockResolvedValue({ results: [{ actor: 'Human', payload: '{"content":"hello"}' }] }),
+              run: vi.fn().mockResolvedValue({ success: true })
+          })
+      }));
+      env.SECRET_SUPER_ADMIN_IDS = 'admin1,admin2';
+
+      mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+              candidates: [{ content: { parts: [{ text: 'Done' }] } }]
+          }),
+          text: vi.fn().mockResolvedValue('ok')
+      });
+
+      await processAiQueueJob({ sessionId: '1', userId: 'normal-user', type: 'reply', targetAgent: 'operator' }, env);
+      
+      expect(mockFetch).toHaveBeenCalled();
+      const req = JSON.parse(mockFetch.mock.calls[0][1].body);
+      const tools = req.tools[0].functionDeclarations.map((t: any) => t.name);
+      
+      expect(tools).toContain('getMyUsageStats');
+      expect(tools).not.toContain('revokeUserAccess');
+   });
+
+   it('injects admin tools for @Operator when user is an admin', async () => {
+      env.DB.prepare = vi.fn().mockImplementation(() => ({
+          bind: vi.fn().mockReturnValue({
+              first: vi.fn().mockResolvedValue({ has_graph: 0 }),
+              all: vi.fn().mockResolvedValue({ results: [{ actor: 'Human', payload: '{"content":"hello"}' }] }),
+              run: vi.fn().mockResolvedValue({ success: true })
+          })
+      }));
+      env.SECRET_SUPER_ADMIN_IDS = 'admin1,admin2';
+
+      mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+              candidates: [{ content: { parts: [{ text: 'Done' }] } }]
+          }),
+          text: vi.fn().mockResolvedValue('ok')
+      });
+
+      await processAiQueueJob({ sessionId: '1', userId: 'admin2', type: 'reply', targetAgent: 'operator' }, env);
+      
+      expect(mockFetch).toHaveBeenCalled();
+      const req = JSON.parse(mockFetch.mock.calls[0][1].body);
+      const tools = req.tools[0].functionDeclarations.map((t: any) => t.name);
+      
+      expect(tools).toContain('getMyUsageStats');
+      expect(tools).toContain('revokeUserAccess');
+   });
 });

@@ -732,6 +732,7 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
     const mockDB = {
       prepare: vi.fn().mockReturnValue({
         bind: vi.fn().mockReturnValue({
+          first: vi.fn().mockResolvedValue(null),
           run: vi.fn().mockResolvedValue({}),
         }),
       }),
@@ -774,6 +775,7 @@ describe('Cloudflare Worker - cr-vector-pipeline', () => {
     const mockDB = {
       prepare: vi.fn().mockReturnValue({
         bind: vi.fn().mockReturnValue({
+          first: vi.fn().mockResolvedValue({}),
           run: vi.fn().mockResolvedValue({}),
         }),
       }),

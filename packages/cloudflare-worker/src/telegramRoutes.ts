@@ -85,12 +85,18 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
           ).bind(sessionId, timestamp, tokens, userId).run();
       }
 
-      // Dispatch async AI execution ONLY if no other agent is mentioned
-      if (env.AI_QUEUE && !isDelegatedToLocal) {
+      // Dispatch async AI execution
+      // If no agent mentioned, it goes to default Edge AI. 
+      // If specific Edge-bound agent mentioned (guide/operator), we route it to Edge AI too.
+      // If local agent mentioned (e.g. coder), we skip edge AI.
+      const targetAgent = routingIntents[0]?.agent?.toLowerCase();
+      const isEdgeBoundPersona = targetAgent === 'guide' || targetAgent === 'operator';
+      
+      if (env.AI_QUEUE && (!isDelegatedToLocal || isEdgeBoundPersona)) {
          if (newTotal >= 6000 && (!sessionRow || !sessionRow.has_graph)) {
              await env.AI_QUEUE.send({ sessionId, userId, type: 'compile_graph' });
          } else {
-             await env.AI_QUEUE.send({ sessionId, userId, type: 'reply' });
+             await env.AI_QUEUE.send({ sessionId, userId, type: 'reply', targetAgent });
          }
       } else if (isDelegatedToLocal) {
          logger.info(`Delegated to local agent/host: ${JSON.stringify(routingIntents)}. Skipping Edge AI.`);

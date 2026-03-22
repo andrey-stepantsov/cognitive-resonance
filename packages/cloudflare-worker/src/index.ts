@@ -392,6 +392,9 @@ async function handleSessionsAPI(request: Request, env: Env, path: string, userI
       if (!sessionId) return jsonResponse({ error: 'Session ID required' }, 400);
       const body = await request.json() as any;
 
+      const existing = await env.DB.prepare('SELECT 1 FROM sessions WHERE id = ?').bind(sessionId).first();
+      const isNewSession = !existing;
+
       await env.DB.prepare(
         `INSERT INTO sessions (id, timestamp, preview, custom_name, config, data, is_archived, user_id)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
@@ -407,6 +410,17 @@ async function handleSessionsAPI(request: Request, env: Env, path: string, userI
         body.isArchived ? 1 : 0,
         userId,
       ).run();
+
+      if (isNewSession) {
+         const greetingPayload = JSON.stringify({
+            role: 'assistant',
+            content: "👋 Hello! I am the `@Guide` persona. I am your architectural companion for Cognitive Resonance. Mention me anytime if you want to understand how this system works, how to write CLI tests, or how the Cloudflare edge integration operates!"
+         });
+         await env.DB.prepare(`
+             INSERT OR IGNORE INTO events (id, session_id, timestamp, actor, type, payload, user_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         `).bind(crypto.randomUUID(), sessionId, Date.now(), 'Guide', 'message', greetingPayload, userId).run();
+      }
 
       // Fire-and-forget: generate embeddings for semantic search
       const sessionData = typeof body.data === 'string' ? JSON.parse(body.data) : (body.data || {});
@@ -689,7 +703,7 @@ async function handleEventsAPI(request: Request, env: Env, path: string, userId:
        sessionTokenIncrements.set(ev.session_id, (sessionTokenIncrements.get(ev.session_id) || 0) + tokens);
     }
     
-    try {
+      try {
       if (stmts.length > 0) {
         await env.DB.batch(stmts);
       }
@@ -709,6 +723,23 @@ async function handleEventsAPI(request: Request, env: Env, path: string, userId:
              }
          }
       }
+
+      // Intercept Human messages routed specifically to Edge Personas (@guide, @operator)
+      if (env.AI_QUEUE) {
+         const { parseDslRouting } = require('@cr/core/src/services/CommandParser');
+         for (const ev of validEvents) {
+            if (ev.actor === 'Human' && ev.type === 'message') {
+               let text = '';
+               try { text = typeof ev.payload === 'string' ? JSON.parse(ev.payload).content : ev.payload.content; } catch(e){}
+               const intents = parseDslRouting(text || '');
+               const agent = intents[0]?.agent?.toLowerCase();
+               if (agent === 'guide' || agent === 'operator') {
+                  ctx?.waitUntil(env.AI_QUEUE.send({ sessionId: ev.session_id, userId: ev.user_id || userId, type: 'reply', targetAgent: agent }));
+               }
+            }
+         }
+      }
+
       // 2. Intercept and push non-Human responses to Telegram if applicable
       for (const ev of validEvents) {
          if (ev.actor !== 'Human' && ev.type === 'message') {
