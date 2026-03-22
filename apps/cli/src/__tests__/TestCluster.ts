@@ -31,6 +31,15 @@ export class TestCluster {
     program.parseAsync(['node', 'cr', 'serve', '--port', '0', '--identity', identity, '--db', this.dbPath]);
   }
 
+  async bootAuditor() {
+    const program = new Command();
+    program.option('-d, --db <path>', 'Path to SQLite database');
+    // Import dynamically or assume registerAuditorCommand is imported at top
+    const { registerAuditorCommand } = await import('../commands/auditor');
+    registerAuditorCommand(program);
+    program.parseAsync(['node', 'cr', 'serve-auditor', '--db', this.dbPath]);
+  }
+
   async bootRepl(sessionId = 'test-session') {
     const program = new Command();
     program.option('-d, --db <path>', 'Path to SQLite database');

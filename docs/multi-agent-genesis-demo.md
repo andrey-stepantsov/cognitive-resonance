@@ -2,7 +2,7 @@
 
 ## Overview
 
-The **Genesis Demo** is an automated, visual end-to-end orchestration that proves out the "Multi-Agent Segregation" and "Strict Dependency" use cases defined in [Multi-Repo Use Cases](./muti-repo-use-cases.md). 
+The **Genesis Demo** is an automated, visual end-to-end orchestration that proves out the "Multi-Agent Segregation" and "Strict Dependency" use cases defined in [Multi-Repo Use Cases](./multi-repo-use-cases.md). 
 
 Instead of an AI collaborating with a human on a pre-existing repository, this demonstration spins up two distinct AI agents—an **Architect** and an **Engineer**—collaborating autonomously within a completely empty, shared Event-Sourced session to build a multi-repository ecosystem from scratch.
 

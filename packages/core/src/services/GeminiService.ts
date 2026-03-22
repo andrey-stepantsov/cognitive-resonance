@@ -144,3 +144,58 @@ Rules:
     return transcript;
   }
 }
+
+export async function validateProposal(
+  proposalPatch: string,
+  abortSignal?: AbortSignal
+): Promise<{ isSafe: boolean; reason: string }> {
+  const ai = getAI();
+
+  const systemInstruction = `You are a strict code safety validator (The Systems Librarian) monitoring an event-sourced AI coding environment.
+Your sole job is to evaluate if a proposed file modification to the '.cr/skills/' directory is SAFE or UNSAFE.
+A proposal is UNSAFE if it:
+1. Executes dangerous shell commands (e.g. rm -rf, mkfs, wiping databases).
+2. Exfiltrates data over the network unprompted to unknown destinations.
+3. Attempts to break out of the sandbox or modify core system files outside of its domain.
+4. Exhibits clear malicious intent.
+
+Respond strictly in JSON format matching this schema:
+{
+  "isSafe": boolean,
+  "reason": "short explanation of your finding"
+}
+
+If you are unsure, default to safe (true) unless it explicitly demonstrates dangerous behavior. DO NOT reject normal utility scripts, build scripts, or standard API servers.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-1.5-flash-8b', // Use fast model for validation
+      contents: [
+        { role: 'user', parts: [{ text: `Evaluate this proposal:\n\n${proposalPatch}` }] }
+      ],
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            isSafe: { type: "BOOLEAN" },
+            reason: { type: "STRING" }
+          },
+          required: ["isSafe", "reason"]
+        },
+        abortSignal,
+      },
+    });
+
+    const jsonStr = response.text;
+    if (!jsonStr) {
+       return { isSafe: true, reason: 'Empty response from validator, defaulting to safe' };
+    }
+    const parsed = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+    return parsed;
+  } catch (err) {
+    console.error("Validation failed:", err);
+    throw err; // Fail closed: throw so the auditor can handle backoff/retry
+  }
+}

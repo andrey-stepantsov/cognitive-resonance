@@ -6,7 +6,8 @@ Cognitive Resonance is a multi-platform AI chat application built as an NPM Work
 ## Workspaces Structure
 - **`apps/extension`**: The VS Code webview extension.
 - **`apps/pwa`**: The Vite/React Progressive Web App (also deployable as mobile iOS/Android apps via Capacitor).
-- **`apps/cli`**: A robust Node.js Command Line Interface supporting both interactive REPL and headless batch execution modes. It is driven by an abstract `IoAdapter` and includes the **Terminal Director** for stateful multi-head `node-pty` integration and scriptable terminal recording.
+- **`apps/cli`**: A robust Node.js Command Line Interface supporting both interactive REPL and headless batch execution modes. It is driven by an abstract `IoAdapter`.
+- **`packages/terminal-director`**: Stateful multi-head `node-pty` integration and scriptable terminal recording framework.
 - **`packages/ui`**: Highly optimized React components (Markdown, Mermaid, Semantic Graphs, Dissonance Meters) designed to be responsive and native touch-aware.
 - **`packages/core`**: Core utilities including semantic search, state management, AI APIs, and Capacitor wrappers.
 - **`packages/backend`**: Contains integration providers and utilities to interact with Cloudflare (D1 Storage, Workers, R2) and event-sourced synchronization.
