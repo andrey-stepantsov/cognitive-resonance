@@ -57,9 +57,14 @@ Before any UI work begins, the underlying CLI and core execution engine must sup
 - Instantiate `Architect` (focuses on planning and delegating), `Coder` (focuses on execution), and `Auditor/Critic` profiles.
 - Enable automatic handoffs so an Architect's response containing `@Coder` automatically triggers the Coder's execution.
 
-**3. Trinity: Autonomous Choreography**
-- Goal: Launch a "trinity" of Actors (`@Architect`, `@Coder`, and `@Auditor`/`@Critic`) to work autonomously on a given task.
-- *Example Task:* Create a video recorder that takes an audio file (WAV) and one picture (PNG/JPEG) and produces a video with the static image. Should be based on FFmpeg. The goal is to create recordings optimized for YouTube uploads and match YouTube's audio profile accurately to avoid re-processing.
+**3. Trinity: Autonomous Choreography & Continuous Learning**
+- Goal: Abstract the `Architect`, `Coder`, and `Auditor` loop behind a single, user-facing `@trinity` Project Manager facade. 
+- *Declarative Skills*: Orchestration relies on declarative `.agents/skills/trinity_genesis/SKILL.md` documents to guide state transitions and enforce Auditor validation checkpoints rather than hardcoded runtime configurations.
+- *Deliverables over Drafts*: True task completion requires the Trinity sequence to execute the drafted code (e.g., via `@@sandbox(exec...)`) and verify the output artifacts physically.
+- *Continuous Learning Lifecycle*: 
+  - **Pre-Flight Discovery**: `@trinity` queries `.agents/skills/` and `.agents/blueprints/` at the start of a session to locate and inject relevant context blueprints natively.
+  - **Post-Flight Synthesis**: At the end of a successful workflow, `@trinity` analyzes the executed task and formalizes novel solutions into new reusable `.agents/skills/` via Virtual File System proposals.
+- *Example Verification Task:* Delegate the creation of a YouTube video render (WAV + PNG -> MP4) via FFmpeg without human oversight.
 
 **4. Simple Runtime Capabilities (`/exec`)**
 - Add an `/exec [cmd]` slash command strictly for human developers (Scientist).

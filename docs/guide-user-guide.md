@@ -133,6 +133,12 @@ If you prefer the terminal, you can interact with Cognitive Resonance natively:
    cr user set-name "My Name"
    ```
 
+5. **Autonomous Choreography (The Trinity Loop):** To delegate a complex task (planning, coding, testing, and delivery) entirely to the system without micromanaging individual agents, simply address the orchestrator facade:
+   ```text
+   cr> @trinity Can you write an FFmpeg bash script to render audio.wav and input.png into a YouTube optimized MP4, and then execute it to produce the video?
+   ```
+   *Trinity will perform Pre-Flight discovery (RAG) to locate relevant skills, formulate a technical blueprint, and trigger the `@architect` -> `@coder` -> `@auditor` sequence. It will only return control to you once the final `.mp4` deliverable has been tested and verified, optionally writing a new Skill blueprint for future use.*
+
 ### Headless Execution (CI/Scripting)
 The CLI exposes a machine-optimized execution paradigm designed explicitly for CI pipelines and pipe chains. 
 
