@@ -1,17 +1,28 @@
-# Objective: Setup Deployment and Administration Pipelines
+# Objective: Designing a Real QA-Style E2E Test Suite
 
 ## Context
-In the previous session, we successfully stabilized the local development and edge integration environments for Cognitive Resonance, specifically focusing on Persona Routing and Telegram BYOB integrations.
+In our previous sessions, we successfully implemented true Environment Separation (`dev`, `staging`, `prod` isolated vaults and keys), Visual Cues across UIs, CI/CD pipeline automation with PR preview ephemeral deployments, and achieved over 95% test regression coverage across the CLI and Edge WebWorker. We successfully resolved D1 integration routing to securely support multi-tenant bots, and implemented SRE/Operator telemetry endpoints. 
 
-Key accomplishments from the prior session:
-1. **Edge Persona Routing**: Overhauled the CLI's parser (`chat.ts`) to immediately intercept Edge Personas (`@Guide`, `@Operator`, `@SRE`, `@Trinity`) and route their prompts up to the Cloudflare Worker instead of executing generic LLM queries locally.
-2. **@Guide Enhancements**: Improved the guide's baseline system prompt (`aiService.ts`) to contain hardcoded knowledge of core CLI commands, effectively eliminating hallucinated commands when Vectorize RAG searches miss.
-3. **Auth & State Synchronization**: Diagnosed and resolved silent `401 Unauthorized` background daemon sync failures that occurred when operating outside of authenticated project workspaces.
-4. **BYOB Telegram Integration**: Brought the `telegram_integrations` and `telegram_links` schemas down to the local D1 database, enabling local execution of the `admin bot register` and `admin bot link` commands. Fixed a silent pipeline crash in the AI Queue by adding a `try...catch` block around the integrations table for un-migrated databases.
-5. **Environment Isolation**: Detailed the networking split between the production/staging edge endpoints (`api.andrey-stepantsov.workers.dev`) and the local dev overrides (`http://localhost:8787`), ensuring that the CLI successfully merges with live Telegram bot webhook data.
+The core architecture, persona tooling, runtime cluster, and routing layer are now stable.
 
-## Next Steps for the New Session
-The upcoming session will be entirely dedicated to deployment and administration.
-1. **Deployment Architecture**: Establish a reliable, deterministic deployment pipeline mapping local codebases to the `cr-vector-pipeline` staging and production cloudflare workers.
-2. **Administration Workflows**: Outline secure, high-level administrative capabilities within the system for user identity management, revoking privileges, and managing underlying sandbox deployments.
-3. **Operational Visibility**: Integrate the `@SRE` and `@Operator` personas to actually utilize some of the newly integrated deployment endpoints and metrics.
+## The Goal
+The primary objective of this new session is to **design, plan, and architect a robust QA-style E2E test suite** that validates the entirety of the system.
+
+## Core Pillars of the Test Suite
+We need to cover the following high-level areas:
+1. **Deployment Architecture**: E2E validation spanning CI/CD workflow hooks, Wrangler deployments, and automated environment teardowns.
+2. **User Management**: Lifecycle tests stretching from permanent CLI Ed25519 token minting, to Telegram BYOB linking, Auth swapping, and SuperAdmin User Revocation flows (ensuring immediate 403 blocks).
+3. **Session Interactions (Chat)**: Validating the fundamental REPL interactions, LLM routing, CLI I/O streams, and persona interception (i.e. `@Operator /health`).
+4. **Session Management**: Full state management checks testing background `dissonance` thresholds, Cloudflare DO persistence flushing into D1 cold storage, and session forking/cloning behaviors.
+5. **Artefact Materialization**: Emulating VFS generation, injection, context hydration from `brain` storage, and boundary resolution within prompts.
+6. **Artefact Management**: Editing flows, `read/write` tool boundaries, workspace context switches, and persistence logs tracking the AI's interaction graph.
+7. **Skill Library Management**: Validating custom skills (e.g. `asciinema`, `trinity_genesis`) correctly parse, execute safely across sub-agents, and hook seamlessly into the Auditor workflow.
+
+## The Open Questions
+- **What are we missing?**
+  - *Data Plane & RAG Integration*: End-to-end tests validating the Vectorize insertion pipeline and semantic search yields.
+  - *Multiplayer Collaboration*: Proxy tests verifying shared context logic across Telegram rooms/channels.
+  - *Asynchronous Daemons*: Asserting stability on background Sync Daemons and Trinity Autonomous Handoffs (e.g., Coder -> Auditor).
+- **Tooling Selection**: Do we leverage Playwright for visual tests, BDD/Cucumber for readable test cases, or expand our custom Terminal Director logic? 
+
+Let's begin exploring the architecture and tooling strategy for this massive E2E suite!
