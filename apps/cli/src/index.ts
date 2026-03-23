@@ -1,19 +1,19 @@
 import { Command } from 'commander';
 import * as readline from 'readline';
-import { initGemini, generateResponse } from '@cr/core/src/services/GeminiService';
+import { initGemini, generateResponse } from '@cr/core/src/services/GeminiService.js';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 
-import { registerSimulateCommand } from './commands/simulate';
-import { registerAssertCommand } from './commands/assert';
-import { registerUserCommands } from './commands/user';
-import { registerPortabilityCommands } from './commands/portability';
-import { registerServeCommand } from './commands/serve';
-import { registerImportExportCommands } from './commands/importExport';
+import { registerSimulateCommand } from './commands/simulate.js';
+import { registerAssertCommand } from './commands/assert.js';
+import { registerUserCommands } from './commands/user.js';
+import { registerPortabilityCommands } from './commands/portability.js';
+import { registerServeCommand } from './commands/serve.js';
+import { registerImportExportCommands } from './commands/importExport.js';
 
-import { CR_DIR } from './utils/api';
+import { CR_DIR } from './utils/api.js';
 
 // Load env vars from the resolved workspace root
 dotenv.config({ path: path.join(path.dirname(CR_DIR), '.env') });
@@ -26,12 +26,12 @@ program
   .version('1.0.0')
   .option('-d, --db <path>', 'Global option: Path to SQLite database', path.join(CR_DIR, 'cr.sqlite'));
 
-import { registerChatCommands } from './commands/chat';
-import { registerObserveCommands } from './commands/observe';
-import { DefaultIoAdapter } from './utils/IoAdapter';
-import { registerMcpCommand } from './commands/mcp';
-import { registerAdminCommands } from './commands/admin';
-import { registerAuditorCommand } from './commands/auditor';
+import { registerChatCommands } from './commands/chat.js';
+import { registerObserveCommands } from './commands/observe.js';
+import { DefaultIoAdapter } from './utils/IoAdapter.js';
+import { registerMcpCommand } from './commands/mcp.js';
+import { registerAdminCommands } from './commands/admin.js';
+import { registerAuditorCommand } from './commands/auditor.js';
 
 // Register model 2 commands
 registerSimulateCommand(program);

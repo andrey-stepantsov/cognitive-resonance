@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleInteractiveCommand, CLIControllerContext } from '../controllers/CommandHandlers';
-import { CommandAction } from '@cr/core/src/services/CommandParser';
-import * as api from '../utils/api';
+import { handleInteractiveCommand, CLIControllerContext } from '../controllers/CommandHandlers.js';
+import { CommandAction } from '@cr/core/src/services/CommandParser.js';
+import * as api from '../utils/api.js';
 
 vi.mock('../utils/api', () => ({
   backendFetch: vi.fn(),

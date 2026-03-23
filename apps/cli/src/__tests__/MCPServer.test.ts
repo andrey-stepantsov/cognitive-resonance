@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { DatabaseEngine } from '../db/DatabaseEngine';
-import { CognitiveMCPServer } from '../services/MCPServer';
+import { DatabaseEngine } from '../db/DatabaseEngine.js';
+import { CognitiveMCPServer } from '../services/MCPServer.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';

@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { readFileSync, writeFileSync } from 'fs';
-import { DatabaseEngine } from '../db/DatabaseEngine';
+import { DatabaseEngine } from '../db/DatabaseEngine.js';
 import crypto from 'crypto';
 
 export function registerSimulateCommand(program: Command) {

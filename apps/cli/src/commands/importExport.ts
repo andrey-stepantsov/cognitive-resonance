@@ -1,10 +1,10 @@
 import { Command } from 'commander';
-import { DatabaseEngine } from '../db/DatabaseEngine';
+import { DatabaseEngine } from '../db/DatabaseEngine.js';
 import * as path from 'path';
 import * as fs from 'fs';
 import ignore from 'ignore';
-import { logger } from '../utils/logger';
-import { Materializer } from '@cr/core/src/services/Materializer';
+import { logger } from '../utils/logger.js';
+import { Materializer } from '@cr/core/src/services/Materializer.js';
 import Table from 'cli-table3';
 
 export function registerImportExportCommands(program: Command) {

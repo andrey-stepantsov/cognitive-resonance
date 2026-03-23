@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { DatabaseEngine } from '../db/DatabaseEngine';
-import { ArtefactManager } from '@cr/core/src/services/ArtefactManager';
-import { Materializer } from '@cr/core/src/services/Materializer';
+import { DatabaseEngine } from '../db/DatabaseEngine.js';
+import { ArtefactManager } from '@cr/core/src/services/ArtefactManager.js';
+import { Materializer } from '@cr/core/src/services/Materializer.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import os from 'os';

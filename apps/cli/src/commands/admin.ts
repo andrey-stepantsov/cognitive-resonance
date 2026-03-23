@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { backendFetch } from '../utils/api';
+import { backendFetch } from '../utils/api.js';
 
 export function registerAdminCommands(program: Command) {
   const adminCmd = program.command('admin', { hidden: true })
@@ -171,8 +171,12 @@ export function registerAdminCommands(program: Command) {
           console.log(JSON.stringify(data, null, 2));
         } else {
           console.error(`❌ Failed to list sandboxes: ${res.status} ${res.statusText}`);
+          process.exit(1);
         }
-      } catch (e: any) { console.error(`[Error] ${e.message}`); }
+      } catch (e: any) {
+         console.error(`[Error] ${e.message}`);
+         process.exit(1);
+      }
     });
 
   adminCmd.command('preview')

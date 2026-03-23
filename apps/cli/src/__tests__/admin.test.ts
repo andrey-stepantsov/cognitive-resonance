@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from 'commander';
-import { registerAdminCommands } from '../commands/admin';
-import { saveCliToken, clearCliToken, TOKEN_FILE_PATH } from '../utils/api';
+import { registerAdminCommands } from '../commands/admin.js';
+import { saveCliToken, clearCliToken, TOKEN_FILE_PATH } from '../utils/api.js';
 import * as fs from 'fs';
 import * as path from 'path';
 

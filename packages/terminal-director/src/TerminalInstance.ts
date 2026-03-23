@@ -77,6 +77,20 @@ export class TerminalInstance {
     return this.outputBuffer;
   }
 
+  public clearBuffer(): void {
+    this.outputBuffer = '';
+  }
+
+  public waitForExit(): Promise<number | null> {
+    return new Promise((resolve) => {
+      if (this.childProcess.exitCode !== null || this.childProcess.signalCode !== null) {
+        resolve(this.childProcess.exitCode);
+      } else {
+        this.childProcess.on('exit', (code) => resolve(code));
+      }
+    });
+  }
+
   public kill() {
     this.childProcess.kill();
   }

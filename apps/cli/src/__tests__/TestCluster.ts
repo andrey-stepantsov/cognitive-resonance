@@ -1,8 +1,8 @@
 import { Command } from 'commander';
-import { DatabaseEngine } from '../db/DatabaseEngine';
-import { MemoryIoAdapter } from '../utils/IoAdapter';
-import { registerServeCommand, runSyncDaemon } from '../commands/serve';
-import { registerChatCommands } from '../commands/chat';
+import { DatabaseEngine } from '../db/DatabaseEngine.js';
+import { MemoryIoAdapter } from '../utils/IoAdapter.js';
+import { registerServeCommand, runSyncDaemon } from '../commands/serve.js';
+import { registerChatCommands } from '../commands/chat.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';

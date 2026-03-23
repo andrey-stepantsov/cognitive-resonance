@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { DatabaseEngine } from '../db/DatabaseEngine';
+import { DatabaseEngine } from '../db/DatabaseEngine.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import os from 'os';

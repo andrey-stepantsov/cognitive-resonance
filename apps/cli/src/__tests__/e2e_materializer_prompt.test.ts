@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { TestCluster } from './TestCluster';
-import * as gemini from '@cr/core/src/services/GeminiService';
+import { TestCluster } from './TestCluster.js';
+import * as gemini from '@cr/core/src/services/GeminiService.js';
 
 describe('E2E Materializer Context Injection', () => {
   let cluster: TestCluster;

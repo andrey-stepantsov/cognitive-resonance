@@ -1,4 +1,4 @@
-import { DatabaseEngine } from '../DatabaseEngine';
+import { DatabaseEngine } from '../DatabaseEngine.js';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 describe('DatabaseEngine', () => {

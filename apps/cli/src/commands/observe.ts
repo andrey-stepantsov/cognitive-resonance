@@ -1,11 +1,11 @@
 import { Command } from 'commander';
-import { DatabaseEngine, EventRecord } from '../db/DatabaseEngine';
+import { DatabaseEngine, EventRecord } from '../db/DatabaseEngine.js';
 import Table from 'cli-table3';
 import chalk from 'chalk';
 import * as fs from 'fs';
 import * as path from 'path';
-import { Materializer } from '@cr/core/src/services/Materializer';
-import { IoAdapter, DefaultIoAdapter } from '../utils/IoAdapter';
+import { Materializer } from '@cr/core/src/services/Materializer.js';
+import { IoAdapter, DefaultIoAdapter } from '../utils/IoAdapter.js';
 
 export function registerObserveCommands(program: Command, io: IoAdapter = new DefaultIoAdapter()) {
   program

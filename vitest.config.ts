@@ -6,6 +6,7 @@ export default defineConfig({
       'packages/core/vitest.config.ts',
       'packages/ui/vitest.config.ts',
       'packages/cloudflare-worker/vitest.config.ts',
+      'tests/e2e/vitest.config.ts',
     ],
   },
 });

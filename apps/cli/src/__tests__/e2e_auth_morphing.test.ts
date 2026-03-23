@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import * as api from '../utils/api';
-import { TestCluster } from './TestCluster';
+import * as api from '../utils/api.js';
+import { TestCluster } from './TestCluster.js';
 
 describe('E2E Auth Morphing', () => {
   let cluster: TestCluster;

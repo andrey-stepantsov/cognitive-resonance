@@ -1,13 +1,13 @@
 import { Command } from 'commander';
-import { DatabaseEngine } from '../db/DatabaseEngine';
+import { DatabaseEngine } from '../db/DatabaseEngine.js';
 import crypto from 'crypto';
-import { backendFetch } from '../utils/api';
+import { backendFetch } from '../utils/api.js';
 
 export function registerUserCommands(program: Command) {
   const userCmd = program.command('user').description('User management commands');
   
   userCmd.command('register <email> <nick> <password>')
-    .option('-d, --db <path>', 'Path to SQLite database', 'test.sqlite')
+    .option('-d, --db <path>', 'Path to SQLite database', process.env.DB_PATH || 'test.sqlite')
     .action((email, nick, password, options) => {
         const db = new DatabaseEngine(options.db);
         const userId = crypto.randomUUID();
@@ -32,7 +32,7 @@ export function registerUserCommands(program: Command) {
     });
 
   userCmd.command('suspend <userId>')
-    .option('-d, --db <path>', 'Path to SQLite database', 'test.sqlite')
+    .option('-d, --db <path>', 'Path to SQLite database', process.env.DB_PATH || 'test.sqlite')
     .action((userId, options) => {
         const db = new DatabaseEngine(options.db);
         const user = db.getUserById(userId);
@@ -56,7 +56,7 @@ export function registerUserCommands(program: Command) {
     });
     
   userCmd.command('set-password <userId> <newPassword>')
-    .option('-d, --db <path>', 'Path to SQLite database', 'test.sqlite')
+    .option('-d, --db <path>', 'Path to SQLite database', process.env.DB_PATH || 'test.sqlite')
     .action((userId, newPassword, options) => {
         const db = new DatabaseEngine(options.db);
         const user = db.getUserById(userId);
@@ -80,7 +80,7 @@ export function registerUserCommands(program: Command) {
     });
 
   userCmd.command('set-nick <userId> <newNick>')
-    .option('-d, --db <path>', 'Path to SQLite database', 'test.sqlite')
+    .option('-d, --db <path>', 'Path to SQLite database', process.env.DB_PATH || 'test.sqlite')
     .action((userId, newNick, options) => {
         const db = new DatabaseEngine(options.db);
         const user = db.getUserById(userId);

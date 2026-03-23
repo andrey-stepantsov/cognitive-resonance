@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { TestCluster } from './TestCluster';
+import { TestCluster } from './TestCluster.js';
 
 describe('E2E VirtualFS REPL Commands', () => {
   let cluster: TestCluster;

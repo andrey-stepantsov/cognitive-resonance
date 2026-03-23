@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { TestCluster } from './TestCluster';
-import { initGemini } from '@cr/core/src/services/GeminiService';
+import { TestCluster } from './TestCluster.js';
+import { initGemini } from '@cr/core/src/services/GeminiService.js';
 
 describe('Auditor Daemon - Live AI E2E', () => {
     let cluster: TestCluster;

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { TestCluster } from './TestCluster';
-import { Materializer } from '@cr/core/src/services/Materializer';
+import { TestCluster } from './TestCluster.js';
+import { Materializer } from '@cr/core/src/services/Materializer.js';
 
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('child_process')>();

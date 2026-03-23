@@ -1,6 +1,6 @@
 import { Command } from 'commander';
-import { DatabaseEngine } from '../db/DatabaseEngine';
-import { CognitiveMCPServer } from '../services/MCPServer';
+import { DatabaseEngine } from '../db/DatabaseEngine.js';
+import { CognitiveMCPServer } from '../services/MCPServer.js';
 import * as path from 'path';
 
 export function registerMcpCommand(program: Command) {

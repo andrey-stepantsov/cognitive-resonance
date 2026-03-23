@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from 'commander';
-import { registerPortabilityCommands } from '../commands/portability';
+import { registerPortabilityCommands } from '../commands/portability.js';
 import * as fs from 'fs';
 import * as path from 'path';
-import { DatabaseEngine } from '../db/DatabaseEngine';
+import { DatabaseEngine } from '../db/DatabaseEngine.js';
 
 describe('E2E: Portability Commands (Pack / Unpack)', () => {
     let program: Command;

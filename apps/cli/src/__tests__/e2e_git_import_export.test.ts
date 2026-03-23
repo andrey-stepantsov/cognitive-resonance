@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { DatabaseEngine } from '../db/DatabaseEngine';
+import { DatabaseEngine } from '../db/DatabaseEngine.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { execSync } from 'child_process';
 import ignore from 'ignore';
-import { Materializer } from '@cr/core/src/services/Materializer';
+import { Materializer } from '@cr/core/src/services/Materializer.js';
 
 describe('E2E: Git Import/Export Safety Limits', () => {
     let db: DatabaseEngine;

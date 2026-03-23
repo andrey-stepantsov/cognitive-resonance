@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { readStdin, askSecure, hookStdoutMute } from '../utils/prompt';
+import { readStdin, askSecure, hookStdoutMute } from '../utils/prompt.js';
 import * as readline from 'readline';
 
 describe('prompt functions', () => {

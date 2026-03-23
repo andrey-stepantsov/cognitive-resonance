@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { DatabaseEngine } from '../db/DatabaseEngine';
-import { createServerApp } from '../commands/serve';
+import { DatabaseEngine } from '../db/DatabaseEngine.js';
+import { createServerApp } from '../commands/serve.js';
 import request from 'supertest';
 import * as fs from 'fs';
 import * as path from 'path';

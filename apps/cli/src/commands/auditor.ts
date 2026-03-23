@@ -1,7 +1,7 @@
 import { Command } from 'commander';
-import { DatabaseEngine, EventRecord } from '../db/DatabaseEngine';
-import { logger } from '../utils/logger';
-import { validateProposal } from '@cr/core/src/services/GeminiService';
+import { DatabaseEngine, EventRecord } from '../db/DatabaseEngine.js';
+import { logger } from '../utils/logger.js';
+import { validateProposal } from '@cr/core/src/services/GeminiService.js';
 import * as path from 'path';
 
 export function registerAuditorCommand(program: Command) {

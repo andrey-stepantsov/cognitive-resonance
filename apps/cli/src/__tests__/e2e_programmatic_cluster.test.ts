@@ -4,7 +4,7 @@ vi.hoisted(() => {
   process.env.CR_SYNC_INTERVAL = '100';
 });
 
-import { TestCluster } from './TestCluster';
+import { TestCluster } from './TestCluster.js';
 
 describe('Programmatic Multi-Node Cluster E2E', () => {
   let cluster: TestCluster;

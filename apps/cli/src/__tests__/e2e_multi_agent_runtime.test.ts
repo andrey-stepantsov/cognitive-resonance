@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { DatabaseEngine } from '../db/DatabaseEngine';
-import { parseMentions } from '@cr/core/src/services/CommandParser';
-import { GemProfiles } from '../services/GemRegistry';
+import { DatabaseEngine } from '../db/DatabaseEngine.js';
+import { parseMentions } from '@cr/core/src/services/CommandParser.js';
+import { GemProfiles } from '../services/GemRegistry.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';

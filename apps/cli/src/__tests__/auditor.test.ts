@@ -1,8 +1,8 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { DatabaseEngine } from '../db/DatabaseEngine';
-import { registerAuditorCommand } from '../commands/auditor';
+import { DatabaseEngine } from '../db/DatabaseEngine.js';
+import { registerAuditorCommand } from '../commands/auditor.js';
 import { Command } from 'commander';
-import * as gemini from '@cr/core/src/services/GeminiService';
+import * as gemini from '@cr/core/src/services/GeminiService.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';

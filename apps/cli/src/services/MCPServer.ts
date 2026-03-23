@@ -4,7 +4,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { DatabaseEngine } from "../db/DatabaseEngine";
+import { DatabaseEngine } from "../db/DatabaseEngine.js";
 
 /**
  * Exposes the Multi-Repo taxonomy tools natively to the AI via MCP.

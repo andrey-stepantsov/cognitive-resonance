@@ -1,8 +1,8 @@
-import { saveCliToken, backendFetch } from '../utils/api';
-import { DatabaseEngine } from '../db/DatabaseEngine';
-import { fetchModels } from '@cr/core/src/services/GeminiService';
-import { parseCommand, CommandAction } from '@cr/core/src/services/CommandParser';
-import { InteractiveIo, IoAdapter } from '../utils/IoAdapter';
+import { saveCliToken, backendFetch } from '../utils/api.js';
+import { DatabaseEngine } from '../db/DatabaseEngine.js';
+import { fetchModels } from '@cr/core/src/services/GeminiService.js';
+import { parseCommand, CommandAction } from '@cr/core/src/services/CommandParser.js';
+import { InteractiveIo, IoAdapter } from '../utils/IoAdapter.js';
 
 export interface CLIRuntimeState {
   sessionId: string;

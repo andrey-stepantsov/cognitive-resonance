@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { DatabaseEngine } from '../db/DatabaseEngine';
+import { DatabaseEngine } from '../db/DatabaseEngine.js';
 import { readFileSync, writeFileSync } from 'fs';
 
 export function registerPortabilityCommands(program: Command) {

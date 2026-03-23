@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { DefaultIoAdapter, MemoryIoAdapter } from '../utils/IoAdapter';
+import { DefaultIoAdapter, MemoryIoAdapter } from '../utils/IoAdapter.js';
 
 describe('IoAdapter', () => {
     it('DefaultIoAdapter createInteractive', async () => {

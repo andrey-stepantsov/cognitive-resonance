@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { DatabaseEngine } from '../db/DatabaseEngine';
-import { runSyncDaemon } from '../commands/serve';
-import { saveCliToken, clearCliToken, TOKEN_FILE_PATH } from '../utils/api';
+import { DatabaseEngine } from '../db/DatabaseEngine.js';
+import { runSyncDaemon } from '../commands/serve.js';
+import { saveCliToken, clearCliToken, TOKEN_FILE_PATH } from '../utils/api.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import os from 'os';

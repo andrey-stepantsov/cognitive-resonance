@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { readFileSync } from 'fs';
-import { DatabaseEngine } from '../db/DatabaseEngine';
+import { DatabaseEngine } from '../db/DatabaseEngine.js';
 
 export function registerAssertCommand(program: Command) {
   program

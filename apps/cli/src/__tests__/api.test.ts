@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { resolveWorkspaceRoot } from '../utils/api';
+import { resolveWorkspaceRoot } from '../utils/api.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
