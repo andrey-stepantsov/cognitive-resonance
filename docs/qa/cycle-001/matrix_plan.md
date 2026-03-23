@@ -94,6 +94,60 @@ Every feature and flag in the Cognitive Resonance CLI must be validated.
 
 ---
 
+## 4. Phase 8: Guide Persona (RAG) Verification Methodology
+
+Testing non-deterministic, LLM-driven Retrieval-Augmented Generation agents like `@Guide` requires a dedicated architecture to avoid flaky E2E suites and extensive API costs.
+
+We will verify the Guide via three strict isolation boundaries:
+
+**1. Context Injection Mapping (Determinism)**
+- **Method:** Mock the `Cloudflare Vectorize` search response.
+- **Assertion:** We test that `chat "@Guide explain X"` correctly maps the simulated vector payload into the *System Prompt Payload* without syntax breakage, guaranteeing the backend routing is physically correct without executing an LLM token.
+
+**2. Evaluative Ground-Truth Simulations (LLM-as-a-Judge)**
+- **Method:** We define `N` golden static contexts (e.g., "The CLI is launched via npx tsx"). We feed this explicitly into a simulated RAG context for `@Guide`, and assert the response.
+- **Assertion:** Instead of exact string matching `expect(res === "npx tsx")`, we execute a secondary `dissonance/similarity` function (or a fast lightweight LLM pass) querying: `Does the output factually contain the command execution instruction?`.
+
+**3. Safety & Telemetry Boundary Validations**
+- **Method:** Track the physical state emitted by the Guide across multi-turn REPL streams.
+- **Assertion:** Validate that explicit citations (e.g., `[Source: document.md]`) are formatted natively in the `produces_artefact` JSON structures, ensuring trace-ability for all knowledge generation.
+
+---
+
+## 5. Phase 9: Operator Issue & Complaint Tracking (Roadmap)
+
+To fully support our Documentation commitments from earlier sessions, the `@Operator` must have native DB integration mapping to a secure issue-tracking system.
+
+**Roadmap Implementation:**
+1. **D1 Schema Extension:** Create `issues` table `(id, user_id, title, status, operator_notes)`.
+2. **CLI Admin Subsystem:** Implement `cr admin issues [list, view <id>, resolve <id>]`.
+3. **Operator Runtime Skill:** Inject an `@Operator` tool definition `collect_complaint(user, payload)` that parses user conversational complaints and writes them structrually.
+4. **E2E Validation:** Formally add a `simulate` sequence mirroring a user complaining, the `@Operator` creating a ticket, and `cr admin issues list` tracking the artefact output.
+
+---
+
+## 6. Phase 10: Unified Artefact RAG Boundaries (Urgent Vector Boundary Isolation)
+
+Currently, the single monolithic Cloudflare Vectorize index (`env.VECTORIZE`) aggregates System Documentation, User Session Memory, and Raw Code Artefacts indiscriminately. This causes semantic bleed where the `@Guide` might hallucinate instructions based on a user's past conversational memory instead of actual source documentation.
+
+**Roadmap Implementation:**
+We must unify *all* physical contexts (System Documentation, Executable Skills, and Code Snippets) strictly under the formal `Artefact Manager` domain namespace, segmenting purely via metadata (`type` and `ownership`).
+
+1. **Namespace Refactor (`generateSessionEmbeddings`):**
+   - Inject mandatory Vectorize filters mirroring the Artefact D1 Schema: `{ domain: 'artefact', type: 'documentation' | 'skill' | 'session_memory', ownership: 'system' | 'user_id' }` alongside the `values`.
+
+2. **Persona Query Isolation (`aiService.ts`):**
+   - RAG queries by `@Guide` **MUST** explicitly restrict to `{ filter: { domain: 'artefact', type: 'documentation', ownership: 'system' } }`. This math boundary locks the Agent specifically to the System Truth.
+   - Long-context session / global history checks by the user **MUST** restrict `{ filter: { domain: 'artefact', ownership: currentId } }` preventing cross-user bleed.
+   
+3. **Database Hook Tracing Tests (`__tests__/guide.test.ts`):**
+   - Explicitly update our new Mock proxy bindings checking the RAG pipeline to verify its `.query()` injection logic strictly passes the `type: documentation` filter parameter natively.
+   
+4. **Local Sync Bloat Mitigation (`sync.ts`):**
+   - Patch the D1 daemon polling logic to mathematically ignore pulling down artefacts where `ownership === 'system'` to local SQLite clients unless explicitly requested, preventing heavy data bloats.
+
+---
+
 ## User Review Required
 
 > [!IMPORTANT]
