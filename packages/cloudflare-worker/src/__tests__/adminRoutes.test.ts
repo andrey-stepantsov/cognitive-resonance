@@ -199,4 +199,168 @@ describe('E2E: Edge Super-Admin Proxy', () => {
     const response = await worker.fetch(request, makeEnv(mockDB, '[\"default\"]'), makeCtx());
     expect(response.status).toBe(400);
   });
+
+  describe('Health and System Endpoints', () => {
+    it('returns healthy status when DB and AI are available', async () => {
+      const mockDB = {
+        prepare: vi.fn().mockImplementation(() => ({
+          first: vi.fn().mockResolvedValue({ 1: 1 })
+        }))
+      };
+      
+      const envWithAI = { ...makeEnv(mockDB, '[\"default\"]'), AI: {} };
+      const request = new Request('http://localhost/api/admin/health', {
+        method: 'GET',
+        headers: { 'x-api-key': TEST_API_KEY },
+      });
+  
+      const response = await worker.fetch(request, envWithAI, makeCtx());
+      expect(response.status).toBe(200);
+      const data = await response.json() as any;
+      expect(data.status).toBe('healthy');
+      expect(data.components.database).toBe('ok');
+      expect(data.components.ai_binding).toBe('ok');
+    });
+
+    it('returns unhealthy status when DB fails', async () => {
+      const mockDB = {
+        prepare: vi.fn().mockImplementation(() => ({
+          first: vi.fn().mockRejectedValue(new Error('DB Offline'))
+        }))
+      };
+      
+      const request = new Request('http://localhost/api/admin/health', {
+        method: 'GET',
+        headers: { 'x-api-key': TEST_API_KEY },
+      });
+  
+      const response = await worker.fetch(request, makeEnv(mockDB, '[\"default\"]'), makeCtx());
+      expect(response.status).toBe(500);
+      const data = await response.json() as any;
+      expect(data.status).toBe('unhealthy');
+      expect(data.error).toBe('DB Offline');
+    });
+  });
+
+  describe('Sandboxes Endpoint', () => {
+    it('returns active sandboxes correctly', async () => {
+       const mockDB = {
+        prepare: vi.fn().mockImplementation(() => ({
+          all: vi.fn().mockResolvedValue({ results: [{ id: '123', user_id: 'abc', estimated_tokens: 100, timestamp: 1234 }] })
+        }))
+      };
+      const request = new Request('http://localhost/api/admin/sandboxes', {
+        method: 'GET',
+        headers: { 'x-api-key': TEST_API_KEY },
+      });
+      const response = await worker.fetch(request, makeEnv(mockDB, '[\"default\"]'), makeCtx());
+      expect(response.status).toBe(200);
+      const data = await response.json() as any;
+      expect(data.sessions[0].id).toBe('123');
+    });
+
+    it('handles sandbox DB errors', async () => {
+       const mockDB = {
+        prepare: vi.fn().mockImplementation(() => ({
+          all: vi.fn().mockRejectedValue(new Error('fail'))
+        }))
+      };
+      const request = new Request('http://localhost/api/admin/sandboxes', {
+        method: 'GET',
+        headers: { 'x-api-key': TEST_API_KEY },
+      });
+      const response = await worker.fetch(request, makeEnv(mockDB, '[\"default\"]'), makeCtx());
+      expect(response.status).toBe(500);
+    });
+  });
+
+  describe('Bot and User Registration Endpoints', () => {
+    beforeEach(() => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, text: () => Promise.resolve('ok') } as any);
+    });
+
+    it('registers a bot token', async () => {
+      const mockDB = {
+        prepare: vi.fn().mockImplementation(() => ({
+          bind: vi.fn().mockImplementation(() => ({ run: vi.fn().mockResolvedValue({}) }))
+        }))
+      };
+      const request = new Request('http://localhost/api/admin/bot/register', {
+        method: 'POST',
+        headers: { 'x-api-key': TEST_API_KEY },
+        body: JSON.stringify({ userId: 'abc', botToken: '123:abc' })
+      });
+      const response = await worker.fetch(request, makeEnv(mockDB, '[\"default\"]'), makeCtx());
+      expect(response.status).toBe(200);
+      const data = await response.json() as any;
+      expect(data.ok).toBe(true);
+    });
+
+    it('rejects bot registration without parameters', async () => {
+      const mockDB = { prepare: vi.fn() };
+      const request = new Request('http://localhost/api/admin/bot/register', {
+        method: 'POST',
+        headers: { 'x-api-key': TEST_API_KEY },
+        body: JSON.stringify({})
+      });
+      const response = await worker.fetch(request, makeEnv(mockDB, '[\"default\"]'), makeCtx());
+      expect(response.status).toBe(400);
+    });
+
+    it('handles bot registration DB errors', async () => {
+       const mockDB = {
+        prepare: vi.fn().mockImplementation(() => ({
+          bind: vi.fn().mockImplementation(() => ({ run: vi.fn().mockRejectedValue(new Error('fail')) }))
+        }))
+      };
+      const request = new Request('http://localhost/api/admin/bot/register', {
+        method: 'POST',
+        headers: { 'x-api-key': TEST_API_KEY },
+        body: JSON.stringify({ userId: 'abc', botToken: '123:abc' })
+      });
+      const response = await worker.fetch(request, makeEnv(mockDB, '[\"default\"]'), makeCtx());
+      expect(response.status).toBe(500);
+    });
+
+    it('links a telegram user', async () => {
+      const mockDB = {
+        prepare: vi.fn().mockImplementation(() => ({
+          bind: vi.fn().mockImplementation(() => ({ run: vi.fn().mockResolvedValue({}) }))
+        }))
+      };
+      const request = new Request('http://localhost/api/admin/users/telegram-link', {
+        method: 'POST',
+        headers: { 'x-api-key': TEST_API_KEY },
+        body: JSON.stringify({ userId: 'abc', tgUserId: '123456' })
+      });
+      const response = await worker.fetch(request, makeEnv(mockDB, '[\"default\"]'), makeCtx());
+      expect(response.status).toBe(200);
+    });
+
+    it('rejects telegram link without parameters', async () => {
+      const mockDB = { prepare: vi.fn() };
+      const request = new Request('http://localhost/api/admin/users/telegram-link', {
+        method: 'POST',
+        headers: { 'x-api-key': TEST_API_KEY },
+        body: JSON.stringify({})
+      });
+      const response = await worker.fetch(request, makeEnv(mockDB, '[\"default\"]'), makeCtx());
+      expect(response.status).toBe(400);
+    });
+
+    it('handles telegram link DB errors', async () => {
+       const mockDB = {
+        prepare: vi.fn().mockImplementation(() => ({
+          bind: vi.fn().mockImplementation(() => ({ run: vi.fn().mockRejectedValue(new Error('fail')) }))
+        }))
+      };
+      const request = new Request('http://localhost/api/admin/users/telegram-link', {
+        method: 'POST',
+        headers: { 'x-api-key': TEST_API_KEY },
+        body: JSON.stringify({ userId: 'abc', tgUserId: '123' })
+      });
+      const response = await worker.fetch(request, makeEnv(mockDB, '[\"default\"]'), makeCtx());
+      expect(response.status).toBe(500);
+    });
+  });
 });

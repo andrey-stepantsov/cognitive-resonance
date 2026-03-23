@@ -30,6 +30,8 @@ describe('E2E: Admin CLI Commands', () => {
 
     afterEach(() => {
         try { fs.unlinkSync(TOKEN_FILE_PATH); } catch(e) {}
+        delete process.env.CR_ENV;
+        delete process.env.CR_ADMIN_VAULT;
         vi.restoreAllMocks();
     });
 
@@ -110,5 +112,44 @@ describe('E2E: Admin CLI Commands', () => {
         expect(thrownError?.message).toBe('MOCKED_PROCESS_EXIT_CODE_1');
         expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('❌ Failed to revoke: 403 Forbidden'));
         expect(consoleError).toHaveBeenCalledWith('Forbidden: Super Admin only');
+    });
+
+    it('supports the --env flag to set admin vault path', async () => {
+        global.fetch = vi.fn().mockImplementation(async () => ({ ok: true, json: async () => ({}) }));
+        await program.parseAsync(['node', 'cr', 'admin', '--env', 'prod', 'sandbox', 'list']);
+        expect(process.env.CR_ENV).toBe('prod');
+        expect(process.env.CR_ADMIN_VAULT).toContain('.keys/prod');
+    });
+
+    it('lists cloud sandboxes', async () => {
+        global.fetch = vi.fn().mockImplementation(async (url: string) => {
+            if (url.includes('/api/auth/exchange')) {
+                return { ok: true, json: async () => ({ token: 'mock-session-token' }) };
+            }
+            if (url.includes('/api/admin/sandboxes')) {
+               return {
+                  ok: true,
+                  json: async () => ({ sessions: [{ id: '123' }] })
+               };
+            }
+            return { ok: false };
+        });
+
+        await program.parseAsync(['node', 'cr', 'admin', 'sandbox', 'list']);
+        expect(consoleLog).toHaveBeenCalledWith('✅ Active Cloud Sandboxes:');
+        expect(consoleLog).toHaveBeenCalledWith(expect.stringContaining('123'));
+    });
+
+    it('gracefully handles missing keys when minting', async () => {
+        const originalVault = process.env.CR_ADMIN_VAULT;
+        process.env.CR_ADMIN_VAULT = '/path/to/non/existent/vault/dir_test_42';
+        let thrownError;
+        try {
+            await program.parseAsync(['node', 'cr', 'admin', 'keys', 'mint', 'testuser']);
+        } catch (e: any) {
+            thrownError = e;
+        }
+        expect(process.exit).toHaveBeenCalledWith(1);
+        expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('Private key not found at'));
     });
 });

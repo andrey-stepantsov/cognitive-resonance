@@ -784,7 +784,7 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
               try {
                   io.print(`[System] Fetching health metrics from Edge API...`);
                   const { backendFetch } = require('../utils/api');
-                  const res = await backendFetch('/api/system/health');
+                  const res = await backendFetch('/api/admin/health');
                   const data = await res.json();
                   io.print('\n[SRE] System Health:\n' + JSON.stringify(data, null, 2));
                   chatHistory.push({ role: 'user', content: '[System] SRE executed /health locally.' });

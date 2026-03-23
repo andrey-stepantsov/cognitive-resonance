@@ -69,7 +69,8 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
                  "• `@Guide` - Questions about architecture, RAG, and codebase.\n" +
                  "• `@Operator` - System admin (metrics, caching, identity).\n" +
                  "• `@SRE` - Analytics, red-teaming, cost forecasting.\n\n" +
-                 "Use `/agents` to list all edge personas, `/multiplayer` for group info, or `/promote <agent>` to set a default for this             await sendTelegramMessage(chatId, helpMsg, botToken, env);
+                 "Use `/agents` to list all edge personas, `/multiplayer` for group info, or `/promote <agent>` to set a default for this chat.";
+             await sendTelegramMessage(chatId, helpMsg, botToken, env);
              return new Response('OK', { status: 200 });
          }
          if (cmd === '/agents') {
@@ -204,7 +205,7 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
          }
       } else if (isDelegatedToLocal && shouldTriggerAI) {
          logger.info(`Delegated to local agent/host: ${JSON.stringify(routingIntents)}. Skipping Edge AI.`);
-         await sendTelegramMessage(chatId, `_Dispatched to local @${targetAgent || 'default'} host. Awaiting response..._`, botToken, env);aiting response..._`, botToken);
+         await sendTelegramMessage(chatId, `_Dispatched to local @${targetAgent || 'default'} host. Awaiting response..._`, botToken, env);
       }
 
     } catch (err: any) {

@@ -59,7 +59,7 @@ export async function handleAdminAPI(request: Request, env: Env): Promise<Respon
     }
   }
 
-  if (request.method === 'GET' && path === '/api/system/health') {
+  if (request.method === 'GET' && path === '/api/admin/health') {
     try {
       const dbCheck = await env.DB.prepare("SELECT 1").first();
       const aiCheck = env.AI ? 'ok' : 'missing';
