@@ -1,23 +1,23 @@
 import { Command } from 'commander';
-import { IoAdapter, DefaultIoAdapter } from '../utils/IoAdapter';
-import { initGemini, generateResponse, fetchModels } from '@cr/core/src/services/GeminiService';
+import { IoAdapter, DefaultIoAdapter } from '../utils/IoAdapter.js';
+import { initGemini, generateResponse, fetchModels } from '@cr/core/src/services/GeminiService.js';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
-import { DatabaseEngine } from '../db/DatabaseEngine';
-import { parseCommand, CommandAction, parseMentions, parseDslRouting } from '@cr/core/src/services/CommandParser';
-import { GemProfiles } from '../services/GemRegistry';
-import { ArtefactManager } from '@cr/core/src/services/ArtefactManager';
-import { Materializer } from '@cr/core/src/services/Materializer';
+import { DatabaseEngine } from '../db/DatabaseEngine.js';
+import { parseCommand, CommandAction, parseMentions, parseDslRouting } from '@cr/core/src/services/CommandParser.js';
+import { GemProfiles } from '../services/GemRegistry.js';
+import { ArtefactManager } from '@cr/core/src/services/ArtefactManager.js';
+import { Materializer } from '@cr/core/src/services/Materializer.js';
 import { exec } from 'child_process';
 import chalk from 'chalk';
 import { highlight } from 'cli-highlight';
 const markdown = require('cli-markdown');
 import * as vm from 'vm';
-import { runSyncDaemon } from './serve';
-import { backendFetch } from '../utils/api';
-import { readStdin } from '../utils/prompt';
-import { handleInteractiveCommand, CLIRuntimeState } from '../controllers/CommandHandlers';
+import { runSyncDaemon } from './serve.js';
+import { backendFetch } from '../utils/api.js';
+import { readStdin } from '../utils/prompt.js';
+import { handleInteractiveCommand, CLIRuntimeState } from '../controllers/CommandHandlers.js';
 
 // Helper to rehydrate chat history from the database
 function loadSessionFromDB(db: DatabaseEngine, sessionId: string, io: IoAdapter): { role: string; content: string }[] {
@@ -204,6 +204,7 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
           io.print(rendered);
           io.print(`\n[Dissonance: ${responsePayload.dissonanceScore}/100]`);
         }
+        process.exit(0);
         return;
       }
 
