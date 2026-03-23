@@ -7,6 +7,7 @@ export default defineConfig({
     environment: 'node',
     setupFiles: ['./setup.ts'],
     testTimeout: 30000,
+    fileParallelism: false,
   },
   resolve: {
     alias: {

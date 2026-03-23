@@ -1,0 +1,19 @@
+{
+  "name": "@cr/admin-cli",
+  "version": "1.0.0",
+  "private": true,
+  "bin": {
+    "cr-admin": "./bin/cr-admin.js"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "commander": "^12.0.0",
+    "@cr/admin-core": "^1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.4",
+    "@types/node": "^20.0.0"
+  }
+}
