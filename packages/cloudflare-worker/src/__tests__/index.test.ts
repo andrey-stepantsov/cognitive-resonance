@@ -849,7 +849,7 @@ describe('generateSessionEmbeddings', () => {
     expect(upsertArgs).toEqual([{
       id: 'session-abc',
       values: [0.1, 0.2, 0.3],
-      metadata: { sessionId: 'session-abc', userId: 'default' },
+      metadata: { sessionId: 'session-abc', userId: 'default', domain: 'artefact', type: 'session_memory', ownership: 'default' },
     }]);
   });
 
@@ -1120,7 +1120,7 @@ describe('/api/search endpoint', () => {
     expect(mockAI.run).toHaveBeenCalledWith('@cf/baai/bge-base-en-v1.5', { text: ['authentication'] });
 
     // Verify Vectorize was queried with the embedding
-    expect(mockVectorize.query).toHaveBeenCalledWith([0.1, 0.2, 0.3], { topK: 10, filter: { userId: 'default' } });
+    expect(mockVectorize.query).toHaveBeenCalledWith([0.1, 0.2, 0.3], { topK: 10, filter: { domain: 'artefact', ownership: 'default' } });
   });
 
   it('respects custom limit parameter', async () => {
@@ -1141,7 +1141,7 @@ describe('/api/search endpoint', () => {
       makeCtx(),
     );
 
-    expect(mockVectorize.query).toHaveBeenCalledWith([0.1], { topK: 5, filter: { userId: 'default' } });
+    expect(mockVectorize.query).toHaveBeenCalledWith([0.1], { topK: 5, filter: { domain: 'artefact', ownership: 'default' } });
   });
 
   it('caps limit at 50', async () => {
@@ -1162,7 +1162,7 @@ describe('/api/search endpoint', () => {
       makeCtx(),
     );
 
-    expect(mockVectorize.query).toHaveBeenCalledWith([0.1], { topK: 50, filter: { userId: 'default' } });
+    expect(mockVectorize.query).toHaveBeenCalledWith([0.1], { topK: 50, filter: { domain: 'artefact', ownership: 'default' } });
   });
 
   it('filters out Vectorize matches that are missing from D1', async () => {

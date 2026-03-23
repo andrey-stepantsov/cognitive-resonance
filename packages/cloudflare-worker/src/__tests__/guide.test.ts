@@ -113,6 +113,12 @@ describe('Guide Persona RAG Injection', () => {
 
     await processAiQueueJob(job, mockEnv as any);
 
+    // Assert that Vectorize was explicitly queried with the metadata filters matching the System Architecture
+    expect(mockVectorize.query).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ filter: { domain: 'artefact', type: 'documentation', ownership: 'system' } })
+    );
+
     // Assert that fetch was called twice (tool request + tool response)
     expect(global.fetch).toHaveBeenCalledTimes(2);
 

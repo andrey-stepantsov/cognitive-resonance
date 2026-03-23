@@ -185,7 +185,7 @@ export async function processAiQueueJob(job: any, env: Env) {
              let chunks = 'No matching chunks found in Vectorize.';
              
              if (vector && env.VECTORIZE && env.VECTORIZE.query) {
-                 const matches = await env.VECTORIZE.query(vector, { topK: 3 });
+                 const matches = await env.VECTORIZE.query(vector, { topK: 3, filter: { domain: 'artefact', type: 'documentation', ownership: 'system' } });
                  if (matches?.matches && matches.matches.length > 0) {
                      // The actual text payload is stored in metadata.content (which we built in Phase 1)
                      const topMatches = matches.matches.filter((m: any) => m.score > 0.5);

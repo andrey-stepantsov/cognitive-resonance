@@ -593,7 +593,7 @@ export async function generateSessionEmbeddings(
     await env.VECTORIZE.upsert([{
       id: sessionId,
       values: vector,
-      metadata: { sessionId, userId },
+      metadata: { sessionId, userId, domain: 'artefact', type: 'session_memory', ownership: userId },
     }]);
   } catch (err) {
     logger.error(`[Vectorize] Failed to embed session ${sessionId}:`, err);
@@ -628,7 +628,7 @@ async function handleSearchAPI(request: Request, env: Env, userId: string): Prom
   const topK = Math.min(parseInt(url.searchParams.get('limit') || '10'), 50);
   const matches = await env.VECTORIZE.query(queryVector, {
     topK,
-    filter: { userId },
+    filter: { domain: 'artefact', ownership: userId },
   });
 
   if (!matches?.matches?.length) {
