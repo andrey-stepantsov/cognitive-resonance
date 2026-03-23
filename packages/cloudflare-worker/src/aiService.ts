@@ -55,7 +55,7 @@ export async function processAiQueueJob(job: any, env: Env) {
      let isAdmin = false;
 
      if (targetAgent === 'guide') {
-         sysText = "You are the @Guide persona, the conceptual educator for Cognitive Resonance. You help users understand the architecture and onboarding process. You MUST use the `queryVectorSearch` tool to search the documentation whenever asked a question. If the document search returns poor results, state that you couldn't find a direct reference, but try to help using your base knowledge.";
+         sysText = "You are the @Guide persona, the conceptual educator for Cognitive Resonance. You help users understand the architecture and onboarding process.\n\nHere are the core CLI commands you MUST know and explain if asked 'help': `/help` (shows local CLI commands), `/login <email>`, `/session ls` (view active sessions), `/exec <cmd>` (execute shell in Sandbox), `/ls` (view virtual filesystem), `/read <file>` (inject file to context). For Edge Personas, users can type `@guide`, `@operator`, `@sre`, and `@trinity`.\n\nYou MUST use the `queryVectorSearch` tool to search the documentation whenever asked a question. If the document search returns poor results, state that you couldn't find a direct reference in the documentation. DO NOT guess or hallucinate CLI commands, scripts, or project structures that are not explicitly documented in the search results. Advise the user to use more specific keywords if the search fails.";
          tools.push({
              functionDeclarations: [{
                  name: 'queryVectorSearch',
@@ -352,22 +352,30 @@ export async function processAiQueueJob(job: any, env: Env) {
      ).run();
 
      // 5. Send Telegram Message back to user
-     const tgRow = await env.DB.prepare('SELECT bot_token FROM telegram_integrations WHERE user_id = ?').bind(userId).first();
-     if (tgRow && tgRow.bot_token) {
-        const tgId = sessionId.startsWith('tg_chat_') ? sessionId.replace('tg_chat_', '') : null;
-        if (tgId) {
-           await sendTelegramMessage(tgId, replyText, tgRow.bot_token as string);
-        }
+     try {
+         const tgRow = await env.DB.prepare('SELECT bot_token FROM telegram_integrations WHERE user_id = ?').bind(userId).first();
+         if (tgRow && tgRow.bot_token) {
+            const tgId = sessionId.startsWith('tg_chat_') ? sessionId.replace('tg_chat_', '') : null;
+            if (tgId) {
+               await sendTelegramMessage(tgId, replyText, tgRow.bot_token as string);
+            }
+         }
+     } catch (e) {
+         console.warn("[aiService] Skipped telegram push, integrations table missing or error:", e);
      }
 
   } catch (err: any) {
      console.error("Error processing AI Job:", err);
-     const tgRow = await env.DB.prepare('SELECT bot_token FROM telegram_integrations WHERE user_id = ?').bind(userId).first();
-     if (tgRow && tgRow.bot_token) {
-        const tgId = sessionId.startsWith('tg_chat_') ? sessionId.replace('tg_chat_', '') : null;
-        if (tgId) {
-           await sendTelegramMessage(tgId, `[⚠️ Edge AI Error: ${err.message}]`, tgRow.bot_token as string);
-        }
+     try {
+         const tgRow = await env.DB.prepare('SELECT bot_token FROM telegram_integrations WHERE user_id = ?').bind(userId).first();
+         if (tgRow && tgRow.bot_token) {
+            const tgId = sessionId.startsWith('tg_chat_') ? sessionId.replace('tg_chat_', '') : null;
+            if (tgId) {
+               await sendTelegramMessage(tgId, `[⚠️ Edge AI Error: ${err.message}]`, tgRow.bot_token as string);
+            }
+         }
+     } catch (e) {
+         // Silently ignore telegram broadcast failure
      }
   }
 }

@@ -25,24 +25,28 @@ Every push to the repository triggers our robust GitHub Actions matrix.
 ### Stage 1: The Verification Matrix (On PR Open)
 - **Code Quality**: `npm run lint` and `tsc --noEmit` across all workspaces.
 - **Unit & Integration Testing**: `vitest run` executes all standard mathematical, parser, and IO unit tests.
-- **E2E Visual Regression (TerminalDirector)**: 
-  - The CI runner provisions an empty filesystem.
-  - Executes the headless `run_demo_recording.sh` pipelines (e.g., `record_git_import_export.ts`).
-  - *Constraint Check*: Ensures the output ASCII casts exactly match previous keyframes (or succeeds without throwing/hanging), proving that AI parsing, REPL IO, and the Materializer sandbox have not functionally broken.
+- **Preview Environments**: Automatically spins up an ephemeral Cloudflare Worker (e.g., `cr-vector-pipeline-preview-pr-123`) using the shared staging D1 database and Vectorize index to avoid hitting Cloudflare API limits. Teardowns are handled automatically on PR merge/close.
 
 ### Stage 2: The Staging Deployment (On push to `main`)
 Once code merges to `main`, the pipeline automatically promotes to Staging.
-- **Backend Sync**: Runs `wrangler deploy --env staging` to push the latest Durable Object state to the staging Worker (e.g., `api-staging.andrey-stepantsov.workers.dev`).
-- **NPM "Next" Channel**: The CLI and Core packages are automatically compiled and published to the NPM registry appended with the `@next` tag (e.g., `npm publish --tag next`). 
-- **Internal Dogfooding**: Core developers update their global binaries using `npm i -g @cr/cli@next` to functionally test the bleeding-edge features against the Staging Edge before they are fully finalized.
+- **Backend Sync**: Runs `npm run provision:staging` followed by `wrangler deploy --env staging` to push the latest Durable Object state to the staging Worker (e.g., `cr-vector-pipeline-staging.andrey-stepantsov.workers.dev`).
+- **NPM "Next" Channel**: The CLI and Core packages are automatically compiled and published to the NPM registry appended with the `@next` tag. 
 
-### Stage 3: The Production Release (On Version Tag `v*.*.*`)
-When a changeset release branch is merged:
-- **Production Edge Promotion**: The pipeline executes `wrangler deploy --env production`, linking the immutable D1 database and routing traffic to the global production Worker (e.g., `api.andrey-stepantsov.workers.dev`).
-- **NPM Stable Release**: The binaries drop their prerelease tags and are formally published as `@latest` to the public registry.
-- **VS Code Marketplace**: The `vsce publish` action successfully submits the compiled `apps/extension` payload to the Microsoft Marketplace.
+### Stage 3: The Production Release (On push to `production` branch)
+When a release is ready, changes are PR'd into the protected `production` branch:
+- **Production Edge Promotion**: The pipeline executes `wrangler deploy --env production`, linking the immutable D1 database and routing traffic to the global production Worker (e.g., `cr-vector-pipeline.andrey-stepantsov.workers.dev`).
+- **NPM Stable Release**: The binaries drop their prerelease tags and are formally published as `@latest`.
+- **Smoke Tests**: Runs automated smoke tests against the production edge API to verify deployment viability.
 
-## 4. Environment Variables & Safety Overrides
+## 4. Identity Isolation & Visual Cues
+
+To strictly isolate production from development/staging, Cognitive Resonance implements physical environment segregation and clear visual markers:
+
+* **Ed25519 Identity Isolation**: Staging and Production edges utilize completely separate asymmetric cryptographic keypairs (`.keys/dev/` vs `.keys/prod/`). Admin commands execution (`cr admin`) enforce isolation via the `--env <dev|prod|preview>` flag. The Edge workers verify identities exclusively against their configured `CR_PUBLIC_KEY`.
+* **Database & Vector Separation**: Staging infrastructure operates on distinct resources (e.g., `cr-sessions-staging` D1 database and `cr-sessions-index-staging` Vectorize index).
+* **DEV Visual Cues**: When operating against Staging or Local environments, the CLI explicitly injects a `[DEV 🧪]` prefix in the terminal prompt. PWA interfaces display watermarks and header badges to prevent operators from executing destructive commands in the wrong context. Outstanding outbound Telegram bot messages also append a DEV tag indicator.
+
+## 5. Environment Variables & Safety Overrides
 
 To completely isolate production D1 databases from rogue developer testing AI loops, the frontend clients (CLI/Extension) actively check for routing overrides:
 

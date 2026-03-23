@@ -69,8 +69,7 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
                  "• `@Guide` - Questions about architecture, RAG, and codebase.\n" +
                  "• `@Operator` - System admin (metrics, caching, identity).\n" +
                  "• `@SRE` - Analytics, red-teaming, cost forecasting.\n\n" +
-                 "Use `/agents` to list all edge personas, `/multiplayer` for group info, or `/promote <agent>` to set a default for this chat.";
-             await sendTelegramMessage(chatId, helpMsg, botToken);
+                 "Use `/agents` to list all edge personas, `/multiplayer` for group info, or `/promote <agent>` to set a default for this             await sendTelegramMessage(chatId, helpMsg, botToken, env);
              return new Response('OK', { status: 200 });
          }
          if (cmd === '/agents') {
@@ -79,31 +78,31 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
                  "2. `@Operator`: Operations / Admin.\n" +
                  "3. `@SRE`: Red-Teaming / Costs.\n\n" +
                  "_Note: Local personas (@coder, @architect) require the CLI daemon `cr serve` running locally._";
-             await sendTelegramMessage(chatId, agentsMsg, botToken);
+             await sendTelegramMessage(chatId, agentsMsg, botToken, env);
              return new Response('OK', { status: 200 });
          }
          if (cmd === '/multiplayer') {
              const mpMsg = "🌍 *Multiplayer Sessions*\n\n" +
                  "Add me to a Telegram group! I will build a shared memory graph. " +
                  "To trigger a response in a group, you *must* explicitly ping an agent (e.g. `@guide what do you think?`). Un-pinged messages are just committed to the memory graph silently.";
-             await sendTelegramMessage(chatId, mpMsg, botToken);
+             await sendTelegramMessage(chatId, mpMsg, botToken, env);
              return new Response('OK', { status: 200 });
          }
          if (cmd === '/memory') {
              const row = await env.DB.prepare('SELECT estimated_tokens FROM sessions WHERE id = ?').bind(sessionId).first();
              const numTokens = row?.estimated_tokens || 0;
-             await sendTelegramMessage(chatId, `🧠 *Memory Graph Size*: ~${numTokens} tokens.\n\n(Threshold for deep-compilation is 6,000 tokens)`, botToken);
+             await sendTelegramMessage(chatId, `🧠 *Memory Graph Size*: ~${numTokens} tokens.\n\n(Threshold for deep-compilation is 6,000 tokens)`, botToken, env);
              return new Response('OK', { status: 200 });
          }
          if (cmd === '/clear') {
              await env.DB.prepare('DELETE FROM sessions WHERE id = ?').bind(sessionId).run();
              await env.DB.prepare('DELETE FROM events WHERE session_id = ?').bind(sessionId).run();
-             await sendTelegramMessage(chatId, `🧹 *Memory cleared*. The context graph for this chat has been flushed.`, botToken);
+             await sendTelegramMessage(chatId, `🧹 *Memory cleared*. The context graph for this chat has been flushed.`, botToken, env);
              return new Response('OK', { status: 200 });
          }
          if (cmd === '/model') {
              if (!args) {
-                 await sendTelegramMessage(chatId, `Please specify a model. Example: \`/model gemini-2.5-pro\``, botToken);
+                 await sendTelegramMessage(chatId, `Please specify a model. Example: \`/model gemini-2.5-pro\``, botToken, env);
                  return new Response('OK', { status: 200 });
              }
              let config = {};
@@ -113,12 +112,12 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
              await env.DB.prepare('INSERT INTO sessions (id, timestamp, config, user_id) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(id) DO UPDATE SET config = ?3').bind(
                  sessionId, Date.now(), JSON.stringify(config), ownerId
              ).run();
-             await sendTelegramMessage(chatId, `⚙️ Active LLM switched to \`${args}\` for this chat.`, botToken);
+             await sendTelegramMessage(chatId, `⚙️ Active LLM switched to \`${args}\` for this chat.`, botToken, env);
              return new Response('OK', { status: 200 });
          }
          if (cmd === '/promote') {
              if (!args) {
-                 await sendTelegramMessage(chatId, `Please specify an agent to promote. Example: \`/promote operator\``, botToken);
+                 await sendTelegramMessage(chatId, `Please specify an agent to promote. Example: \`/promote operator\``, botToken, env);
                  return new Response('OK', { status: 200 });
              }
              const target = args.replace('@', '').toLowerCase().trim();
@@ -128,10 +127,10 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
              
              if (target === 'none' || target === 'clear') {
                  delete (config as any).defaultAgent;
-                 await sendTelegramMessage(chatId, `⚙️ Promoted agent cleared. Reverting to base Agent.`, botToken);
+                 await sendTelegramMessage(chatId, `⚙️ Promoted agent cleared. Reverting to base Agent.`, botToken, env);
              } else {
                  (config as any).defaultAgent = target;
-                 await sendTelegramMessage(chatId, `👑 Promoted \`@${target}\` as the default agent for this chat.`, botToken);
+                 await sendTelegramMessage(chatId, `👑 Promoted \`@${target}\` as the default agent for this chat.`, botToken, env);
              }
              await env.DB.prepare('INSERT INTO sessions (id, timestamp, config, user_id) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(id) DO UPDATE SET config = ?3').bind(
                  sessionId, Date.now(), JSON.stringify(config), ownerId
@@ -139,7 +138,7 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
              return new Response('OK', { status: 200 });
          }
       }
-
+      
       const eventId = crypto.randomUUID();
       const timestamp = Date.now();
       
@@ -205,7 +204,7 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
          }
       } else if (isDelegatedToLocal && shouldTriggerAI) {
          logger.info(`Delegated to local agent/host: ${JSON.stringify(routingIntents)}. Skipping Edge AI.`);
-         await sendTelegramMessage(chatId, `_Dispatched to local @${targetAgent || 'default'} host. Awaiting response..._`, botToken);
+         await sendTelegramMessage(chatId, `_Dispatched to local @${targetAgent || 'default'} host. Awaiting response..._`, botToken, env);aiting response..._`, botToken);
       }
 
     } catch (err: any) {
@@ -217,8 +216,12 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
   return new Response('OK', { status: 200 });
 }
 
-export async function sendTelegramMessage(chatId: string | number, text: string, botToken?: string) {
+export async function sendTelegramMessage(chatId: string | number, text: string, botToken?: string, env?: Env) {
   if (!botToken) return;
+  let finalText = text;
+  if (env && env.CR_ENV === 'staging') {
+      finalText = `[DEV 🧪]\n${text}`;
+  }
   const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
   try {
      const resp = await fetch(url, {
@@ -226,7 +229,7 @@ export async function sendTelegramMessage(chatId: string | number, text: string,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
            chat_id: chatId,
-           text: text,
+           text: finalText,
            parse_mode: 'Markdown'
         })
      });

@@ -341,6 +341,9 @@ export default function App() {
           <h1 className="text-sm font-semibold tracking-wide text-zinc-100 flex items-center gap-2">
             Cognitive Resonance
             <span className="px-2 py-0.5 bg-zinc-800 text-zinc-400 rounded text-[10px] font-mono border border-zinc-700/50">v1.0.0</span>
+            {(import.meta.env.DEV || window.location.hostname.includes('localhost') || window.location.hostname.includes('staging')) && (
+              <span className="px-2 py-0.5 bg-amber-500/10 text-amber-500 rounded text-[10px] font-bold tracking-wider border border-amber-500/20 animate-pulse shadow-lg">DEV 🧪</span>
+            )}
           </h1>
         </div>
         <div className="flex items-center gap-2">
@@ -401,6 +404,15 @@ export default function App() {
       </header>
 
       <div className="flex h-full w-full bg-[#0a0a0a] text-zinc-100 font-sans overflow-hidden relative">
+        {/* Background DEV Watermark */}
+        {(import.meta.env.DEV || window.location.hostname.includes('localhost') || window.location.hostname.includes('staging')) && (
+          <div className="absolute inset-0 pointer-events-none z-[1] flex items-center justify-center opacity-[0.03] overflow-hidden">
+            <div className="rotate-[-45deg] text-[15vw] font-black text-amber-500 whitespace-nowrap select-none">
+              STAGING / DEV
+            </div>
+          </div>
+        )}
+
         {app.isDissonancePanelOpen && <div className="fixed inset-0 bg-black/60 z-40 lg:hidden backdrop-blur-sm" onClick={() => app.setIsDissonancePanelOpen(false)} />}
 
         {/* Left Sidebar: Dissonance */}

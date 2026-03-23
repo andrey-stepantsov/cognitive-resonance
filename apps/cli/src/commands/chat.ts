@@ -263,7 +263,7 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
          return [hits, currentWord] as [string[], string];
       } else if (currentWord.startsWith('@')) {
          const term = currentWord.substring(1).toLowerCase();
-         const gemNames = Object.keys(GemProfiles);
+         const gemNames = [...Object.keys(GemProfiles), 'guide', 'operator', 'sre', 'trinity'];
          hits = gemNames.filter(name => name.toLowerCase().startsWith(term)).map(n => `@${n}`);
          return [hits, currentWord] as [string[], string];
       } else if (line.startsWith('/cat ') || line.startsWith('/read ') || line.startsWith('/ls ')) {
@@ -316,7 +316,8 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
     const updatePrompt = (nick?: string) => {
        if (nick) currentNick = nick;
        const focusStr = semanticFocus.length > 0 ? ` {\x1b[36m${semanticFocus.join(', ')}\x1b[0m}` : '';
-       rl.setPrompt(`\x1b[35mcr@${currentNick}\x1b[0m${focusStr}> `);
+       const devTag = (process.env.CR_ENV === 'dev' || process.env.CR_ENV === 'staging') ? ' \x1b[33m[DEV 🧪]\x1b[0m' : '';
+       rl.setPrompt(`\x1b[35mcr@${currentNick}\x1b[0m${focusStr}${devTag}> `);
     };
 
     // Attempt to load the user's nickname asynchronously to decorate the prompt
@@ -343,14 +344,15 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
         // TODO: [UX] Use a vibrant chalk color for the remote user nick specifically, to distinguish from standard logging.
         io.print(`${chalk.cyanBright(`[Remote User @${ev.actor}]`)} ${payload.text}`);
         chatHistory.push({ role: 'user', content: payload.text });
-      } else if (ev.type === 'AI_RESPONSE') {
+      } else if (ev.type === 'AI_RESPONSE' || (ev.type === 'message' && ev.actor !== 'LOCAL_USER' && ev.actor !== 'Human')) {
         const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
         // TODO: [UX] Colorize the AI Response explicitly, and format markdown snippets natively using libraries like `cli-markdown` or `marked-terminal`.
         let rendered = '';
-        try { rendered = markdown(payload.text); }
-        catch(e) { rendered = payload.text; }
+        const textContent = payload.text || payload.content || String(payload);
+        try { rendered = markdown(textContent); }
+        catch(e) { rendered = textContent; }
         io.print(`\n🤖 [@${ev.actor}]\n${rendered}\n`);
-        chatHistory.push({ role: 'assistant', content: payload.text });
+        chatHistory.push({ role: 'assistant', content: textContent });
       } else if (ev.type === 'ARTEFACT_PROPOSAL') {
         const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
         io.print(`[Remote Artefact] Proposal drafted for ${payload.path}`);
@@ -448,11 +450,11 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
             
             // Core package resolves path from dist.
             // When running locally: `__dirname` is apps/cli/dist/commands
-            // The public key resides in packages/core/src/scripts/.keys/ed25519.pub
-            const publicKeyPath = require('path').resolve(__dirname, '../../../../packages/core/src/scripts/.keys/ed25519.pub');
+            const envName = (process.env.CR_ENV === 'prod') ? 'prod' : 'dev';
+            const publicKeyPath = require('path').resolve(__dirname, `../../../../.keys/${envName}/ed25519.pub`);
             
             if (!require('fs').existsSync(publicKeyPath)) {
-                throw new Error('Public Key ed25519.pub not bundled in CLI. Cannot verify. (Developer: Please run mint_token.ts first)');
+                throw new Error(`Public Key ed25519.pub not bundled in CLI. Cannot verify. (Looking in .keys/${envName}/ed25519.pub)`);
             }
             
             const publicKey = require('crypto').createPublicKey(require('fs').readFileSync(publicKeyPath));
@@ -764,6 +766,50 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
                  skipAiLoop = true;
               }
           }
+          // Local Edge Persona Tools (intercept before routing to edge)
+          if (intent.agent === 'operator' && intent.rawCommand === '/sandbox ls') {
+              try {
+                  io.print(`[System] Fetching sandboxes from Edge API...`);
+                  const { backendFetch } = require('../utils/api');
+                  const res = await backendFetch('/api/admin/sandboxes');
+                  const data = await res.json();
+                  io.print('\n[Operator] Active Sandboxes:\n' + JSON.stringify(data, null, 2));
+                  chatHistory.push({ role: 'user', content: '[System] Operator executed /sandbox ls locally.' });
+                  chatHistory.push({ role: 'model', content: '[Operator] Active Sandboxes:\n' + JSON.stringify(data, null, 2) });
+              } catch(e) { io.printError('Operator sandbox check failed.'); }
+              skipAiLoop = true;
+          }
+
+          if (intent.agent === 'sre' && intent.rawCommand === '/health') {
+              try {
+                  io.print(`[System] Fetching health metrics from Edge API...`);
+                  const { backendFetch } = require('../utils/api');
+                  const res = await backendFetch('/api/system/health');
+                  const data = await res.json();
+                  io.print('\n[SRE] System Health:\n' + JSON.stringify(data, null, 2));
+                  chatHistory.push({ role: 'user', content: '[System] SRE executed /health locally.' });
+                  chatHistory.push({ role: 'model', content: '[SRE] System Health:\n' + JSON.stringify(data, null, 2) });
+              } catch(e) { io.printError('SRE Health check failed.'); }
+              skipAiLoop = true;
+          }
+          
+          const edgePersonas = ['guide', 'operator', 'sre', 'trinity'];
+          if (!skipAiLoop && intent.agent && edgePersonas.includes(intent.agent.toLowerCase())) {
+              io.print(`[System] Routing message to Edge Persona @${intent.agent}...`);
+              
+              const promptEventId = db.appendEvent({
+                  session_id: sessionId,
+                  timestamp: Date.now(),
+                  actor: 'LOCAL_USER',
+                  type: 'USER_PROMPT',
+                  payload: JSON.stringify({ text: text }),
+                  previous_event_id: lastEventId
+              });
+              lastEventId = promptEventId;
+              
+              chatHistory.push({ role: 'user', content: `[System] Skipped local LLM: Routed to @${intent.agent} on Edge.` });
+              skipAiLoop = true;
+          }
       }
 
       if (skipAiLoop) {
@@ -913,7 +959,7 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
           const dslIntents = parseDslRouting(response.reply);
           const agentHandoff = dslIntents.find(i => i.agent && GemProfiles[i.agent.toLowerCase()] && i.agent.toLowerCase() !== activeActor.toLowerCase());
           
-          let nextTargetGem = agentHandoff ? agentHandoff.agent.toLowerCase() : null;
+          let nextTargetGem: string | undefined | null = agentHandoff?.agent ? agentHandoff.agent.toLowerCase() : null;
           let handoffPayload = agentHandoff?.ast ? JSON.stringify(agentHandoff.ast) : null;
 
           if (!nextTargetGem) {

@@ -59,6 +59,35 @@ export async function handleAdminAPI(request: Request, env: Env): Promise<Respon
     }
   }
 
+  if (request.method === 'GET' && path === '/api/system/health') {
+    try {
+      const dbCheck = await env.DB.prepare("SELECT 1").first();
+      const aiCheck = env.AI ? 'ok' : 'missing';
+      return jsonResponse({
+         status: 'healthy',
+         timestamp: Date.now(),
+         components: {
+            database: dbCheck ? 'ok' : 'error',
+            ai_binding: aiCheck
+         }
+      });
+    } catch (e: any) {
+      return jsonResponse({ status: 'unhealthy', error: e.message }, 500);
+    }
+  }
+
+  if (request.method === 'GET' && path === '/api/admin/sandboxes') {
+    try {
+      // List active virtual memory graph sessions
+      const { results } = await env.DB.prepare(
+        "SELECT id, user_id, estimated_tokens, timestamp, config FROM sessions ORDER BY timestamp DESC LIMIT 50"
+      ).all();
+      return jsonResponse({ sessions: results });
+    } catch (e: any) {
+      return jsonResponse({ error: 'Database error' }, 500);
+    }
+  }
+
   if (request.method === 'POST' && path === '/api/admin/bot/register') {
     const body = await request.json() as any;
     if (!body.userId || !body.botToken) {

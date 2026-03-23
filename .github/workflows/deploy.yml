@@ -4,11 +4,17 @@ on:
   push:
     branches:
       - main
+      - production
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, closed]
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
   release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     name: Versioning & NPM Publish
     runs-on: ubuntu-latest
     steps:
@@ -16,18 +22,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
       - name: Install Dependencies
         run: npm ci
-
       - name: Build Packages
         run: npm run build --workspace=apps/cli
-
       - name: Create Release PR or Publish
         id: changesets
         uses: changesets/action@v1
@@ -38,29 +40,101 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  deploy-worker:
-    name: Provision & Deploy Edge Worker
+  deploy-staging:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    name: Provision & Deploy Staging Worker
     runs-on: ubuntu-latest
+    environment: dev
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
       - name: Install Dependencies
         run: npm ci
         
-      # The provisioning script uses local wrangler which requires the auth env vars
+      - name: Provision Staging Infrastructure
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: ./packages/cloudflare-worker/scripts/provision-staging.sh
+
+      - name: Deploy Staging Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: packages/cloudflare-worker
+          command: deploy --env staging
+
+  deploy-preview:
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    name: Deploy Feature Preview
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Dependencies
+        run: npm ci
+      - name: Deploy Preview Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: packages/cloudflare-worker
+          command: deploy --env staging --name cr-vector-pipeline-preview-pr-${{ github.event.pull_request.number }}
+
+  teardown-preview:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    name: Teardown Feature Preview
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Dependencies
+        run: npm ci
+      - name: Delete Preview Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: packages/cloudflare-worker
+          command: delete --name cr-vector-pipeline-preview-pr-${{ github.event.pull_request.number }}
+
+  deploy-production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/production'
+    name: Provision & Deploy Production Worker
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Dependencies
+        run: npm ci
+        
       - name: Provision Edge Infrastructure
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: ./packages/cloudflare-worker/scripts/provision-prod.sh
 
-      - name: Deploy Worker
+      - name: Deploy Production Worker
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}

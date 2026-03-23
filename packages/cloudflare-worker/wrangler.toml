@@ -6,19 +6,6 @@ compatibility_date = "2024-04-05"
 [ai]
 binding = "AI"
 
-[[vectorize]]
-binding = "VECTORIZE"
-index_name = "cr-sessions-index"
-
-[[r2_buckets]]
-binding = "GIT_PACKS_BUCKET"
-bucket_name = "cr-git-repos"
-
-[[d1_databases]]
-binding = "DB"
-database_name = "cr-sessions"
-database_id = "b8e08687-2036-4f95-8374-4cd8934fcacf"
-
 [durable_objects]
 bindings = [
   { name = "ROOM_SESSION", class_name = "RoomSession" }
@@ -28,13 +15,88 @@ bindings = [
 tag = "v1"
 new_sqlite_classes = ["RoomSession"]
 
-[[queues.producers]]
-binding = "AI_QUEUE"
-queue = "tg-ai-queue"
+[vars]
 
-[[queues.consumers]]
-queue = "tg-ai-queue"
+# ==========================================
+# STAGING ENVIRONMENT (main branch)
+# ==========================================
+[env.staging]
+name = "cr-vector-pipeline-staging"
+
+[env.staging.vars]
+CR_ENV = "staging"
+CR_PUBLIC_KEY = """-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAPLkDNs50RIheIUVXD29f0ovVbjUkt24w0kdrkj4I+XQ=
+-----END PUBLIC KEY-----"""
+
+[env.staging.ai]
+binding = "AI"
+
+[env.staging.durable_objects]
+bindings = [
+  { name = "ROOM_SESSION", class_name = "RoomSession" }
+]
+
+[[env.staging.vectorize]]
+binding = "VECTORIZE"
+index_name = "cr-sessions-index-staging"
+
+[[env.staging.r2_buckets]]
+binding = "GIT_PACKS_BUCKET"
+bucket_name = "cr-git-repos-staging"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "cr-sessions-staging"
+database_id = "13e6c8e9-3bae-4f3f-bbb2-f4526b3693d3"
+
+[[env.staging.queues.producers]]
+binding = "AI_QUEUE"
+queue = "tg-ai-queue-staging"
+
+[[env.staging.queues.consumers]]
+queue = "tg-ai-queue-staging"
 max_batch_size = 5
 max_batch_timeout = 10
 
-[vars]
+# ==========================================
+# PRODUCTION ENVIRONMENT (production branch)
+# ==========================================
+[env.production]
+name = "cr-vector-pipeline"
+
+[env.production.vars]
+CR_ENV = "prod"
+CR_PUBLIC_KEY = """-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAhwUq4GERIIrZfRonwksLMMzUC43afybpV6I+1kui4aE=
+-----END PUBLIC KEY-----"""
+
+[env.production.ai]
+binding = "AI"
+
+[env.production.durable_objects]
+bindings = [
+  { name = "ROOM_SESSION", class_name = "RoomSession" }
+]
+
+[[env.production.vectorize]]
+binding = "VECTORIZE"
+index_name = "cr-sessions-index"
+
+[[env.production.r2_buckets]]
+binding = "GIT_PACKS_BUCKET"
+bucket_name = "cr-git-repos"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "cr-sessions"
+database_id = "b8e08687-2036-4f95-8374-4cd8934fcacf"
+
+[[env.production.queues.producers]]
+binding = "AI_QUEUE"
+queue = "tg-ai-queue"
+
+[[env.production.queues.consumers]]
+queue = "tg-ai-queue"
+max_batch_size = 5
+max_batch_timeout = 10

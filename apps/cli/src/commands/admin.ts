@@ -6,7 +6,20 @@ import { backendFetch } from '../utils/api';
 
 export function registerAdminCommands(program: Command) {
   const adminCmd = program.command('admin', { hidden: true })
-    .description('Hidden super-admin commands');
+    .description('Hidden super-admin commands')
+    .option('-e, --env <environment>', 'Target environment (dev|staging|prod)', 'dev')
+    .hook('preSubcommand', (thisCommand) => {
+       const env = thisCommand.opts().env;
+       if (env) process.env.CR_ENV = env;
+       
+       if (!process.env.CR_ADMIN_VAULT) {
+           if (env === 'dev' || env === 'staging') {
+               process.env.CR_ADMIN_VAULT = path.resolve(process.cwd(), '.keys/dev');
+           } else if (env === 'prod') {
+               process.env.CR_ADMIN_VAULT = path.resolve(process.cwd(), '.keys/prod');
+           }
+       }
+    });
 
   const keysCmd = adminCmd.command('keys').description('Key management');
   
@@ -142,6 +155,41 @@ export function registerAdminCommands(program: Command) {
       } catch (e: any) {
         console.error(`[Error] ${e.message}`);
         process.exit(1);
+      }
+    });
+
+  const sandboxCmd = adminCmd.command('sandbox').description('Manage cloud sandboxes and preview environments');
+
+  sandboxCmd.command('list')
+    .description('List active cognitive sandboxes from the cloud edge')
+    .action(async () => {
+      try {
+        const res = await backendFetch('/api/admin/sandboxes', { method: 'GET' });
+        if (res.ok) {
+          const data = await res.json() as any;
+          console.log('✅ Active Cloud Sandboxes:');
+          console.log(JSON.stringify(data, null, 2));
+        } else {
+          console.error(`❌ Failed to list sandboxes: ${res.status} ${res.statusText}`);
+        }
+      } catch (e: any) { console.error(`[Error] ${e.message}`); }
+    });
+
+  adminCmd.command('preview')
+    .description('Preview environment management')
+    .command('delete <name>')
+    .description('Remove a deployed feature branch from Cloudflare')
+    .action((name) => {
+      console.log(`🗑️ Initiating teardown for Preview Environment: ${name}...`);
+      try {
+         const { execSync } = require('child_process');
+         // Use wrangler to delete the specifically named worker. 
+         // Assumes the operator has sufficient privileges locally or runs within an authorized context.
+         execSync(`npx wrangler delete --name ${name}`, { stdio: 'inherit' });
+         console.log(`✅ Preview environment ${name} deleted successfully from edge.`);
+      } catch (e: any) {
+         console.error(`❌ Failed to delete preview environment. Ensure you have Cloudflare permissions.\n${e.message}`);
+         process.exit(1);
       }
     });
 

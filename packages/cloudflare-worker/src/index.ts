@@ -752,9 +752,9 @@ async function handleEventsAPI(request: Request, env: Env, path: string, userId:
       // Intercept Human messages routed specifically to Edge Personas (@guide, @operator)
       if (env.AI_QUEUE) {
          for (const ev of validEvents) {
-            if (ev.actor === 'Human' && ev.type === 'message') {
+            if ((ev.actor === 'Human' || ev.actor === 'LOCAL_USER') && (ev.type === 'message' || ev.type === 'USER_PROMPT')) {
                let text = '';
-               try { text = typeof ev.payload === 'string' ? JSON.parse(ev.payload).content : ev.payload.content; } catch(e){}
+               try { text = typeof ev.payload === 'string' ? JSON.parse(ev.payload).content || JSON.parse(ev.payload).text : ev.payload.content || ev.payload.text; } catch(e){}
                const intents = parseDslRouting(text || '');
                const agent = intents[0]?.agent?.toLowerCase();
                if (agent === 'guide' || agent === 'operator' || agent === 'sre') {
@@ -781,7 +781,7 @@ async function handleEventsAPI(request: Request, env: Env, path: string, userId:
                } catch(e) { textToSend = ev.payload; }
                
                if (textToSend && tgId) {
-                  ctx?.waitUntil(sendTelegramMessage(tgId, textToSend, tgRow.bot_token as string));
+                  ctx?.waitUntil(sendTelegramMessage(tgId, textToSend, tgRow.bot_token as string, env));
                }
             }
          }
