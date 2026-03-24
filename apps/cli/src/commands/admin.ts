@@ -179,6 +179,63 @@ export function registerAdminCommands(program: Command) {
       }
     });
 
+  const issuesCmd = adminCmd.command('issues').description('Operator issue tracking management');
+
+  issuesCmd.command('list')
+    .description('List all open operator issues')
+    .action(async () => {
+      try {
+        const res = await backendFetch('/api/admin/issues', { method: 'GET' });
+        if (res.ok) {
+          const data = await res.json() as any;
+          console.log('✅ Operator Issues:');
+          console.log(JSON.stringify(data.issues, null, 2));
+        } else {
+          console.error(`❌ Failed to list issues: ${res.status} ${res.statusText}`);
+          process.exit(1);
+        }
+      } catch (e: any) {
+         console.error(`[Error] ${e.message}`);
+         process.exit(1);
+      }
+    });
+
+  issuesCmd.command('view <id>')
+    .description('View details of a specific issue')
+    .action(async (id) => {
+      try {
+        const res = await backendFetch(`/api/admin/issues/${id}`, { method: 'GET' });
+        if (res.ok) {
+          const data = await res.json() as any;
+          console.log(`✅ Issue Details [${id}]:`);
+          console.log(JSON.stringify(data.issue, null, 2));
+        } else {
+          console.error(`❌ Failed to view issue: ${res.status} ${res.statusText}`);
+          process.exit(1);
+        }
+      } catch (e: any) {
+         console.error(`[Error] ${e.message}`);
+         process.exit(1);
+      }
+    });
+
+  issuesCmd.command('resolve <id>')
+    .description('Mark a specific issue as resolved')
+    .action(async (id) => {
+      try {
+        const res = await backendFetch(`/api/admin/issues/${id}/resolve`, { method: 'POST' });
+        if (res.ok) {
+          console.log(`✅ Issue ${id} successfully marked as resolved.`);
+        } else {
+          console.error(`❌ Failed to resolve issue: ${res.status} ${res.statusText}`);
+          process.exit(1);
+        }
+      } catch (e: any) {
+         console.error(`[Error] ${e.message}`);
+         process.exit(1);
+      }
+    });
+
   adminCmd.command('preview')
     .description('Preview environment management')
     .command('delete <name>')

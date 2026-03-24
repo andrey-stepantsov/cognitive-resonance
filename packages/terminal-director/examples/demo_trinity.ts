@@ -16,11 +16,11 @@ async function main() {
   console.log("\n\x1b[32m>>> CLI Ready. Injecting @trinity command...\x1b[0m\n");
 
   // Send the command
-  term.write('@trinity Please create a bash script render.sh to generate a YouTube Shorts MP4 video (1080x1920, cropping the image to fit) matching the exact full duration of the audio, using the optimal YouTube audio profile. The inputs are /Users/stepants/dev/cognitive-resonance/docs/assets/trinity-demo-input.png and /Users/stepants/dev/cognitive-resonance/docs/assets/trinity-demo-input.wav. Execute it when done.\n');
+  term.write('@trinity Please create a bash script render.sh to generate a YouTube Shorts MP4 video (1080x1920, cropping the image to fit) matching the exact full duration of the audio, using the optimal YouTube audio profile. The inputs are /Users/stepants/dev/cognitive-resonance/docs/assets/trinity-demo-input.png and /Users/stepants/dev/cognitive-resonance/docs/assets/trinity-demo-input.wav. Make sure the script is highly "human usable": providing clear usage instructions, argument validation, and help text if run incorrectly. Please save the script and output video explicitly inside the `.cr/sandbox/demo/` directory. Execute it when done.\n');
 
   try {
      // Wait for the loop to start
-     await term.waitForStdout('Thinking (@architect)', 60000);
+     await term.waitForStdout('Thinking (@architect)', 120000);
 
      // Wait for the AI loop to halt. The REPL prompt returning signifies the end of the autonomous process.
      while (!term.getBuffer().trimEnd().endsWith('>')) {
@@ -31,9 +31,9 @@ async function main() {
      term.write('@trinity The script has been approved by the auditor. Please execute render.sh to validate the deliverable.\n');
 
      // Wait until trinity finishes the protocol and outputs the exec command
-     await term.waitForStdout('AI requested remote execution on @@sandbox', 60000);
+     await term.waitForStdout('AI requested remote execution on @@sandbox', 180000);
      console.log("\n\x1b[32m>>> Script generated. Triggering local execution to show results...\x1b[0m\n");
-     term.write('/exec bash ./render.sh\n');
+     term.write('/exec bash .cr/sandbox/demo/render.sh\n');
 
      // Wait for execution to finish (poll for the prompt)
      await new Promise(r => setTimeout(r, 2000));

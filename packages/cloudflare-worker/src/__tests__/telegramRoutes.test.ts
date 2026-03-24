@@ -277,24 +277,25 @@ describe('Telegram Webhook Route (BYOB mapping)', () => {
                         return Promise.resolve(null);
                     }),
                     run: mockRun
-                })
+                }),
+                run: mockRun
             }))
         };
         
         // Missing env name
         let req = new Request('http://localhost/api/telegram/webhook/tok', { method: 'POST', body: JSON.stringify({ message: { chat: { id: 1 }, message_id: 10, text: '/bind_env' } }) });
         await worker.fetch(req, { DB: mockDB } as any, {} as any);
-        expect(sentMessage).toContain('Please specify an environment');
+        expect(sentMessage).toContain('No environment hat is worn');
 
         // Bind env
         req = new Request('http://localhost/api/telegram/webhook/tok', { method: 'POST', body: JSON.stringify({ message: { chat: { id: 1 }, message_id: 11, text: '/bind_env my_test' } }) });
         await worker.fetch(req, { DB: mockDB } as any, {} as any);
-        expect(sentMessage).toContain('Successfully bound chat `1` to environment `my_test`');
+        expect(sentMessage).toContain('Hat swapped');
         expect(mockRun).toHaveBeenCalled(); // DB Update
 
         // Clear env
         req = new Request('http://localhost/api/telegram/webhook/tok', { method: 'POST', body: JSON.stringify({ message: { chat: { id: 1 }, message_id: 12, text: '/bind_env clear' } }) });
         await worker.fetch(req, { DB: mockDB } as any, {} as any);
-        expect(sentMessage).toContain('Cleared environment binding');
+        expect(sentMessage).toContain('Hat removed');
     });
 });

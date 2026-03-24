@@ -363,4 +363,71 @@ describe('E2E: Edge Super-Admin Proxy', () => {
       expect(response.status).toBe(500);
     });
   });
+  describe('Admin Issues API', () => {
+    it('returns a list of issues', async () => {
+      const mockDB = {
+        prepare: vi.fn().mockImplementation(() => ({
+          all: vi.fn().mockResolvedValue({ results: [{ id: 'issue-1', title: 'bug' }] })
+        }))
+      };
+      const request = new Request('http://localhost/api/admin/issues', {
+        method: 'GET',
+        headers: { 'x-api-key': TEST_API_KEY },
+      });
+      const response = await worker.fetch(request, makeEnv(mockDB, '[\"default\"]'), makeCtx());
+      expect(response.status).toBe(200);
+      const data = await response.json() as any;
+      expect(data.issues).toHaveLength(1);
+    });
+
+    it('returns a specific issue by ID', async () => {
+      const mockDB = {
+        prepare: vi.fn().mockImplementation(() => ({
+          bind: vi.fn().mockImplementation(() => ({
+            first: vi.fn().mockResolvedValue({ id: 'issue-1', title: 'bug' })
+          }))
+        }))
+      };
+      const request = new Request('http://localhost/api/admin/issues/issue-1', {
+        method: 'GET',
+        headers: { 'x-api-key': TEST_API_KEY },
+      });
+      const response = await worker.fetch(request, makeEnv(mockDB, '[\"default\"]'), makeCtx());
+      expect(response.status).toBe(200);
+      const data = await response.json() as any;
+      expect(data.issue.id).toBe('issue-1');
+    });
+
+    it('resolves an issue', async () => {
+      const runMock = vi.fn().mockResolvedValue({});
+      const mockDB = {
+        prepare: vi.fn().mockImplementation(() => ({
+          bind: vi.fn().mockImplementation(() => ({ run: runMock }))
+        }))
+      };
+      const request = new Request('http://localhost/api/admin/issues/issue-1/resolve', {
+        method: 'POST',
+        headers: { 'x-api-key': TEST_API_KEY },
+      });
+      const response = await worker.fetch(request, makeEnv(mockDB, '[\"default\"]'), makeCtx());
+      expect(response.status).toBe(200);
+      const data = await response.json() as any;
+      expect(data.ok).toBe(true);
+      expect(runMock).toHaveBeenCalled();
+    });
+
+    it('handles database errors gracefully for issues', async () => {
+      const mockDB = {
+        prepare: vi.fn().mockImplementation(() => ({
+          all: vi.fn().mockRejectedValue(new Error('fail'))
+        }))
+      };
+      const request = new Request('http://localhost/api/admin/issues', {
+        method: 'GET',
+        headers: { 'x-api-key': TEST_API_KEY },
+      });
+      const response = await worker.fetch(request, makeEnv(mockDB, '[\"default\"]'), makeCtx());
+      expect(response.status).toBe(500);
+    });
+  });
 });

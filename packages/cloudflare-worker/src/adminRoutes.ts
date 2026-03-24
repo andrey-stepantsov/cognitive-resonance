@@ -149,6 +149,36 @@ export async function handleAdminAPI(request: Request, env: Env): Promise<Respon
     }
   }
 
+  if (request.method === 'GET' && path === '/api/admin/issues') {
+    try {
+      const { results } = await env.DB.prepare("SELECT * FROM issues ORDER BY created_at DESC").all();
+      return jsonResponse({ issues: results });
+    } catch (e: any) {
+      return jsonResponse({ error: 'Database error' }, 500);
+    }
+  }
+
+  if (request.method === 'GET' && path.startsWith('/api/admin/issues/') && !path.endsWith('/resolve')) {
+    const issueId = path.split('/api/admin/issues/')[1];
+    try {
+      const issue = await env.DB.prepare("SELECT * FROM issues WHERE id = ?").bind(issueId).first();
+      if (!issue) return jsonResponse({ error: 'Issue not found' }, 404);
+      return jsonResponse({ issue });
+    } catch (e: any) {
+      return jsonResponse({ error: 'Database error' }, 500);
+    }
+  }
+
+  if (request.method === 'POST' && path.startsWith('/api/admin/issues/') && path.endsWith('/resolve')) {
+    const issueId = path.split('/api/admin/issues/')[1].replace('/resolve', '');
+    try {
+      await env.DB.prepare("UPDATE issues SET status = 'resolved' WHERE id = ?").bind(issueId).run();
+      return jsonResponse({ ok: true });
+    } catch (e: any) {
+      return jsonResponse({ error: 'Database error' }, 500);
+    }
+  }
+
   return corsResponse('Not Found', 404);
 }
 

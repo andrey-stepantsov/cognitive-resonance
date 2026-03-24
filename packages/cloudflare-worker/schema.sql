@@ -91,3 +91,11 @@ CREATE TABLE IF NOT EXISTS telegram_links (
   created_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS issues (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  title TEXT,
+  status TEXT,
+  operator_notes TEXT,
+  created_at INTEGER
+);

@@ -279,7 +279,12 @@ export async function runSyncDaemon(dbEngine: DatabaseEngine, clients: Set<WebSo
          for (const rawEv of incomingEvents) {
             try {
                validateEventSequence(rawEv);
-               validEvents.push(rawEv);
+               // Mathematically filter out system/global artefacts to prevent local DB bloat
+               const isSystemArtefact = (rawEv.session_id === 'SYSTEM' || rawEv.actor === 'System' || rawEv.user_id === 'system') && 
+                                        (rawEv.type === 'ARTEFACT_PROMOTED' || rawEv.type === 'ARTEFACT_PROPOSED');
+               if (!isSystemArtefact) {
+                   validEvents.push(rawEv);
+               }
             } catch (err: any) {
                logger.warn(`[Sync Daemon] Edge sent invalid event ${rawEv.id}, skipping: ${err.message}`);
             }

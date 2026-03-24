@@ -1,0 +1,47 @@
+{
+  "name": "Operator Issue Ticketing E2E",
+  "events": [
+    {
+      "type": "USER_REGISTERED",
+      "actor": "SYSTEM",
+      "timestamp": 999,
+      "payload": {
+        "id": "operator-test-user",
+        "email": "operator-tester@resonance.ai",
+        "nick": "OpTester",
+        "password_hash": "testhash123"
+      }
+    },
+    {
+      "type": "SESSION_CREATED",
+      "actor": "operator-test-user",
+      "timestamp": 1000
+    },
+    {
+      "type": "USER_ACTION",
+      "actor": "operator-test-user",
+      "timestamp": 1001,
+      "payload": {
+        "message": {
+          "role": "user",
+          "content": "@Operator I need to formally complain that the edge deployment synchronization is failing randomly."
+        }
+      }
+    },
+    {
+      "type": "AI_ACTION",
+      "actor": "Agent",
+      "timestamp": 1002,
+      "payload": {
+        "message": {
+          "role": "model",
+          "content": "I have created a system administration issue tracking your problem.",
+          "internalState": {
+             "dissonanceScore": 0,
+             "functionCalls": [{ "name": "collect_complaint", "args": { "title": "Edge sync failing", "operator_notes": "User reported random synchronization drops" }}]
+          }
+        }
+      }
+    }
+  ]
+}
