@@ -794,7 +794,7 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
               skipAiLoop = true;
           }
           
-          const edgePersonas = ['guide', 'operator', 'sre', 'trinity'];
+          const edgePersonas = ['guide', 'operator', 'sre'];
           if (!skipAiLoop && intent.agent && edgePersonas.includes(intent.agent.toLowerCase())) {
               io.print(`[System] Routing message to Edge Persona @${intent.agent}...`);
               

@@ -164,3 +164,5 @@ We must unify *all* physical contexts (System Documentation, Executable Skills, 
 > I have codified the complete QA Lifecycle Loop (Run -> Capture -> Analyze -> Report -> Fix -> Repeat) and compiled an exhaustive Test Matrix spanning every single CLI command, option, and argument.
 > 
 > **Are there any other specific subsystems, external integrations (e.g., specific Edge Worker webhook paths), or advanced behaviors you want explicitly declared in this test matrix before we proceed to build the test infrastructure?**
+### 6. Video Demo Generation & Export Validations (`Trinity` / `Terminal Director`)
+- **[ ] Trinity E2E Render Scripting:** Run the Terminal Director simulation (`demo_trinity.ts`) asserting AI completes multi-agent chain to generate highly usable bash output locally via `/exec` proxy.
