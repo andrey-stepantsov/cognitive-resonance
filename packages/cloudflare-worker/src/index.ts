@@ -17,6 +17,9 @@ export interface Env {
   ALLOWED_TELEGRAM_USERS?: string;
   CF_API_TOKEN?: string;
   CF_ACCOUNT_ID?: string;
+  PROD_WORKER_URL?: string;
+  PROD_API_KEY?: string;
+  CR_ENV?: string;
 }
 
 import { processAiQueueJob } from './aiService';
@@ -250,10 +253,12 @@ export default {
          const workerUrl = new URL(request.url).origin;
          const webhookUrl = `${workerUrl}/api/telegram/webhook/${env.TELEGRAM_BOT_TOKEN}`;
          const tgUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/setWebhook?url=${webhookUrl}`;
-         const res = await fetch(tgUrl, { method: 'POST' });
+         
+         const { telegramFetch } = await import('./telegramRoutes');
+         const res = await telegramFetch(tgUrl, { method: 'POST' }, env);
          
          const cmdsUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/setMyCommands`;
-         await fetch(cmdsUrl, {
+         await telegramFetch(cmdsUrl, {
              method: 'POST', headers: { 'Content-Type': 'application/json' },
              body: JSON.stringify({
                  commands: [
@@ -266,7 +271,7 @@ export default {
                      { command: 'model', description: 'Change the active LLM explicitly' }
                  ]
              })
-         });
+         }, env);
          
          return new Response(await res.text(), { status: res.status });
       }

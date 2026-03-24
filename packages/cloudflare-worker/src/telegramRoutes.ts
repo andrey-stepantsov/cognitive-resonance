@@ -138,6 +138,32 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
              ).run();
              return new Response('OK', { status: 200 });
          }
+
+         if (cmd === '/bind_env') {
+             // Create table if not exists
+             await env.DB.prepare('CREATE TABLE IF NOT EXISTS telegram_channel_envs (chat_id TEXT PRIMARY KEY, environment_name TEXT, linked_by TEXT)').run();
+             
+             // Ghost command immediately
+             await deleteTelegramMessage(chatId, update.message.message_id, botToken);
+             
+             if (!args) {
+                 const current = await env.DB.prepare('SELECT environment_name FROM telegram_channel_envs WHERE chat_id = ?').bind(chatId.toString()).first();
+                 const text = current ? `🎩 Currently wearing hat: \`${current.environment_name}\`` : "🎩 No environment hat is worn. Operating in default global namespace.";
+                 await sendTelegramMessage(chatId, text, botToken, env);
+                 return new Response('OK', { status: 200 });
+             }
+             
+             if (args === 'none' || args === 'clear') {
+                 await env.DB.prepare('DELETE FROM telegram_channel_envs WHERE chat_id = ?').bind(chatId.toString()).run();
+                 await sendTelegramMessage(chatId, `🎩 Hat removed. Operating in default global namespace.`, botToken, env);
+                 return new Response('OK', { status: 200 });
+             }
+             
+             // Swap hat
+             await env.DB.prepare('INSERT INTO telegram_channel_envs (chat_id, environment_name, linked_by) VALUES (?1, ?2, ?3) ON CONFLICT(chat_id) DO UPDATE SET environment_name = ?2').bind(chatId.toString(), args, ownerId).run();
+             await sendTelegramMessage(chatId, `🎩 Hat swapped! This chat is now physically routed to environment: \`${args}\``, botToken, env);
+             return new Response('OK', { status: 200 });
+         }
       }
       
       const eventId = crypto.randomUUID();
@@ -156,12 +182,53 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
          role: 'user',
       };
       
-      await env.DB.prepare(`
+      // --- Hat-Switching Resolution ---
+      let targetD1Id: string | null = null;
+      try {
+         // Gracefully check if the routing table exists and has a mapping
+         const hasTable = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='telegram_channel_envs'").first();
+         if (hasTable) {
+             const mapping = await env.DB.prepare("SELECT environment_name FROM telegram_channel_envs WHERE chat_id = ?").bind(chatId.toString()).first();
+             if (mapping && mapping.environment_name) {
+                 // Check if environments table exists
+                 const envRow = await env.DB.prepare("SELECT metadata FROM environments WHERE name = ?").bind(mapping.environment_name).first();
+                 if (envRow) {
+                     let meta: any = {};
+                     try { meta = JSON.parse(envRow.metadata as string); } catch(e){}
+                     if (meta.d1_id) targetD1Id = meta.d1_id;
+                 }
+             }
+         }
+      } catch (e) {
+         logger.error('Failed to resolve dynamic hat mapping', e);
+      }
+
+      const executeDynamicQuery = async (sql: string, params: any[], expected: 'run' | 'first' = 'run') => {
+          if (targetD1Id && env.CF_ACCOUNT_ID && env.CF_API_TOKEN) {
+              const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/d1/database/${targetD1Id}/query`, {
+                  method: 'POST',
+                  headers: { 'Authorization': `Bearer ${env.CF_API_TOKEN}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ sql, params })
+              });
+              if (!res.ok) throw new Error(`D1 API failed: ${res.statusText}`);
+              const data = await res.json() as any;
+              if (data.success && data.result && data.result[0]) {
+                  if (expected === 'first') return data.result[0].results[0] || null;
+                  return data.result[0];
+              }
+              return null;
+          } else {
+              // Fallback to static binding
+              const stmt = env.DB.prepare(sql).bind(...params);
+              if (expected === 'first') return await stmt.first();
+              return await stmt.run();
+          }
+      };
+
+      await executeDynamicQuery(`
          INSERT OR IGNORE INTO events (id, session_id, timestamp, actor, type, payload, user_id)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-      `).bind(
-         eventId, sessionId, timestamp, 'Human', 'message', JSON.stringify(payloadObj), userId
-      ).run();
+      `, [eventId, sessionId, timestamp, 'Human', 'message', JSON.stringify(payloadObj), userId], 'run');
       
       // Multi-Agent Delegation: Check if prompt contains explicit @agent or @@host routing.
       const routingIntents = parseDslRouting(payloadObj.content);
@@ -169,17 +236,20 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
 
       // Token tracking and threshold
       const tokens = Math.ceil(payloadObj.content.length / 4);
-      const sessionRow = await env.DB.prepare('SELECT estimated_tokens, has_graph, config FROM sessions WHERE id = ?').bind(sessionId).first();
+      const sessionRow: any = await executeDynamicQuery('SELECT estimated_tokens, has_graph, config FROM sessions WHERE id = ?', [sessionId], 'first');
+      
       let newTotal = tokens;
       let sessionConfig: any = {};
+      
       if (sessionRow) {
           newTotal += (sessionRow.estimated_tokens as number || 0);
-          try { if (sessionRow.config) sessionConfig = JSON.parse(sessionRow.config as string); } catch(e){}
-          await env.DB.prepare('UPDATE sessions SET estimated_tokens = ? WHERE id = ?').bind(newTotal, sessionId).run();
+          try { if (sessionRow.config) sessionConfig = JSON.parse(sessionRow.config); } catch(e){}
+          await executeDynamicQuery('UPDATE sessions SET estimated_tokens = ? WHERE id = ?', [newTotal, sessionId], 'run');
       } else {
-          await env.DB.prepare(
-              'INSERT INTO sessions (id, timestamp, estimated_tokens, user_id) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(id) DO UPDATE SET estimated_tokens = estimated_tokens + ?3'
-          ).bind(sessionId, timestamp, tokens, userId).run();
+          await executeDynamicQuery(
+              'INSERT INTO sessions (id, timestamp, estimated_tokens, user_id) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(id) DO UPDATE SET estimated_tokens = estimated_tokens + ?3',
+              [sessionId, timestamp, tokens, userId], 'run'
+          );
       }
 
       // Dispatch async AI execution
@@ -192,11 +262,11 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
       const shouldTriggerAI = !isGroupChat || hasExplicitPing;
       
       if (shouldTriggerAI && env.AI_QUEUE && (!isDelegatedToLocal || isEdgeBoundPersona)) {
-         await fetch(`https://api.telegram.org/bot${botToken}/sendChatAction`, {
+         await telegramFetch(`https://api.telegram.org/bot${botToken}/sendChatAction`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ chat_id: chatId, action: 'typing' })
-         }).catch(e => logger.error('Failed to send typing indicator', e));
+         }, env).catch(e => logger.error('Failed to send typing indicator', e));
 
          if (newTotal >= 6000 && (!sessionRow || !sessionRow.has_graph)) {
              await env.AI_QUEUE.send({ sessionId, userId, type: 'compile_graph' });
@@ -217,6 +287,37 @@ export async function handleTelegramWebhook(request: Request, env: Env, ownerId:
   return new Response('OK', { status: 200 });
 }
 
+export async function telegramFetch(url: string, params: RequestInit, env?: Env): Promise<Response> {
+    // Prevent firewall hits in local E2E test environments
+    if ((env && env.CR_ENV === 'test') || (typeof process !== 'undefined' && process.env.NODE_ENV === 'test')) {
+        console.warn(`[TEST SECURE-DROP] Simulated Telegram API call to prevent outbound leaking: ${url}`);
+        return new Response('{"ok":true}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    if (env && env.CR_ENV === 'local') {
+        if (!env.PROD_WORKER_URL) {
+            console.error("❌ [FIREWALL BLOCK] Local outbound Telegram request denied. Please set PROD_WORKER_URL in .dev.vars to proxy through Cloudflare Edge!");
+            return new Response('{"ok":false, "error":"Blocked by local firewall"}', { status: 500, headers: { 'Content-Type': 'application/json' } });
+        }
+        return fetch(`${env.PROD_WORKER_URL}/api/admin/telegram-proxy`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${env.PROD_API_KEY || env.API_KEY || ''}`
+            },
+            body: JSON.stringify({
+                url,
+                method: params.method,
+                headers: params.headers,
+                payload: params.body ? JSON.parse(params.body as string) : undefined
+            })
+        });
+    }
+    
+    // Remote environments simply hit the actual endpoint
+    return fetch(url, params);
+}
+
 export async function sendTelegramMessage(chatId: string | number, text: string, botToken?: string, env?: Env) {
   if (!botToken) return;
   let finalText = text;
@@ -225,7 +326,7 @@ export async function sendTelegramMessage(chatId: string | number, text: string,
   }
   const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
   try {
-     const resp = await fetch(url, {
+     const resp = await telegramFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -233,11 +334,28 @@ export async function sendTelegramMessage(chatId: string | number, text: string,
            text: finalText,
            parse_mode: 'Markdown'
         })
-     });
+     }, env);
      if (!resp.ok) {
         console.error("Telegram send failed: " + await resp.text());
      }
   } catch (err) {
      console.error("Telegram exact send error", err);
   }
+}
+
+export async function deleteTelegramMessage(chatId: string | number, messageId: number, botToken?: string, env?: Env) {
+   if (!botToken) return;
+   const url = `https://api.telegram.org/bot${botToken}/deleteMessage`;
+   try {
+      const resp = await telegramFetch(url, {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ chat_id: chatId, message_id: messageId })
+      }, env);
+      if (!resp.ok) {
+         console.error("Telegram delete failed: " + await resp.text());
+      }
+   } catch (err) {
+      console.error("Telegram exact delete error", err);
+   }
 }

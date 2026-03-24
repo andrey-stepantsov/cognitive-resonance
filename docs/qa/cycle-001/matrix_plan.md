@@ -81,8 +81,18 @@ Every feature and flag in the Cognitive Resonance CLI must be validated.
 | `serve-auditor`| `--post-flight` | Validating the Auditor generating safety telemetry judgments *after* chronological LLM action timeline events. |
 | `serve-auditor`| `--telemetry` | Evaluating Auditor daemon polling logic continuously querying stream timelines and organically triggering state actions when flagged telemetry events occur. |
 | `mcp` | `[-s, -w, --db]` | Model Context Protocol hook setup, Session pinning, Workspace boundary. |
-| `admin sandbox list` | `-` | Multi-environment Cloudflare enumeration validation. |
-| `admin sandbox preview delete`| `<name>` | Exact teardown hook firing via Wrangler orchestration. |
+| `admin env list`| `-` | Multi-environment Cloudflare enumeration validation. |
+| `admin env preview`| `<name>` | Simulating deletion of provisioned infrastructure. |
+| `admin env destroy`| `<name>` | Exact teardown hook firing via Wrangler orchestration. |
+| `admin env preflight`| `<name>` | Verification of physical infrastructure drift against D1 records. |
+| `admin env lockdown`| `<name>` | Instant quarantine flip in the API layer. |
+
+### Telegram Integration
+| Command | Options / Flags | Test Cases |
+|---------|-----------------|------------|
+| `/bind_env` | `<env_name>` | Verify chat binding seamlessly redirects `/api/events/batch` SQL inserts dynamically to D1 REST mapping. |
+| `/bind_env limit`| `[none]` | Spam protection and ghost-message cleanup test (deleted webhook trace). |
+| `/model` | `<name>` | On-the-fly LLM context switching tests over Telegram. |
 
 ---
 

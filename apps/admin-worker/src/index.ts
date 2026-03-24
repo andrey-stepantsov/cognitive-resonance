@@ -11,6 +11,8 @@ import environments from './environments';
 type Bindings = {
   DB_ADMIN: D1Database;
   JWT_SECRET: string;
+  CF_ACCOUNT_ID?: string;
+  CF_API_TOKEN?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings, Variables: { admin: any } }>();

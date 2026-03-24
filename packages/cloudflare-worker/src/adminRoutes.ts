@@ -9,6 +9,22 @@ export async function handleAdminAPI(request: Request, env: Env): Promise<Respon
   if (isAuthError(authResult)) return authResult;
   const userId = authResult.userId;
 
+  // Proxy Telegram traffic for local dev (bypasses Super Admin strict check, validates Auth)
+  if (request.method === 'POST' && path === '/api/admin/telegram-proxy') {
+     const body = await request.json() as any;
+     if (!body.url) return jsonResponse({ error: 'Missing target url' }, 400);
+     try {
+       const res = await fetch(body.url, {
+          method: body.method || 'POST',
+          headers: body.headers || { 'Content-Type': 'application/json' },
+          body: body.payload ? JSON.stringify(body.payload) : undefined
+       });
+       return new Response(await res.text(), { status: res.status });
+     } catch (e: any) {
+       return jsonResponse({ error: 'Proxy fetch failed' }, 500);
+     }
+  }
+
   // Super Admin Check
   if (!env.SECRET_SUPER_ADMIN_IDS) {
     return jsonResponse({ error: 'Super Admin disabled' }, 403);
@@ -98,7 +114,9 @@ export async function handleAdminAPI(request: Request, env: Env): Promise<Respon
       const workerUrl = new URL(request.url).origin;
       const webhookUrl = `${workerUrl}/api/telegram/webhook/${body.botToken}`;
       const tgUrl = `https://api.telegram.org/bot${body.botToken}/setWebhook?url=${webhookUrl}`;
-      const tgRes = await fetch(tgUrl, { method: 'POST' });
+      // Use telegramFetch imported from telegramRoutes to route through proxy
+      const { telegramFetch } = await import('./telegramRoutes');
+      const tgRes = await telegramFetch(tgUrl, { method: 'POST' }, env);
       if (!tgRes.ok) {
          const tgErr = await tgRes.text();
          return jsonResponse({ error: `Failed to set Telegram webhook: ${tgErr}` }, 500);

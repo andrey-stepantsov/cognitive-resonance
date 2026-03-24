@@ -8,7 +8,7 @@ const TEST_VAULT = path.join(__dirname, 'test-vault');
 process.env.CR_ADMIN_VAULT = TEST_VAULT;
 
 // Import after env is set
-import { saveEncryptedKey, loadDecryptedKey, hasVault } from '../vault';
+import { saveEncryptedKey, loadDecryptedKey, hasVault, saveSessionToken, loadSessionToken } from '../vault';
 
 describe('Admin ID Vault (AES-256-GCM)', () => {
   beforeAll(() => {
@@ -42,5 +42,19 @@ describe('Admin ID Vault (AES-256-GCM)', () => {
   it('strictly fails decryption with an incorrect passphrase (mathematical zero-knowledge)', () => {
     const decrypted = loadDecryptedKey('wrong_passphrase');
     expect(decrypted).toBeNull();
+  });
+
+  it('can securely save and load the session JWT', () => {
+    const dummyJwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy.signature';
+    
+    expect(loadSessionToken()).toBeNull();
+    
+    saveSessionToken(dummyJwt);
+    
+    const sessFile = path.join(TEST_VAULT, 'session.jwt');
+    expect(fs.existsSync(sessFile)).toBe(true);
+    
+    const token = loadSessionToken();
+    expect(token).toBe(dummyJwt);
   });
 });

@@ -2,12 +2,12 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const VAULT_DIR = process.env.CR_ADMIN_VAULT || path.join(require('os').homedir(), '.cr-admin', 'vault');
-const KEY_FILE = path.join(VAULT_DIR, 'id_ed25519.enc');
-const SESSION_FILE = path.join(VAULT_DIR, 'session.jwt');
+function getVaultDir() {
+  return process.env.CR_ADMIN_VAULT || path.join(require('os').homedir(), '.cr-admin', 'vault');
+}
 
 export function hasVault(): boolean {
-  return fs.existsSync(KEY_FILE);
+  return fs.existsSync(path.join(getVaultDir(), 'id_ed25519.enc'));
 }
 
 function deriveKey(passphrase: string, salt: Buffer): Buffer {
@@ -15,8 +15,9 @@ function deriveKey(passphrase: string, salt: Buffer): Buffer {
 }
 
 export function saveEncryptedKey(privateKeyDer: Buffer, passphrase: string) {
-  if (!fs.existsSync(VAULT_DIR)) {
-    fs.mkdirSync(VAULT_DIR, { recursive: true });
+  const dir = getVaultDir();
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
   }
   
   const salt = crypto.randomBytes(16);
@@ -36,15 +37,16 @@ export function saveEncryptedKey(privateKeyDer: Buffer, passphrase: string) {
   }, null, 2);
   
   // Ensure strict file permissions for the key file (read/write only by owner)
-  fs.writeFileSync(KEY_FILE, payload, { mode: 0o600 });
+  fs.writeFileSync(path.join(getVaultDir(), 'id_ed25519.enc'), payload, { mode: 0o600 });
 }
 
 export function loadDecryptedKey(passphrase: string): Buffer | null {
-  if (!fs.existsSync(KEY_FILE)) return null;
+  const keyFile = path.join(getVaultDir(), 'id_ed25519.enc');
+  if (!fs.existsSync(keyFile)) return null;
   
   let payload: any;
   try {
-    payload = JSON.parse(fs.readFileSync(KEY_FILE, 'utf-8'));
+    payload = JSON.parse(fs.readFileSync(keyFile, 'utf-8'));
   } catch (e) {
     return null;
   }
@@ -68,13 +70,15 @@ export function loadDecryptedKey(passphrase: string): Buffer | null {
 }
 
 export function saveSessionToken(token: string) {
-  if (!fs.existsSync(VAULT_DIR)) {
-    fs.mkdirSync(VAULT_DIR, { recursive: true });
+  const dir = getVaultDir();
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
   }
-  fs.writeFileSync(SESSION_FILE, token, { mode: 0o600 });
+  fs.writeFileSync(path.join(dir, 'session.jwt'), token, { mode: 0o600 });
 }
 
 export function loadSessionToken(): string | null {
-  if (!fs.existsSync(SESSION_FILE)) return null;
-  return fs.readFileSync(SESSION_FILE, 'utf-8');
+  const file = path.join(getVaultDir(), 'session.jwt');
+  if (!fs.existsSync(file)) return null;
+  return fs.readFileSync(file, 'utf-8');
 }

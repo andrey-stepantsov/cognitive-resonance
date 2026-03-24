@@ -1,20 +1,20 @@
 # Context
-We are progressing through the phases of the 100% physically decoupled Admin Management Application for Cognitive Resonance.
-
-In the previous session, we successfully accomplished the following:
-1.  **`cr-admin login` Implementation**: We fully implemented the CLI login loop inside `apps/admin-cli/src/index.ts`. It securely prompts for the user's Vault Passphrase, mathematically signs a stateless JWT challenge (`nonce`) using Native Node `crypto` (`ed25519`), and retrieves a Zero-Trust Session JWT from the Admin Worker, saving it locally in `~/.cr-admin/vault/session.jwt` with strict file permissions.
-2.  **Environment Backend Scaffolding**: We created `apps/admin-worker/src/environments.ts` and set up the `/api/environments` endpoints (GET, POST, DELETE). We introduced a highly-optimized Web Crypto `verifyJwt` middleware that actively guards these endpoints ensuring only admins with `superadmin` or `env_admin` RBAC roles can manipulate environment states in the D1 database.
-3.  **Flaky Test Remediation**: We resolved intermittent locking issues in `tests/e2e/portability.test.ts` across the `tests/e2e` suite by configuring `vitest` to disable file parallelism, preventing test workers from sharing the `e2e-test.sqlite` database simultaneously.
+We are tracking the continuous development of the Cognitive Resonance framework. In our previous session (spanning Phase 6, 7, and 8), we successfully implemented the Admin CLI Advanced operations (`lockdown`, `preflight`), codified the "Telegram Single-Bot Hat-Switching Architecture" allowing dynamic multi-tenant proxy routing to physical D1 databases, and secured local development with an HTTP Cloudflare proxy that completely bypassed local firewall inspection. The entire 45+ suite of QA regression and simulated E2E tests are 100% stable.
 
 # Objective
-Our immediate next steps in Phase 3 of the Execution Plan are:
+We will execute **Phase 9** and **Phase 10** of the structural roadmap explicitly documented inside `docs/qa/cycle-001/matrix_plan.md`:
 
-1.  **Implement CLI Environment Commands**: We need to expand `apps/admin-cli/src/index.ts` (or create a dedicated `commands/env.ts` module) to allow the root administrator to interact with the backend API. 
-    * Add commands for: `cr-admin env list`, `cr-admin env provision <name> <type>`, and `cr-admin env destroy <name>`.
-    * Ensure the CLI securely reads the `session.jwt` from the Vault and passes it as a Bearer token in the Authorization header.
+### 1. Phase 10: Unified Artefact RAG Boundaries (Priority: Urgent)
+Currently, our `Vectorize` index lumps all user histories and system documentation together globally.
+- [ ] Refactor `generateSessionEmbeddings` inside the Cloudflare Worker to enforce strict metadata boundaries via vector labels (e.g., `domain: 'artefact', type: 'session_memory' | 'documentation'`).
+- [ ] Update the `@Guide` persona RAG mechanism inside `aiService.ts` to rigorously filter queries exactly matching `type: 'documentation'`. This mathematically prevents the agent from hallucinating instructions based on individual conversational contexts.
+- [ ] Update the local desktop `SyncDaemon` (inside `packages/core` or `apps/cli`) to gracefully ignore aggressively pulling down global/system artifacts into the local user `.cr` folder, preventing severe disk bloat on the client side.
 
-2.  **Cloudflare API Action Handlers**: Navigate back to `apps/admin-worker/src/environments.ts` and modify the endpoints to run real infrastructure orchestrations using the Cloudflare API. We need it to natively spin up (or tear down) actual D1 databases, Vectorize indexes, and KV namespaces per environment.
+### 2. Phase 9: Operator Issue & Complaint Tracking
+The `@Operator` persona requires the ability to formally track complaints when a user mentions an issue across multi-tenant sessions.
+- [ ] Extend the core D1 schema with a new `issues` table `(id, user_id, title, status, operator_notes)`.
+- [ ] Implement a sub-routing CLI controller: `cr-admin issues [list, view <id>, resolve <id>]` (inside `apps/admin-cli` or similar) to interface with the Edge worker.
+- [ ] Inject a native `collect_complaint(user, payload)` tool/skill functionally into the `@Operator` context to parse complaints mid-conversation and structurally write them to the D1 endpoint.
 
-3.  **Comprehensive E2E Testing**: Construct robust `TerminalManager`-based tests encompassing both the `cr-admin login` command flow and the new `cr-admin env` operations safely locally. Ensure the test coverage remains safely above 95%.
-
-Please begin by reviewing the `apps/admin-cli/src/index.ts` file and jump into implementing the `env` CLI commands!
+**Next Steps:**
+Please initiate this run by drafting a fully detailed `task.md` encompassing both phases. Then read `docs/qa/cycle-001/matrix_plan.md` if you require further verification of the roadmap steps. When ready, propose the `implementation_plan.md` for the Vectorize Refactor (Phase 10) first.

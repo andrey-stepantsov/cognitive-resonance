@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import * as crypto from 'crypto';
 import * as readline from 'readline/promises';
-import { saveEncryptedKey, hasVault, loadDecryptedKey, saveSessionToken } from './vault';
+import { saveEncryptedKey, hasVault, loadDecryptedKey, saveSessionToken, loadSessionToken } from './vault';
 import { encodeBase32 } from 'oslo/encoding';
 
 const program = new Command();
@@ -176,5 +176,167 @@ program.command('login')
     console.log('Session JWT secured in local vault.');
   });
 
+
+const envCmd = program.command('env')
+  .description('Manage cognitive resonance environments');
+
+envCmd.command('list')
+  .description('List all tracked environments')
+  .option('--url <url>', 'Admin Worker endpoint URL', 'http://localhost:8787')
+  .action(async (options) => {
+    const token = loadSessionToken();
+    if (!token) {
+      console.error('❌ No active session found. Run `cr-admin login` first.');
+      process.exit(1);
+    }
+    
+    try {
+      const res = await fetch(`${options.url}/api/environments`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json() as any;
+      if (!res.ok) {
+        console.error(`❌ Failed to list environments: ${data.error || res.statusText}`);
+        process.exit(1);
+      }
+      
+      console.log('--- ENVIRONMENTS ---');
+      if (!data.environments || data.environments.length === 0) {
+        console.log('No environments found.');
+      } else {
+        console.table(data.environments);
+      }
+    } catch (e: any) {
+      console.error(`❌ Network error: ${e.message}`);
+      process.exit(1);
+    }
+  });
+
+envCmd.command('provision <name> <type>')
+  .description('Provision a new environment natively via Cloudflare')
+  .option('--url <url>', 'Admin Worker endpoint URL', 'http://localhost:8787')
+  .action(async (name, type, options) => {
+    const token = loadSessionToken();
+    if (!token) {
+      console.error('❌ No active session found. Run `cr-admin login` first.');
+      process.exit(1);
+    }
+
+    console.log(`🔄 Provisioning environment '${name}' of type '${type}'...`);
+    try {
+      const res = await fetch(`${options.url}/api/environments`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ name, type })
+      });
+      const data = await res.json() as any;
+      if (!res.ok) {
+        console.error(`❌ Failed to provision environment: ${data.error || res.statusText}`);
+        process.exit(1);
+      }
+      
+      console.log(`✅ Provisioning successful.`);
+      console.log(data);
+    } catch (e: any) {
+      console.error(`❌ Network error: ${e.message}`);
+      process.exit(1);
+    }
+  });
+
+envCmd.command('destroy <name>')
+  .description('Destroy an existing environment and its Cloudflare infrastructure')
+  .option('--url <url>', 'Admin Worker endpoint URL', 'http://localhost:8787')
+  .action(async (name, options) => {
+    const token = loadSessionToken();
+    if (!token) {
+      console.error('❌ No active session found. Run `cr-admin login` first.');
+      process.exit(1);
+    }
+
+    console.log(`⚠️ Destroying environment '${name}'...`);
+    try {
+      const res = await fetch(`${options.url}/api/environments/${name}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json() as any;
+      if (!res.ok) {
+        console.error(`❌ Failed to destroy environment: ${data.error || res.statusText}`);
+        process.exit(1);
+      }
+      
+      console.log(`✅ Destruction successful.`);
+      console.log(data);
+    } catch (e: any) {
+      console.error(`❌ Network error: ${e.message}`);
+      process.exit(1);
+    }
+  });
+
+envCmd.command('preflight <name>')
+  .description('Audit the physical infrastructure health for an environment on Cloudflare')
+  .option('--url <url>', 'Admin Worker endpoint URL', 'http://localhost:8787')
+  .action(async (name, options) => {
+    const token = loadSessionToken();
+    if (!token) {
+      console.error('❌ No active session found. Run `cr-admin login` first.');
+      process.exit(1);
+    }
+
+    console.log(`🛫 Running preflight check on environment '${name}'...`);
+    try {
+      const res = await fetch(`${options.url}/api/environments/${name}/health`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json() as any;
+      if (!res.ok) {
+        console.error(`❌ Preflight check failed: ${data.error || res.statusText}`);
+        process.exit(1);
+      }
+      
+      if (data.status === 'healthy') {
+        console.log(`✅ Healthy (${data.mode} mode)`);
+      } else {
+        console.log(`❌ Drifted`);
+      }
+      console.log(data);
+    } catch (e: any) {
+      console.error(`❌ Network error: ${e.message}`);
+      process.exit(1);
+    }
+  });
+
+envCmd.command('lockdown <name>')
+  .description('Instantly quarantine an environment, preventing traffic ingress')
+  .option('--url <url>', 'Admin Worker endpoint URL', 'http://localhost:8787')
+  .action(async (name, options) => {
+    const token = loadSessionToken();
+    if (!token) {
+      console.error('❌ No active session found. Run `cr-admin login` first.');
+      process.exit(1);
+    }
+
+    console.log(`🔒 Initiating lockdown on environment '${name}'...`);
+    try {
+      const res = await fetch(`${options.url}/api/environments/${name}/lockdown`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json() as any;
+      if (!res.ok) {
+        console.error(`❌ Lockdown failed: ${data.error || res.statusText}`);
+        process.exit(1);
+      }
+      
+      console.log(`✅ Lockdown activated.`);
+      console.log(data);
+    } catch (e: any) {
+      console.error(`❌ Network error: ${e.message}`);
+      process.exit(1);
+    }
+  });
 
 program.parse();

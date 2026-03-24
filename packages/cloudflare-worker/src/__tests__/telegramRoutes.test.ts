@@ -261,4 +261,40 @@ describe('Telegram Webhook Route (BYOB mapping)', () => {
         expect(sentMessage).toContain('Promoted agent cleared');
         expect(mockRun).toHaveBeenCalled(); // DB Update
     });
+    it('handles /bind_env command correctly', async () => {
+        let sentMessage = '';
+        global.fetch = vi.fn().mockImplementation(async (url, init) => {
+            if (url.includes('sendMessage')) sentMessage = JSON.parse(init.body).text;
+            return new Response('ok');
+        });
+        const mockRun = vi.fn();
+        const mockDB = {
+            prepare: vi.fn().mockImplementation((q) => ({
+                bind: vi.fn().mockReturnValue({
+                    first: vi.fn().mockImplementation(() => {
+                        if (q.includes('bot_token')) return Promise.resolve({ user_id: 'u1' });
+                        if (q.includes('metadata FROM environments')) return Promise.resolve({ metadata: '{"d1_id": "test-d1"}' });
+                        return Promise.resolve(null);
+                    }),
+                    run: mockRun
+                })
+            }))
+        };
+        
+        // Missing env name
+        let req = new Request('http://localhost/api/telegram/webhook/tok', { method: 'POST', body: JSON.stringify({ message: { chat: { id: 1 }, message_id: 10, text: '/bind_env' } }) });
+        await worker.fetch(req, { DB: mockDB } as any, {} as any);
+        expect(sentMessage).toContain('Please specify an environment');
+
+        // Bind env
+        req = new Request('http://localhost/api/telegram/webhook/tok', { method: 'POST', body: JSON.stringify({ message: { chat: { id: 1 }, message_id: 11, text: '/bind_env my_test' } }) });
+        await worker.fetch(req, { DB: mockDB } as any, {} as any);
+        expect(sentMessage).toContain('Successfully bound chat `1` to environment `my_test`');
+        expect(mockRun).toHaveBeenCalled(); // DB Update
+
+        // Clear env
+        req = new Request('http://localhost/api/telegram/webhook/tok', { method: 'POST', body: JSON.stringify({ message: { chat: { id: 1 }, message_id: 12, text: '/bind_env clear' } }) });
+        await worker.fetch(req, { DB: mockDB } as any, {} as any);
+        expect(sentMessage).toContain('Cleared environment binding');
+    });
 });
