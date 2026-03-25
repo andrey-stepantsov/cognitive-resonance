@@ -12,8 +12,9 @@ export function registerObserveCommands(program: Command, io: IoAdapter = new De
     .command('turns [sessionId]')
     .description('Retrieve the raw interaction history (turns) for a session')
     .option('-d, --db <path>', 'Database path', 'cr.sqlite')
-    .action(async (sessionId, options) => {
-      const db = new DatabaseEngine(options.db);
+    .action(async (sessionId, options, command) => {
+      const dbPath = options.db !== 'cr.sqlite' ? options.db : (command.parent?.opts().db || options.db);
+      const db = new DatabaseEngine(dbPath);
       if (!sessionId) {
         listSessions(db, io);
         db.close();
@@ -36,8 +37,9 @@ export function registerObserveCommands(program: Command, io: IoAdapter = new De
     .description('Retrieve the first interactive turns of a session')
     .option('-n, --lines <number>', 'Number of turns to show', '10')
     .option('-d, --db <path>', 'Database path', 'cr.sqlite')
-    .action((sessionId, options) => {
-      const db = new DatabaseEngine(options.db);
+    .action((sessionId, options, command) => {
+      const dbPath = options.db !== 'cr.sqlite' ? options.db : (command.parent?.opts().db || options.db);
+      const db = new DatabaseEngine(dbPath);
       const limit = parseInt(options.lines, 10) * 2; // roughly 2 events per turn (USER, AI)
       const events = db.query('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC LIMIT ?', [sessionId, limit]) as EventRecord[];
       printTurns(events, io);
@@ -49,8 +51,9 @@ export function registerObserveCommands(program: Command, io: IoAdapter = new De
     .description('Retrieve the last interactive turns of a session')
     .option('-n, --lines <number>', 'Number of turns to show', '10')
     .option('-d, --db <path>', 'Database path', 'cr.sqlite')
-    .action((sessionId, options) => {
-      const db = new DatabaseEngine(options.db);
+    .action((sessionId, options, command) => {
+      const dbPath = options.db !== 'cr.sqlite' ? options.db : (command.parent?.opts().db || options.db);
+      const db = new DatabaseEngine(dbPath);
       const limit = parseInt(options.lines, 10) * 2;
       const events = db.query(`
         SELECT * FROM (
@@ -65,8 +68,9 @@ export function registerObserveCommands(program: Command, io: IoAdapter = new De
     .command('follow [sessionId]')
     .description('Observe and follow a session live as events stream in')
     .option('-d, --db <path>', 'Database path', 'cr.sqlite')
-    .action(async (sessionId, options) => {
-      const db = new DatabaseEngine(options.db);
+    .action(async (sessionId, options, command) => {
+      const dbPath = options.db !== 'cr.sqlite' ? options.db : (command.parent?.opts().db || options.db);
+      const db = new DatabaseEngine(dbPath);
       
       let targetSession = sessionId;
       if (!targetSession) {

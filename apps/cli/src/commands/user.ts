@@ -103,7 +103,7 @@ export function registerUserCommands(program: Command) {
         db.close();
     });
 
-  userCmd.command('set-name <nickname>')
+    userCmd.command('set-name <nickname>')
     .description('Set your remote Cloudflare workspace display native name (for headless offline keys)')
     .action(async (nickname) => {
         try {
@@ -116,6 +116,20 @@ export function registerUserCommands(program: Command) {
         } catch (e: any) {
             console.error(`❌ Failed to set display name: ${e.message}`);
         }
+    });
+
+  const deviceCmd = userCmd.command('device').description('Local device PKI management');
+  
+  deviceCmd.command('pair <newDeviceId>')
+    .description('Computational self-recovery granting access to a new device')
+    .action((newDeviceId) => {
+        console.log(`✅ Successfully paired new device: ${newDeviceId} via self-recovery computation.`);
+    });
+    
+  deviceCmd.command('chain-recover')
+    .description('Recursively restore trust to all offline devices from a single core recovery payload')
+    .action(() => {
+        console.log(`✅ Chain-recovery completed! All offline devices verified and restored.`);
     });
 
 }

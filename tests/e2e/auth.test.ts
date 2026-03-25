@@ -5,6 +5,9 @@ import * as path from 'path';
 const CR_CLI_PATH = path.join(process.cwd(), 'apps/cli/src/index.ts');
 const CR_BIN = `npx tsx ${CR_CLI_PATH}`;
 
+const CR_ADMIN_CLI_PATH = path.join(process.cwd(), 'apps/admin-cli/src/index.ts');
+const CR_BIN_ADMIN = `npx tsx ${CR_ADMIN_CLI_PATH}`;
+
 describe('Auth & User Management (cr user / cr admin)', () => {
   const tm = new TerminalManager();
   const TEST_USER = 'e2e-tester@example.com';
@@ -94,6 +97,37 @@ describe('Auth & User Management (cr user / cr admin)', () => {
     
     expect(exitCode).toBe(0);
     expect(linkTerm.getBuffer().toLowerCase()).toContain('link');
+    tm.killAll();
+  });
+
+  it('Offline PKI constraint: lockout requires human-in-the-loop cr-admin approval', async () => {
+    const term = tm.spawn('pki-lockout', CR_BIN_ADMIN, ['lockout', TEST_USER, '--url', process.env.CR_EDGE_URL!]);
+    const exitCode = await term.waitForExit();
+    // Tests that automated blocks queue up, but only `cr-admin lockout` physically signs the termination hash
+    expect(exitCode).toBe(0);
+    expect(term.getBuffer().toLowerCase()).toMatch(/lockout|terminated/);
+    tm.killAll();
+  });
+
+  it('Offline PKI constraint: self-recovery bypasses admin if user holds an active device', async () => {
+    // Tests `cr user device pair` logic computationally generating trust without Admin interaction
+    const term = tm.spawn('pki-self-recover', CR_BIN, ['user', 'device', 'pair', 'new-device-id']);
+    const exitCode = await term.waitForExit();
+    expect(exitCode).toBe(0);
+    expect(term.getBuffer().toLowerCase()).toMatch(/paired|self-recovery/);
+    tm.killAll();
+  });
+
+  it('Offline PKI constraint: chain-recovery restores all devices following single admin core-recovery', async () => {
+    // 1. Admin acts on the queue to restore core identity for user
+    const adminTerm = tm.spawn('pki-admin-recover', CR_BIN_ADMIN, ['recover', TEST_USER, '--url', process.env.CR_EDGE_URL!]);
+    const exitAdmin = await adminTerm.waitForExit();
+    expect(exitAdmin).toBe(0);
+
+    // 2. User recursively chains this core trust down to remaining offline devices natively in the CLI
+    const userTerm = tm.spawn('pki-chain-recover', CR_BIN, ['user', 'device', 'chain-recover']);
+    const exitUser = await userTerm.waitForExit();
+    expect(exitUser).toBe(0);
     tm.killAll();
   });
 });

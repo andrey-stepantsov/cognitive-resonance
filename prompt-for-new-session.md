@@ -1,20 +1,15 @@
 # Context
-We are tracking the continuous development of the Cognitive Resonance framework. In our previous session (spanning Phase 6, 7, and 8), we successfully implemented the Admin CLI Advanced operations (`lockdown`, `preflight`), codified the "Telegram Single-Bot Hat-Switching Architecture" allowing dynamic multi-tenant proxy routing to physical D1 databases, and secured local development with an HTTP Cloudflare proxy that completely bypassed local firewall inspection. The entire 45+ suite of QA regression and simulated E2E tests are 100% stable.
+In our previous session, we successfully completed the **Exhaustive E2E Test Matrix** for the **Core Session Interaction (`cr chat`)** module. We constructed rigorously isolated programmatic tests for the `TerminalManager` E2E pipeline, and verified operational boundaries including Interactive REPL (`stdin` pipe parsing), Formatting Hooks (`--format`), Model Selection (`--model`), Session Cold-Storage (`--session`), and Workspace VFS Bounding (`--workspace`). We also resolved headless bug leaks around `child_process` pipe consuming and SQLite sandbox isolation constraints, achieving a 100% pass rate for the `chat` suite. 
 
 # Objective
-We will execute **Phase 9** and **Phase 10** of the structural roadmap explicitly documented inside `docs/qa/cycle-001/matrix_plan.md`:
+Our objective for this session is to continue executing the Exhaustive E2E Test Matrix outlined in `docs/qa/cycle-001/matrix_plan.md`. The next contiguous module to mathematically verify is **Observability & Telemetry (`cr observe`)**.
 
-### 1. Phase 10: Unified Artefact RAG Boundaries (Priority: Urgent)
-Currently, our `Vectorize` index lumps all user histories and system documentation together globally.
-- [ ] Refactor `generateSessionEmbeddings` inside the Cloudflare Worker to enforce strict metadata boundaries via vector labels (e.g., `domain: 'artefact', type: 'session_memory' | 'documentation'`).
-- [ ] Update the `@Guide` persona RAG mechanism inside `aiService.ts` to rigorously filter queries exactly matching `type: 'documentation'`. This mathematically prevents the agent from hallucinating instructions based on individual conversational contexts.
-- [ ] Update the local desktop `SyncDaemon` (inside `packages/core` or `apps/cli`) to gracefully ignore aggressively pulling down global/system artifacts into the local user `.cr` folder, preventing severe disk bloat on the client side.
-
-### 2. Phase 9: Operator Issue & Complaint Tracking
-The `@Operator` persona requires the ability to formally track complaints when a user mentions an issue across multi-tenant sessions.
-- [ ] Extend the core D1 schema with a new `issues` table `(id, user_id, title, status, operator_notes)`.
-- [ ] Implement a sub-routing CLI controller: `cr-admin issues [list, view <id>, resolve <id>]` (inside `apps/admin-cli` or similar) to interface with the Edge worker.
-- [ ] Inject a native `collect_complaint(user, payload)` tool/skill functionally into the `@Operator` context to parse complaints mid-conversation and structurally write them to the D1 endpoint.
+**Testing Requirements:**
+You must build programmatic E2E test suites (likely in `tests/e2e/observe.test.ts`) that precisely validate the following operational boundaries:
+1. **Turn Retrieval (`cr observe turns`)**: Assert complete turn retrieval from a known initialized session, validating standard JSON and string formatting mechanisms.
+2. **Head Truncation (`cr observe head`)**: Validate chronological truncation of the top logs, asserting the baseline default (`-n=10`) against bounds override limits (`-n=5`).
+3. **Tail Truncation (`cr observe tail`)**: Validate chronological truncation of exact tail logs, explicitly asserting timeline sorting correctness (Ascending vs Descending output).
+4. **Live Tailing (`cr observe follow`)**: Validate continuous polling/tailing of live stdout event streams (likely via Edge DO webhook replication).
 
 **Next Steps:**
-Please initiate this run by drafting a fully detailed `task.md` encompassing both phases. Then read `docs/qa/cycle-001/matrix_plan.md` if you require further verification of the roadmap steps. When ready, propose the `implementation_plan.md` for the Vectorize Refactor (Phase 10) first.
+Please initiate this run by briefly examining the current `apps/cli/src/commands/observe.ts` implementation, then drafting a fully detailed `task.md` mapping out the `cr observe` QA test construction plan. When ready, propose an `implementation_plan.md` to scaffold `tests/e2e/observe.test.ts` and begin the QA failure/fix loop.

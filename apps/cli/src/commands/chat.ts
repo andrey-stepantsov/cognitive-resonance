@@ -384,6 +384,7 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
     
     const silentLogger = {
       info: () => {},
+      warn: (msg: string) => { io.printError(`\x1b[33m${msg}\x1b[0m`); },
       error: (msg: string) => { io.printError(`\x1b[31m${msg}\x1b[0m`); }
     };
 
