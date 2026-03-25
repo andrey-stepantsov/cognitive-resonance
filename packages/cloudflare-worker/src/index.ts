@@ -4,6 +4,7 @@ export interface Env {
   VECTORIZE: any;
   GIT_PACKS_BUCKET: R2Bucket;
   ROOM_SESSION: DurableObjectNamespace;
+  NODE_REGISTRY: DurableObjectNamespace;
   DB: D1Database;
   AI_QUEUE: any;
   // Secrets
@@ -24,7 +25,7 @@ export interface Env {
 
 import { processAiQueueJob } from './aiService';
 
-import { validateEventSequence } from '@cr/core/src/schemas/EventsSchema';
+import { validateEventSequence } from 'cr-core-contracts';
 import { parseDslRouting } from '@cr/core/src/services/CommandParser';
 
 // ─── Rate Limiting ───────────────────────────────────────────────
@@ -86,6 +87,7 @@ import {
 
 import { handleAuthAPI } from './authRoutes';
 export { RoomSession } from './roomSession';
+export { NodeRegistry } from './nodeRegistry';
 import { getEdgeLogger } from './logger';
 import { handleAdminAPI } from './adminRoutes';
 import { handleTelegramWebhook, sendTelegramMessage } from './telegramRoutes';
@@ -320,6 +322,22 @@ export default {
           return corsResponse('Unauthorized', 401);
        }
        return handleTelegramWebhook(request, env, row.user_id as string, tokenFromPath);
+    }
+
+    // --- Phantomachine Executor Daemon Websocket ---
+    if (path === '/api/executor/ws') {
+      const authResult = await requireAuth(request, env);
+      if (isAuthError(authResult)) return authResult;
+
+      const upgradeHeader = request.headers.get('Upgrade');
+      if (!upgradeHeader || upgradeHeader !== 'websocket') {
+        return corsResponse('Expected Upgrade: websocket', 426);
+      }
+
+      // We maintain a single global DO for the NodeRegistry
+      const id = env.NODE_REGISTRY.idFromName('global-registry');
+      const stub = env.NODE_REGISTRY.get(id);
+      return stub.fetch(request);
     }
 
     // --- WebSocket Rooms (Durable Objects) ---

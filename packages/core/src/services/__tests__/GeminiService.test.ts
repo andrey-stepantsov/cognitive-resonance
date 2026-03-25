@@ -9,7 +9,7 @@ vi.mock('@google/genai', () => {
       models = {
         generateContent: mockGenerateContent
       };
-      constructor(opts: any) {}
+      constructor() {}
     }
   };
 });

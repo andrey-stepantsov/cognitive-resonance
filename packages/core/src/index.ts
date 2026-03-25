@@ -15,6 +15,5 @@ export * from './providers/CognitivePlatformContext';
 export * from './providers/LocalNodeStorageProvider';
 export * from './providers/RemoteStorageProvider';
 
-export * from './interfaces/IEvents';
-export * from './schemas/EventsSchema';
+export * from 'cr-core-contracts';
 export * from './services/EventReducers';

@@ -1,8 +1,8 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import * as fs from 'fs';
-import { execSync } from 'child_process';
+// import { execSync } from 'child_process';
 import { Materializer } from '../services/Materializer';
-import type { IEvent } from '../interfaces/IEvents';
+import type { IEvent } from 'cr-core-contracts';
 
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal() as any;

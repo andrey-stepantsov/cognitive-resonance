@@ -1,6 +1,6 @@
 import type { IStorageProvider, SessionRecord, GemsConfig } from '../interfaces/IStorageProvider';
 import { reduceSessionState } from '../services/EventReducers';
-import type { IEvent } from '../interfaces/IEvents';
+import type { IEvent } from 'cr-core-contracts';
 
 export class LocalNodeStorageProvider implements IStorageProvider {
   readonly type = 'local' as const;

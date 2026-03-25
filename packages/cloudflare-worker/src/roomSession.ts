@@ -34,6 +34,11 @@ export class RoomSession {
   async fetch(request: Request): Promise<Response> {
     const upgradeHeader = request.headers.get('Upgrade');
     if (!upgradeHeader || upgradeHeader !== 'websocket') {
+      if (request.method === 'POST') {
+        const text = await request.text();
+        this.broadcast(text);
+        return new Response('OK');
+      }
       return new Response('Expected Upgrade: websocket', { status: 426 });
     }
 
@@ -122,6 +127,20 @@ export class RoomSession {
         senderId: this.sessions.get(ws)?.userId || this.sessions.get(ws)?.id || 'anonymous'
       });
       await this.state.storage.put('chats', chats);
+    }
+
+    if (data.type === 'EXECUTION_REQUESTED') {
+      try {
+        const executorId = this.env.NODE_REGISTRY.idFromName('global-registry');
+        const executorStub = this.env.NODE_REGISTRY.get(executorId);
+        // Fire-and-forget forwarding to the execution daemon
+        await executorStub.fetch(new Request('https://worker/execute', {
+          method: 'POST',
+          body: broadcastMessage
+        }));
+      } catch (err) {
+        console.error('[RoomSession] Failed to forward execution request', err);
+      }
     }
 
     // Broadcast to all *other* connected clients

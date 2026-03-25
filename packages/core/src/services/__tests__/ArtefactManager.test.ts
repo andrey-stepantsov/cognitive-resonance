@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ArtefactManager } from '../ArtefactManager';
-import { IEvent } from '../../interfaces/IEvents';
+import type { IEvent } from 'cr-core-contracts';
 
 describe('ArtefactManager', () => {
 

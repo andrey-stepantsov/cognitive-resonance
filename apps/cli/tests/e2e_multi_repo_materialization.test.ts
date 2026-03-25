@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Materializer } from '@cr/core/src/services/Materializer';
-import type { IEvent } from '@cr/core/src/interfaces/IEvents';
+import type { IEvent } from 'cr-core-contracts';
 import { execSync } from 'child_process';
 
 describe('Multi-Repo Materialization Architecture E2E', () => {

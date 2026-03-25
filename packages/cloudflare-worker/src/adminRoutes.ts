@@ -9,6 +9,28 @@ export async function handleAdminAPI(request: Request, env: Env): Promise<Respon
   if (isAuthError(authResult)) return authResult;
   const userId = authResult.userId;
 
+  // OS Daemon Provisioning (Bypasses Super Admin Check, requires API_KEY)
+  if (request.method === 'POST' && path === '/api/admin/auth/provision') {
+    // We already passed `requireAuth`. If they used `API_KEY`, userId is 'default' (or their own).
+    // Let's explicitly demand it was the API_KEY or a valid Super Admin
+    let superAdmins: string[] = [];
+    try {
+      superAdmins = typeof env.SECRET_SUPER_ADMIN_IDS === 'string' 
+        ? JSON.parse(env.SECRET_SUPER_ADMIN_IDS) 
+        : env.SECRET_SUPER_ADMIN_IDS;
+    } catch (e) {
+      superAdmins = String(env.SECRET_SUPER_ADMIN_IDS).split(',').map(s => s.trim());
+    }
+
+    if (userId !== 'default' && !superAdmins.includes(userId)) {
+      return jsonResponse({ error: 'System provisioning requires Master API Key' }, 403);
+    }
+
+    const { signJwt } = await import('./auth');
+    const token = await signJwt({ userId: 'system-executor', role: 'system' }, env.JWT_SECRET || 'secret', 86400 * 30);
+    return jsonResponse({ token });
+  }
+
   // Proxy Telegram traffic for local dev (bypasses Super Admin strict check, validates Auth)
   if (request.method === 'POST' && path === '/api/admin/telegram-proxy') {
      const body = await request.json() as any;

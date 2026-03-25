@@ -2,8 +2,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { applyPatch } from 'diff';
 import { execSync } from 'child_process';
-import type { IEvent, ArtefactProposalPayload, ArtefactKeyframePayload, ProjectConfigPayload } from '../interfaces/IEvents';
-import { validateEventSequence } from '../schemas/EventsSchema';
+import type { IEvent, ArtefactProposalPayload, ArtefactKeyframePayload, ProjectConfigPayload } from 'cr-core-contracts';
+import { validateEventSequence } from 'cr-core-contracts';
 
 export class Materializer {
   private baseDir: string;

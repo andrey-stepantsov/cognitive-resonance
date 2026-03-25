@@ -17,7 +17,7 @@ import { DynamicDispatch } from '@cr/core/src/services/DynamicDispatch.js';
 import { generateSubWorker } from '@cr/core/src/utils/SubWorkerTemplate.js';
 import * as pty from 'node-pty';
 import { DefaultIoAdapter, IoAdapter } from '../utils/IoAdapter.js';
-import { validateEventSequence } from '@cr/core/src/schemas/EventsSchema.js';
+import { validateEventSequence } from 'cr-core-contracts';
 import { fetchSessionToken, getCliToken } from '../utils/api.js';
 const activeTerminals = new Map<string, pty.IPty>();
 const terminalBuffers = new Map<string, { buffer: string, timeout: NodeJS.Timeout | null }>();

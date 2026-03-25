@@ -1,6 +1,6 @@
 import { createTwoFilesPatch } from 'diff';
 import { Materializer } from './Materializer';
-import type { IEvent, ArtefactProposalPayload } from '../interfaces/IEvents';
+import type { IEvent, ArtefactProposalPayload } from 'cr-core-contracts';
 
 export class ArtefactManager {
   private materializer: Materializer;

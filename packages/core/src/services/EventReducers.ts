@@ -1,4 +1,4 @@
-import type { IEvent } from '../interfaces/IEvents';
+import type { IEvent } from 'cr-core-contracts';
 import type { SessionRecord } from '../interfaces/IStorageProvider';
 
 export function reduceSessionState(events: IEvent[], sessionId: string): SessionRecord | undefined {

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Type } from '@google/genai';
 import { Capacitor } from '@capacitor/core';
-import type { Node, Edge } from '@cr/ui';
+// import type { Node, Edge } from '@cr/ui';
 import { saveApiKey, loadApiKey, clearApiKey, downloadJSON, shareJSON, type SessionRecord } from '@cr/backend';
 import { useCognitivePlatform } from '../providers/CognitivePlatformContext';
 import { initGemini, generateResponse, fetchModels } from '../services/GeminiService';
@@ -34,17 +34,7 @@ export const responseSchema = {
   required: ["reply", "dissonanceScore", "dissonanceReason", "semanticNodes", "semanticEdges"]
 };
 
-export interface InternalState {
-  dissonanceScore: number;
-  dissonanceReason: string;
-  semanticNodes: Node[];
-  semanticEdges: Edge[];
-  tokenUsage?: {
-    totalTokenCount?: number;
-    promptTokenCount?: number;
-    candidatesTokenCount?: number;
-  };
-}
+// Using InternalState from cr-core-contracts
 
 export interface GemProfile {
   id: string; name: string; model: string; systemPrompt: string; isBuiltIn?: boolean;
@@ -62,9 +52,7 @@ export const BUILT_IN_GEMS: GemProfile[] = [
   }
 ];
 
-export interface Message {
-  role: 'user' | 'model' | 'peer'; content: string; internalState?: InternalState; modelTurnIndex?: number; isError?: boolean; senderId?: string; senderName?: string;
-}
+import { Message, InternalState } from 'cr-core-contracts';
 
 export interface AttachedFile {
   id: string; name: string; mimeType: string; preview?: string; file?: File;
@@ -614,7 +602,7 @@ export function useCognitiveResonance() {
       );
       const newState: InternalState = {
         dissonanceScore: data.dissonanceScore, dissonanceReason: data.dissonanceReason,
-        semanticNodes: data.semanticNodes || [], semanticEdges: data.semanticEdges || [],
+        semanticNodes: (data.semanticNodes || []) as any, semanticEdges: (data.semanticEdges || []) as any,
         tokenUsage: data.usageMetadata ? {
           totalTokenCount: data.usageMetadata.totalTokenCount,
           promptTokenCount: data.usageMetadata.promptTokenCount,

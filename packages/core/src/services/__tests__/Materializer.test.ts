@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Materializer } from '../Materializer';
-import { ArtefactProposalPayload } from '../../interfaces/IEvents';
+import type { ArtefactProposalPayload } from 'cr-core-contracts';
 
 describe('Materializer Virtual State Gen', () => {
   it('computes correct virtual file contents from sequential proposals', () => {

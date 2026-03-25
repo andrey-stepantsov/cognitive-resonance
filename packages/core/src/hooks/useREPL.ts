@@ -1,4 +1,5 @@
-import { useCognitiveResonance, type Message } from './useCognitiveResonance';
+import { useCognitiveResonance } from './useCognitiveResonance';
+import type { Message } from 'cr-core-contracts';
 import { CommandAction, parseCommand } from '../services/CommandParser';
 import Fuse from 'fuse.js';
 import { useState } from 'react';
@@ -139,7 +140,7 @@ export function useREPL() {
         case CommandAction.GRAPH_STATS:
           if (cr.activeState?.semanticNodes) {
              const nodeCount = cr.activeState.semanticNodes.length;
-             const edgeCount = cr.activeState.semanticEdges.length;
+             const edgeCount = cr.activeState.semanticEdges?.length || 0;
              injectSystemMessage(`Graph Stats:\nNodes: ${nodeCount}\nEdges: ${edgeCount}`);
           } else {
              injectSystemMessage('No semantic graph generated for this session yet.');

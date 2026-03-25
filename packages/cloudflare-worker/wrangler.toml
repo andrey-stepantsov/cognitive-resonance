@@ -8,12 +8,21 @@ binding = "AI"
 
 [durable_objects]
 bindings = [
-  { name = "ROOM_SESSION", class_name = "RoomSession" }
+  { name = "ROOM_SESSION", class_name = "RoomSession" },
+  { name = "NODE_REGISTRY", class_name = "NodeRegistry" }
 ]
 
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RoomSession"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["ExecutorSession"]
+
+[[migrations]]
+tag = "v3"
+renamed_classes = [{from = "ExecutorSession", to = "NodeRegistry"}]
 
 [vars]
 
@@ -34,7 +43,8 @@ binding = "AI"
 
 [env.staging.durable_objects]
 bindings = [
-  { name = "ROOM_SESSION", class_name = "RoomSession" }
+  { name = "ROOM_SESSION", class_name = "RoomSession" },
+  { name = "NODE_REGISTRY", class_name = "NodeRegistry" }
 ]
 
 [[env.staging.vectorize]]
@@ -76,7 +86,8 @@ binding = "AI"
 
 [env.production.durable_objects]
 bindings = [
-  { name = "ROOM_SESSION", class_name = "RoomSession" }
+  { name = "ROOM_SESSION", class_name = "RoomSession" },
+  { name = "NODE_REGISTRY", class_name = "NodeRegistry" }
 ]
 
 [[env.production.vectorize]]
