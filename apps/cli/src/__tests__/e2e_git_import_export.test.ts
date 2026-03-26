@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { execSync } from 'child_process';
 import ignore from 'ignore';
-import { Materializer } from '@cr/core/src/services/Materializer.js';
+import { Materializer } from 'cr-core-contracts';
 
 describe('E2E: Git Import/Export Safety Limits', () => {
     let db: DatabaseEngine;

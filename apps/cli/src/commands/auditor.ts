@@ -3,6 +3,7 @@ import { DatabaseEngine, EventRecord } from '../db/DatabaseEngine.js';
 import { logger } from '../utils/logger.js';
 import { validateProposal } from '@cr/core/src/services/GeminiService.js';
 import * as path from 'path';
+import { CR_DIR } from '../utils/api.js';
 
 export function registerAuditorCommand(program: Command) {
   program
@@ -10,7 +11,7 @@ export function registerAuditorCommand(program: Command) {
     .description('Start the local Systems Librarian / Auditor daemon to enforce safety constraints.')
     .action(async (options, command) => {
       const globalOpts = command.parent?.opts() || {};
-      const defaultDbPath = path.join(path.resolve(process.cwd(), '.cr'), 'central.sqlite');
+      const defaultDbPath = path.join(CR_DIR, 'central.sqlite');
       const dbPath = globalOpts.db || program.opts().db || defaultDbPath;
       
       const dbEngine = new DatabaseEngine(dbPath);

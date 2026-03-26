@@ -3,7 +3,15 @@ const fs = require('fs');
 const path = require('path');
 
 function generateAndSave(envName) {
-    const dir = path.resolve(__dirname, `../../../../.keys/${envName}`);
+    let rootDir = __dirname;
+    while (rootDir && rootDir !== path.parse(rootDir).root) {
+        if (fs.existsSync(path.join(rootDir, 'package.json'))) {
+            const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
+            if (pkg.name === 'cognitive-resonance') break;
+        }
+        rootDir = path.dirname(rootDir);
+    }
+    const dir = path.resolve(rootDir, `.keys/${envName}`);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     
     const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');

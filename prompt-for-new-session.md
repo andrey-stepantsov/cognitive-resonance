@@ -1,14 +1,15 @@
-# Objective: Phase 3 - The Headless Orchestrator (The OS Watchdog)
+# Objective: Phase 4 - The Unified Operating Environment (Documentation & SDK Extraction)
 
-We are beginning **Phase 3** of the Cognitive Resonance and Phantomachine Joint Architecture Roadmap (`cr-core-contracts/ROADMAP.md`).
-The secure WebSocket execution wire (Phase 2) has successfully connected the Cognitive Resonance edge client to the Phantomachine V1 Daemon OS. 
+We are beginning **Phase 4** of the Cognitive Resonance and Phantomachine Joint Architecture Roadmap.
+Through strategic analysis in the previous session, we identified a massive architectural paradigm shift: The "OS vs App" metaphor is drifting. Instead, Cognitive Resonance and Phantomachine collectively form a single, distributed **Operating Environment (OE)** separated by execution tiers:
+* **Tier 1 (T1) - The Serverless Edge (CR):** Handles unstructured human inputs, prompt translations, semantic routing, and ephemeral DB state using fast Cloudflare Workers.
+* **Tier 2 (T2) - The CPU Muscle (PH):** Handles CPU-intensive workloads, persistent Docker container sandboxes, heavy log processing, and physical file operations.
 
-Right now, Phantomachine (`node-executor`) executes payloads blindly over the WebSocket bridge via `EXECUTION_REQUESTED`.
-The goal of this current session is to make the operating environment safe for autonomous, headless Actor execution by defining and enforcing an OS-level "Watchdog" orchestration loop.
+Because they are the same OE, they must share the exact same logic SDK.
 
 ## Key Requirements for this Session:
-1. **Analyze `phantomachine/ai-operating-environment/node-executor`**: Specifically focus on where `EXECUTION_REQUESTED` payloads are handled.
-2. **Pre-flight & Post-flight Assessment**: Implement logic that assesses available OS resources before dropping into `docker run`, and wraps the exit code and outputs into a productivity assessment once execution finishes.
-3. **Runaway OS Termination**: Guarantee Phantomachine has strict timeout enforcement to identify looping AI paradoxes or infinite processes and instantly send an OS-defined SIGKILL.
+1. **Documentation Purge & Alignment:** Aggressively review and rewrite `cr-core-contracts/README.md`, `cr-core-contracts/ROADMAP.md`, and `phantomachine/ai-operating-environment/ARCHITECTURE.md`. You must eradicate the "OS vs App" metaphor and explicitly define the **T1/T2 Tiered Execution Architecture**. 
+2. **The Unified SDK Refactoring:** Once the documentation accurately defines the OE, transition to `cognitive-resonance/packages/core`. We must surgically extract `Materializer.ts`, `EventReducers.ts`, and `ArtefactManager.ts` out of the CR boundaries and into `cr-core-contracts`, effectively turning the contract package into the universally shared Operating Environment SDK.
+3. **Decouple Physical Adapters:** Ensure the extracted `Materializer.ts` uses dependency injection or is pure-math only, decoupling it from Node's explicit `fs` API so it can seamlessly compute the Virtual Filesystem map inside both the Cloudflare Worker (T1) and Phantomachine (T2).
 
-Start by assuming the role of the dedicated **Phantomachine Systems Engineer**, reviewing the current state of `docker.ts` and `socket.ts`, and devising a clean `task.md` detailing how to implement the Orchestrator loop inside the V1 Daemon.
+Start by running a `find_by_name` across the ecosystem for `README.md` and `ARCHITECTURE.md` and explicitly correct the conceptual framework before writing code.

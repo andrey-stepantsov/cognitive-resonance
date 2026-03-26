@@ -2,13 +2,14 @@ import pino from 'pino';
 import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
+import { CR_DIR } from './api.js';
 
 const isServeCommand = process.argv.includes('serve');
 
 const fileTransport = pino.transport({
   target: 'pino-roll',
   options: {
-    file: path.resolve(process.cwd(), '.cr', 'cr-daemon.log'),
+    file: path.resolve(CR_DIR, 'cr-daemon.log'),
     size: '5m',
     mkdir: true,
   }

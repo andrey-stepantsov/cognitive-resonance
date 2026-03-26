@@ -59,7 +59,7 @@ export async function processAiQueueJob(job: any, env: Env) {
          tools.push({
              functionDeclarations: [{
                  name: 'queryVectorSearch',
-                 description: 'Search the project documentation for architectural concepts, CLI commands, or troubleshooting steps.',
+                 description: 'Search project documentation and the causal marker timeline for historical context, code, or troubleshooting steps.',
                  parameters: {
                      type: 'OBJECT',
                      properties: { query: { type: 'STRING', description: 'The semantic search query' } },
@@ -133,6 +133,8 @@ export async function processAiQueueJob(job: any, env: Env) {
                  ]
              });
          }
+     } else if (targetAgent === 'trinity') {
+         sysText = "You are the @Trinity persona, the autonomous execution orchestrator for the Phantomachine V1 environment. You bridge human conversational intent directly into safe, strictly defined execution requests. Your output MUST be a strict JSON object conforming to the ExecutionRequestedPayloadSchema, containing: 'command' (a string or array of strings to run), 'image' (an optional docker image to use), 'target' (optional target daemon node metadata), and 'virtual_filesystem' (optional map of logically grouped script paths and their text contents). DO NOT output plain text thought processes. Use the semantic graph to fetch past scripts or path context to correctly structure your current desired state.";
      }
 
      if (hasGraph && sessionRow.semantic_graph) {
@@ -158,7 +160,19 @@ export async function processAiQueueJob(job: any, env: Env) {
        reqBody.tools = tools;
      }
 
-     if (hasGraph) {
+     if (targetAgent === 'trinity') {
+         reqBody.generationConfig.responseMimeType = "application/json";
+         reqBody.generationConfig.responseSchema = {
+             type: "OBJECT",
+             properties: {
+                 command: { type: "ARRAY", items: { type: "STRING" } },
+                 image: { type: "STRING" },
+                 target: { type: "STRING" },
+                 virtual_filesystem: { type: "OBJECT" }
+             },
+             required: ["command"]
+         };
+     } else if (hasGraph) {
          reqBody.generationConfig.responseMimeType = "application/json";
          reqBody.generationConfig.responseSchema = {
              type: "OBJECT",
@@ -210,7 +224,7 @@ export async function processAiQueueJob(job: any, env: Env) {
              let chunks = 'No matching chunks found in Vectorize.';
              
              if (vector && env.VECTORIZE && env.VECTORIZE.query) {
-                 const matches = await env.VECTORIZE.query(vector, { topK: 3, filter: { domain: 'artefact', type: 'documentation', ownership: 'system' } });
+                 const matches = await env.VECTORIZE.query(vector, { topK: 5 });
                  if (matches?.matches && matches.matches.length > 0) {
                      // The actual text payload is stored in metadata.content (which we built in Phase 1)
                      const topMatches = matches.matches.filter((m: any) => m.score > 0.5);
@@ -360,14 +374,33 @@ export async function processAiQueueJob(job: any, env: Env) {
 
      replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
 
-     if (hasGraph && targetAgent !== 'guide' && targetAgent !== 'operator') {
+     if (hasGraph && targetAgent !== 'guide' && targetAgent !== 'operator' && targetAgent !== 'trinity') {
          try {
              const parsed = JSON.parse(replyText);
              replyText = parsed.replyText || "JSON parse missing replyText";
              
              if ((parsed.addedNodes && parsed.addedNodes.length > 0) || (parsed.addedEdges && parsed.addedEdges.length > 0)) {
                  const currentGraph = JSON.parse(sessionRow.semantic_graph || '{"semanticNodes":[],"semanticEdges":[]}');
-                 if (parsed.addedNodes) currentGraph.semanticNodes.push(...parsed.addedNodes);
+                 if (parsed.addedNodes) {
+                     currentGraph.semanticNodes.push(...parsed.addedNodes);
+                     // Embed new nodes directly into Vectorize
+                     if (env.AI && env.VECTORIZE) {
+                         try {
+                             const texts = parsed.addedNodes.map((n: any) => n.label || n.id);
+                             const embeddingResult = await env.AI.run('@cf/baai/bge-base-en-v1.5', { text: texts });
+                             if (embeddingResult?.data) {
+                                 const vectors = embeddingResult.data.map((vec: number[], i: number) => ({
+                                     id: parsed.addedNodes[i].id,
+                                     values: vec,
+                                     metadata: { domain: 'marker', sessionId, content: texts[i] }
+                                 }));
+                                 await env.VECTORIZE.insert(vectors);
+                             }
+                         } catch (e) {
+                             console.error("Incremental Vector Search Embedding Failed:", e);
+                         }
+                     }
+                 }
                  if (parsed.addedEdges) currentGraph.semanticEdges.push(...parsed.addedEdges);
                  await env.DB.prepare('UPDATE sessions SET semantic_graph = ? WHERE id = ?').bind(JSON.stringify(currentGraph), sessionId).run();
                  graphMutations = { addedNodes: parsed.addedNodes, addedEdges: parsed.addedEdges };
@@ -378,20 +411,33 @@ export async function processAiQueueJob(job: any, env: Env) {
      // 4. Save the Agent event to D1
      const eventId = crypto.randomUUID();
      const timestamp = Date.now();
-     const agentPayload: any = {
+     
+     let eventType = 'message';
+     let finalPayload: any = {
         content: replyText,
         role: 'agent',
         internalState: { dissonanceScore: 0 }
      };
-     if (graphMutations) {
-         agentPayload.internalState.graphMutations = graphMutations;
+
+     if (targetAgent === 'trinity') {
+         eventType = 'EXECUTION_REQUESTED';
+         try {
+             finalPayload = JSON.parse(replyText);
+         } catch (e) {
+             console.error("Trinity failed to emit valid JSON:", e);
+             finalPayload = { command: ["echo", "Error: Trinity failed to parse JSON output"] };
+         }
+     } else {
+         if (graphMutations) {
+             finalPayload.internalState.graphMutations = graphMutations;
+         }
      }
 
      await env.DB.prepare(`
         INSERT INTO events (id, session_id, timestamp, actor, type, payload, user_id)
         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
      `).bind(
-        eventId, sessionId, timestamp, 'Agent', 'message', JSON.stringify(agentPayload), userId
+        eventId, sessionId, timestamp, 'Agent', eventType, JSON.stringify(finalPayload), userId
      ).run();
 
      // 5. Send Telegram Message back to user
@@ -509,6 +555,27 @@ async function compileSemanticGraph(sessionId: string, userId: string, env: Env)
     if (graphJson) {
         await env.DB.prepare('UPDATE sessions SET has_graph = 1, semantic_graph = ? WHERE id = ?').bind(graphJson, sessionId).run();
         
+        // Embed semantic nodes into Vectorize
+        if (env.AI && env.VECTORIZE) {
+            try {
+                const parsedGraph = JSON.parse(graphJson);
+                if (parsedGraph.semanticNodes && parsedGraph.semanticNodes.length > 0) {
+                    const texts = parsedGraph.semanticNodes.map((n: any) => n.label || n.id);
+                    const embeddingResult = await env.AI.run('@cf/baai/bge-base-en-v1.5', { text: texts });
+                    if (embeddingResult?.data) {
+                        const vectors = embeddingResult.data.map((vec: number[], i: number) => ({
+                            id: parsedGraph.semanticNodes[i].id,
+                            values: vec,
+                            metadata: { domain: 'marker', sessionId, content: texts[i] }
+                        }));
+                        await env.VECTORIZE.insert(vectors);
+                    }
+                }
+            } catch (e) {
+                console.error("Vector Search Embedding Failed during graph compile:", e);
+            }
+        }
+
         // Notify user compilation is done
         const tgRow = await env.DB.prepare('SELECT bot_token FROM telegram_integrations WHERE user_id = ?').bind(userId).first();
         if (tgRow && tgRow.bot_token) {

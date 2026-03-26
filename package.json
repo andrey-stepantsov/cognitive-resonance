@@ -11,7 +11,9 @@
     "@playwright/test": "^1.58.2",
     "@types/node": "^25.5.0"
   },
-  "scripts": {},
+  "scripts": {
+    "start": "npm run dev --workspace=@cr/cloudflare-worker & npm run dev --workspace=pwa & cd apps/cli && npx tsx src/index.ts serve"
+  },
   "dependencies": {
     "buffer": "^6.0.3"
   }

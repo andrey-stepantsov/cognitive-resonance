@@ -7,6 +7,7 @@ vi.mock('../utils/api', () => ({
   backendFetch: vi.fn(),
   saveCliToken: vi.fn(),
   getCliToken: vi.fn(),
+  CR_DIR: '/tmp'
 }));
 
 describe('CommandHandlers', () => {

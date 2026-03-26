@@ -4,7 +4,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import ignore from 'ignore';
 import { logger } from '../utils/logger.js';
-import { Materializer } from '@cr/core/src/services/Materializer.js';
+import { CR_DIR } from '../utils/api.js';
+import { Materializer } from 'cr-core-contracts';
 import Table from 'cli-table3';
 
 export function registerImportExportCommands(program: Command) {
@@ -14,7 +15,7 @@ export function registerImportExportCommands(program: Command) {
         .option('-s, --session <id>', 'Force a specific session ID to import into')
         .action(async (dirPath, options, command) => {
             const globalOpts = command.parent?.opts() || {};
-            const dbPath = program.opts().db || path.join(path.resolve(process.cwd(), '.cr'), 'central.sqlite');
+            const dbPath = program.opts().db || path.join(CR_DIR, 'central.sqlite');
             const dbEngine = new DatabaseEngine(dbPath);
 
             const absolutePath = path.resolve(process.cwd(), dirPath);
@@ -114,7 +115,7 @@ export function registerImportExportCommands(program: Command) {
         .option('-s, --session <id>', 'Force a specific session ID to export from')
         .action(async (dirPath, options, command) => {
             const globalOpts = command.parent?.opts() || {};
-            const dbPath = program.opts().db || path.join(path.resolve(process.cwd(), '.cr'), 'central.sqlite');
+            const dbPath = program.opts().db || path.join(CR_DIR, 'central.sqlite');
             const dbEngine = new DatabaseEngine(dbPath);
 
             const absolutePath = path.resolve(process.cwd(), dirPath);

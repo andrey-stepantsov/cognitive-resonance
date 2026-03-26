@@ -1,17 +1,5 @@
-// Re-using the SessionRecord type definition conceptually, but expanding it slightly
-export interface SessionRecord {
-  id: string;
-  timestamp: number;
-  preview: string;
-  customName?: string;
-  config?: any;
-  data: any; // the actual message/node payload
-  parentId?: string; // The session ID this branched from
-  forkedAt?: number; // When the fork occurred
-  isCloud?: boolean; // Useful for UI indicators
-  isArchived?: boolean; // Indicates if the session is archived
-  userId?: string; // The ID of the user who owns this session
-}
+import type { SessionRecord } from 'cr-core-contracts';
+export type { SessionRecord };
 
 export interface GemsConfig {
   [key: string]: any;

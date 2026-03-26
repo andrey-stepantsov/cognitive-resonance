@@ -4,7 +4,7 @@ import Table from 'cli-table3';
 import chalk from 'chalk';
 import * as fs from 'fs';
 import * as path from 'path';
-import { Materializer } from '@cr/core/src/services/Materializer.js';
+import { Materializer } from 'cr-core-contracts';
 import { IoAdapter, DefaultIoAdapter } from '../utils/IoAdapter.js';
 
 export function registerObserveCommands(program: Command, io: IoAdapter = new DefaultIoAdapter()) {

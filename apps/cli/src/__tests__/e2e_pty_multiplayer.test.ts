@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { DatabaseEngine } from '../db/DatabaseEngine.js';
 import { runSyncDaemon } from '../commands/serve.js';
-import { Materializer } from '@cr/core/src/services/Materializer.js';
+import { Materializer } from 'cr-core-contracts';
 import * as fs from 'fs';
 import * as path from 'path';
 import os from 'os';
@@ -9,7 +9,8 @@ import * as pty from 'node-pty';
 
 vi.mock('../utils/api', () => ({
     fetchSessionToken: vi.fn().mockResolvedValue('mock-token'),
-    getCliToken: vi.fn().mockReturnValue('mock-token')
+    getCliToken: vi.fn().mockReturnValue('mock-token'),
+    CR_DIR: '/tmp'
 }));
 
 vi.mock('node-pty', () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ArtefactManager } from '../services/ArtefactManager';
-import { Materializer } from '../services/Materializer';
+import { Materializer } from 'cr-core-contracts';
 
 describe('ArtefactManager', () => {
   let virtualFileSpy: any;

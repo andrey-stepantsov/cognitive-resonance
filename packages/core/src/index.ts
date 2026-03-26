@@ -5,7 +5,6 @@ export * from './hooks/useMultiplayerSync';
 export * from './services/CommandParser';
 export * from './services/GeminiService';
 export * from './services/SearchService';
-export { Materializer } from './services/Materializer';
 export * from './services/ArtefactManager';
 
 export * from './interfaces/IAuthProvider';
@@ -16,4 +15,3 @@ export * from './providers/LocalNodeStorageProvider';
 export * from './providers/RemoteStorageProvider';
 
 export * from 'cr-core-contracts';
-export * from './services/EventReducers';

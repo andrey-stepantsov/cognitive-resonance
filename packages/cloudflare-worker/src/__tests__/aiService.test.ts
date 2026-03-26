@@ -145,7 +145,7 @@ describe('aiService - Dynamic Memory Escalation', () => {
       
       expect(env.AI.run).toHaveBeenCalledWith('@cf/baai/bge-base-en-v1.5', { text: ['test'] });
       expect(mockFetch).toHaveBeenCalledTimes(2);
-      expect(env.VECTORIZE.query).toHaveBeenCalledWith([0.1, 0.2], { topK: 3, filter: { domain: 'artefact', type: 'documentation', ownership: 'system' } });
+      expect(env.VECTORIZE.query).toHaveBeenCalledWith([0.1, 0.2], { topK: 5 });
    });
 
    it('executes getGlobalMetrics for @Operator and handles D1, Vectorize telemetry', async () => {

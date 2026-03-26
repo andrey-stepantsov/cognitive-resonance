@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { Materializer } from '@cr/core/src/services/Materializer';
+import { Materializer } from 'cr-core-contracts';
 import type { IEvent } from 'cr-core-contracts';
 import { execSync } from 'child_process';
 

@@ -1,8 +1,13 @@
 import fs from 'fs';
 import path from 'path';
 
-const DOCS_DIR = path.resolve(__dirname, '../../../../docs');
-const ENV_FILE = path.resolve(__dirname, '../../../../packages/cloudflare-worker/.dev.vars');
+let rootDir = __dirname;
+while (rootDir && rootDir !== path.parse(rootDir).root) {
+  if (fs.existsSync(path.join(rootDir, 'packages/cloudflare-worker'))) break;
+  rootDir = path.dirname(rootDir);
+}
+const DOCS_DIR = path.resolve(rootDir, 'docs');
+const ENV_FILE = path.resolve(rootDir, 'packages/cloudflare-worker/.dev.vars');
 
 function getApiKey() {
   const envContent = fs.readFileSync(ENV_FILE, 'utf-8');

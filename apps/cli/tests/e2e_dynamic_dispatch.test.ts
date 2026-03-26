@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { DatabaseEngine } from '../src/db/DatabaseEngine';
 import { runSyncDaemon } from '../src/commands/serve';
-import { Materializer } from '@cr/core/src/services/Materializer';
+import { Materializer } from 'cr-core-contracts';
 import { DynamicDispatch } from '@cr/core/src/services/DynamicDispatch';
 import * as fs from 'fs';
 import * as path from 'path';

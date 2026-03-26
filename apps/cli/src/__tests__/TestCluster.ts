@@ -50,7 +50,11 @@ export class TestCluster {
 
   async triggerDaemonSync(identity: string) {
     const clients = new Set<any>();
-    const logger = { info: () => {}, error: () => {} };
+    const logger = { 
+        info: (m: string) => console.log(m), 
+        error: (m: string) => console.error(m),
+        warn: (m: string) => console.warn(m)
+    };
     await runSyncDaemon(this.db, clients, logger, identity);
   }
 

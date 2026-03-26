@@ -11,14 +11,14 @@ import * as path from 'path';
 import * as os from 'os';
 import { exec } from 'child_process';
 import { ArtefactManager } from '@cr/core/src/services/ArtefactManager.js';
-import { Materializer } from '@cr/core/src/services/Materializer.js';
+import { Materializer } from 'cr-core-contracts';
 import { parseDslRouting } from '@cr/core/src/services/CommandParser.js';
 import { DynamicDispatch } from '@cr/core/src/services/DynamicDispatch.js';
 import { generateSubWorker } from '@cr/core/src/utils/SubWorkerTemplate.js';
 import * as pty from 'node-pty';
 import { DefaultIoAdapter, IoAdapter } from '../utils/IoAdapter.js';
 import { validateEventSequence } from 'cr-core-contracts';
-import { fetchSessionToken, getCliToken } from '../utils/api.js';
+import { fetchSessionToken, getCliToken, CR_DIR } from '../utils/api.js';
 const activeTerminals = new Map<string, pty.IPty>();
 const terminalBuffers = new Map<string, { buffer: string, timeout: NodeJS.Timeout | null }>();
 
@@ -171,11 +171,11 @@ export function registerServeCommand(program: Command, io: IoAdapter = new Defau
     .option('-i, --identity <identity>', 'Explicit semantic host identity')
     .action((options, command) => {
       const globalOpts = command.parent?.opts() || {};
-      const defaultDbPath = path.join(path.resolve(process.cwd(), '.cr'), 'central.sqlite');
+      const defaultDbPath = path.join(CR_DIR, 'central.sqlite');
       const dbPath = program.opts().db || defaultDbPath;
       
-      if (dbPath === defaultDbPath && !fs.existsSync(path.resolve(process.cwd(), '.cr'))) {
-          fs.mkdirSync(path.resolve(process.cwd(), '.cr'), { recursive: true });
+      if (dbPath === defaultDbPath && !fs.existsSync(CR_DIR)) {
+          fs.mkdirSync(CR_DIR, { recursive: true });
       }
       
       const dbEngine = new DatabaseEngine(dbPath);
@@ -420,9 +420,9 @@ export async function runSyncDaemon(dbEngine: DatabaseEngine, clients: Set<WebSo
                                   type: 'RUNTIME_OUTPUT',
                                   payload: JSON.stringify({ text: output.trim() || '(No output)' }),
                                   previous_event_id: ev.id
-                               });
+                                });
                             });
-                        }).catch(err => {
+                        }).catch((err: any) => {
                             logger.error(`[Sync Daemon] Failed to materialize sandbox: ${err.message}`);
                         });
                      }
@@ -470,7 +470,7 @@ export async function runSyncDaemon(dbEngine: DatabaseEngine, clients: Set<WebSo
                                  });
                                  activeTerminals.set(ev.session_id, ptyProcess);
                              }
-                         }).catch(err => logger.error(`[Sync Daemon] Failed to materialize sandbox for PTY: ${err.message}`));
+                         }).catch((err: any) => logger.error(`[Sync Daemon] Failed to materialize sandbox for PTY: ${err.message}`));
                       }
                    }
 

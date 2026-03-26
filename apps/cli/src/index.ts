@@ -18,6 +18,18 @@ import { CR_DIR } from './utils/api.js';
 // Load env vars from the resolved workspace root
 dotenv.config({ path: path.join(path.dirname(CR_DIR), '.env') });
 
+// Fallback: Robustly locate the nearest .env file upward from this script's location
+let curDir = __dirname;
+let rootEnv = null;
+while (curDir && curDir !== path.parse(curDir).root) {
+  if (fs.existsSync(path.join(curDir, '.env'))) {
+    rootEnv = path.join(curDir, '.env');
+    break;
+  }
+  curDir = path.dirname(curDir);
+}
+if (rootEnv) dotenv.config({ path: rootEnv });
+
 const program = new Command();
 
 program

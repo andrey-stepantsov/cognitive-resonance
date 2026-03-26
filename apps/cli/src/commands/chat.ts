@@ -8,7 +8,7 @@ import { DatabaseEngine } from '../db/DatabaseEngine.js';
 import { parseCommand, CommandAction, parseMentions, parseDslRouting } from '@cr/core/src/services/CommandParser.js';
 import { GemProfiles } from '../services/GemRegistry.js';
 import { ArtefactManager } from '@cr/core/src/services/ArtefactManager.js';
-import { Materializer } from '@cr/core/src/services/Materializer.js';
+import { Materializer } from 'cr-core-contracts';
 import { exec } from 'child_process';
 import chalk from 'chalk';
 import { highlight } from 'cli-highlight';
@@ -451,9 +451,10 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
             if (parts.length !== 3) throw new Error('Invalid token format');
             
             // Core package resolves path from dist.
-            // When running locally: `__dirname` is apps/cli/dist/commands
+            // Using dynamic resolution from CR_DIR to guarantee workspace root.
             const envName = (process.env.CR_ENV === 'prod') ? 'prod' : 'dev';
-            const publicKeyPath = require('path').resolve(__dirname, `../../../../.keys/${envName}/ed25519.pub`);
+            const { CR_DIR } = require('../utils/api');
+            const publicKeyPath = require('path').join(require('path').dirname(CR_DIR), '.keys', envName, 'ed25519.pub');
             
             if (!require('fs').existsSync(publicKeyPath)) {
                 throw new Error(`Public Key ed25519.pub not bundled in CLI. Cannot verify. (Looking in .keys/${envName}/ed25519.pub)`);
@@ -532,8 +533,8 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
           const virtualState = materializer.computeVirtualState(sessionEvents);
           let files = Array.from(virtualState.keys());
           if (semanticFocus.length > 0) {
-             const prefixes = semanticFocus.map(f => f.replace('#path:', ''));
-             files = files.filter(f => prefixes.some(p => f.startsWith(p)));
+             const prefixes = semanticFocus.map((f: string) => f.replace('#path:', ''));
+             files = files.filter((f: string) => prefixes.some((p: string) => f.startsWith(p)));
           }
           
           io.print(`\n📁 Virtual Directory: /${dir}`);
@@ -564,8 +565,8 @@ export function registerChatCommands(program: Command, io: IoAdapter = new Defau
           const virtualState = materializer.computeVirtualState(sessionEvents);
           let files = Array.from(virtualState.keys()).sort();
           if (semanticFocus.length > 0) {
-             const prefixes = semanticFocus.map(f => f.replace('#path:', ''));
-             files = files.filter(f => prefixes.some(p => f.startsWith(p)));
+             const prefixes = semanticFocus.map((f: string) => f.replace('#path:', ''));
+             files = files.filter((f: string) => prefixes.some((p: string) => f.startsWith(p)));
           }
           
           io.print(`\n🌳 Virtual Filesystem Tree:`);

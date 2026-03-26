@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { backendFetch } from '../utils/api.js';
+import { backendFetch, CR_DIR } from '../utils/api.js';
 
 export function registerAdminCommands(program: Command) {
   const adminCmd = program.command('admin', { hidden: true })
@@ -14,9 +14,9 @@ export function registerAdminCommands(program: Command) {
        
        if (!process.env.CR_ADMIN_VAULT) {
            if (env === 'dev' || env === 'staging') {
-               process.env.CR_ADMIN_VAULT = path.resolve(process.cwd(), '.keys/dev');
+               process.env.CR_ADMIN_VAULT = path.resolve(path.dirname(CR_DIR), '.keys/dev');
            } else if (env === 'prod') {
-               process.env.CR_ADMIN_VAULT = path.resolve(process.cwd(), '.keys/prod');
+               process.env.CR_ADMIN_VAULT = path.resolve(path.dirname(CR_DIR), '.keys/prod');
            }
        }
     });
@@ -27,7 +27,7 @@ export function registerAdminCommands(program: Command) {
     .description('Mint a new identity token')
     .option('--expire-days <days>', 'Expiration in days')
     .action((userId, options) => {
-      const vaultDir = process.env.CR_ADMIN_VAULT || path.resolve(process.cwd(), '.keys');
+      const vaultDir = process.env.CR_ADMIN_VAULT || path.resolve(path.dirname(CR_DIR), '.keys');
       const privateKeyPath = path.join(vaultDir, 'ed25519.pem');
       
       if (!fs.existsSync(privateKeyPath)) {
