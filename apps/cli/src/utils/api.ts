@@ -24,16 +24,20 @@ export function resolveWorkspaceRoot(
   argv1 = process.argv[1], 
   dirName = __dirname
 ): string {
-  let binDir = dirName;
-  try {
-    if (mainFilename && fs.existsSync(mainFilename)) {
-      binDir = path.dirname(fs.realpathSync(mainFilename));
-    } else if (argv1 && fs.existsSync(argv1)) {
-      binDir = path.dirname(fs.realpathSync(argv1));
+  let currentDir = dirName;
+  const root = path.parse(currentDir).root;
+  while (currentDir && currentDir !== root) {
+    if (fs.existsSync(path.join(currentDir, 'package.json'))) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(currentDir, 'package.json'), 'utf8'));
+        if (pkg.name === 'cognitive-resonance' || pkg.name === 'cognitive-resonance-monorepo') {
+          return path.join(currentDir, '.cr');
+        }
+      } catch (e) {}
     }
-  } catch (e) {}
-
-  return findCRDir(cwd) || findCRDir(binDir) || findCRDir(dirName) || path.join(os.homedir(), '.cr');
+    currentDir = path.dirname(currentDir);
+  }
+  return path.join(os.homedir(), '.cr'); // absolute worst-case global fallback
 }
 
 export const CR_DIR = resolveWorkspaceRoot();

@@ -97,6 +97,17 @@ export async function handleAdminAPI(request: Request, env: Env): Promise<Respon
     }
   }
 
+  if (request.method === 'GET' && path === '/api/admin/users') {
+    try {
+      const { results } = await env.DB.prepare(
+        "SELECT id, email, name, created_at FROM users ORDER BY created_at DESC"
+      ).all();
+      return jsonResponse({ users: results || [] });
+    } catch (e: any) {
+      return jsonResponse({ error: 'Database error' }, 500);
+    }
+  }
+
   if (request.method === 'GET' && path === '/api/admin/health') {
     try {
       const dbCheck = await env.DB.prepare("SELECT 1").first();

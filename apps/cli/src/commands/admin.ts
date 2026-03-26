@@ -64,6 +64,31 @@ export function registerAdminCommands(program: Command) {
 
   const usersCmd = adminCmd.command('users').description('User identity management');
 
+  usersCmd.command('list')
+    .description('List all registered identities (Console output)')
+    .action(async () => {
+      try {
+        const res = await backendFetch('/api/admin/users', { method: 'GET' });
+        if (res.ok) {
+          const data = await res.json() as any;
+          console.log('\n✅ Registered Identities:');
+          console.table(data.users.map((u: any) => ({
+            ID: u.id,
+            Email: u.email,
+            Name: u.name,
+            Created: new Date(u.created_at).toLocaleString()
+          })));
+          console.log(''); // spacer
+        } else {
+          console.error(`❌ Failed to list users: ${res.status} ${res.statusText}`);
+          process.exit(1);
+        }
+      } catch (e: any) {
+        console.error(`[Error] ${e.message}`);
+        process.exit(1);
+      }
+    });
+
   usersCmd.command('revoke <userId>')
     .description('Revoke user access globally')
     .action(async (userId) => {
